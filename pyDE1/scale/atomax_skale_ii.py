@@ -1,0 +1,229 @@
+"""
+Copyright © 2021 Jeff Kletsky. All Rights Reserved.
+
+License for this software, part of the pyDE1 package, is granted under
+GNU General Public License v3.0 only
+SPDX-License-Identifier: GPL-3.0-only
+"""
+
+import asyncio
+import enum
+import logging
+import sys
+import time
+from typing import Callable
+
+from bleak.backends.device import BLEDevice
+from bleak.backends.scanner import AdvertisementData
+
+import pyDE1.default_logger
+from pyDE1.scale import Scale
+from pyDE1.scale.events import ScaleWeightUpdate, ScaleButtonPress
+
+
+logger = logging.getLogger('Scale.AtomaxIIScale')
+
+
+class AtomaxSkaleII(Scale):
+
+    def __init__(self, address=None):
+        super(AtomaxSkaleII, self).__init__(address)
+        self._nominal_period = 0.1  # seconds per sample
+        self._minimum_tare_request_interval = 2.5 * self._nominal_period
+        self._sensor_lag = 0.38  # seconds, including all transit delays
+        self._tare_timeout = 1.0  # seconds until considered coincidence
+        self._tare_threshold = 0.05  # grams, within this, considered "at zero"
+
+        # Enable tare on button 1, hold UUID if need to unsubscribe
+        self._button_1_tare_subscriber_id = None
+        asyncio.get_event_loop().create_task(self._subscribe_button_press())
+
+        # Linux, at least on an RPi 3B, needs response=True for write_gatt_char
+        self._write_gatt_char_response = sys.platform == 'linux'
+
+    class Char(enum.Enum):
+
+        CONFIGURATION_EF80 =    'ef80'  # W
+        WEIGHT_NOTIFY_EF81 =    'ef81'  # N
+        BUTTON_NOTIFY_EF82 =    'ef82'  # N
+        UNKNOWN_EF83 =          'ef83'  # R
+
+        BATTERY_LEVEL =         '2a19'  # 0-63
+
+        MODEL_NUMBER =          '2a24'  # "SkaleII"
+
+        FW_REVISION =           '2a26'
+        HW_REVISION =           '2a27'
+        SW_REVISION =           '2a28'
+        MANUFACTURER_NAME =     '2a29'  # "ATOMAX INC."
+
+        UNKNOWN =               '0f050002-3225-44b1-b97d-d3274acb29de'  # R
+
+        @property
+        def cuuid(self):
+            return f"0000{self.value}-0000-1000-8000-00805f9b34fb"
+
+
+    # These typically get written to CONFIGURATION_EF80
+    class Command(enum.Enum):
+
+        DISPLAY_WEIGHT = b'\xec'
+        DISPLAY_ON = b'\xed'
+        DISPLAY_OFF = b'\xee'
+
+        OUNCES = b'\x02'
+        GRAMS = b'\x03'
+        PERSIST_UNITS = b'\04'
+
+        TARE = b'\x10'
+
+        TIMER_ZERO = b'\xd0'
+        TIMER_START = b'\xd1'
+        TIMER_STOP = b'\xd2'
+
+        # Place cal weight on Skale, send command
+        CALIBRATE_500G = b'\xca\x05'
+        CALIBRATE_1000G = b'\xca\x0a'
+
+        # Undocumented at this time
+        FILTER_WEAK = b'\x09\x00'
+        FILTER_DEFAULT = b'\x09\x01'
+        FILTER_STRONG = b'\x09\x02'
+        FILTER_STRONGER = b'\x09\x03'
+
+        @property
+        def cuuid(self):
+            return AtomaxSkaleII.Char.CONFIGURATION_EF80.cuuid
+
+    @classmethod
+    def device_adv_is_recognized_by(cls, device: BLEDevice,
+                                    adv: AdvertisementData):
+        if adv.local_name and adv.local_name.startswith('Skale'):
+            return cls
+        else:
+            return None
+
+    async def standard_config(self):
+        await super(AtomaxSkaleII, self).standard_config()
+        await self.set_grams()
+
+    async def update_self_from_device(self):
+        self._model_number = await self._bleak_client.read_gatt_char(
+            self.Char.MODEL_NUMBER.cuuid)
+        self._fw_revision = await self._bleak_client.read_gatt_char(
+            self.Char.FW_REVISION.cuuid)
+        self._hw_revision = await self._bleak_client.read_gatt_char(
+            self.Char.HW_REVISION.cuuid)
+        self._sw_revision = await self._bleak_client.read_gatt_char(
+            self.Char.SW_REVISION.cuuid)
+        self._manufacturer_name = await self._bleak_client.read_gatt_char(
+            self.Char.MANUFACTURER_NAME.cuuid)
+
+    async def start_sending_weight_updates(self):
+        await self._bleak_client.start_notify(
+            self.Char.WEIGHT_NOTIFY_EF81.cuuid,
+            self._create_weight_update_hander())
+        logger.info("Sending weight updates")
+
+    async def stop_sending_weight_updates(self):
+        await self._bleak_client.stop_notify(
+            self.Char.WEIGHT_NOTIFY_EF81.cuuid)
+        logger.info("Stopped weight updates")
+
+    def is_sending_weight_updates(self):
+        return NotImplementedError
+
+    async def _tare_internal(self):
+        await self.send_command(self.Command.TARE)
+        logger.info("Internal tare sent")
+
+    async def current_weight(self):
+        # await self._bleak_client.read_gatt_char(
+        #     self.Char.UNKNOWN_EF83.uuid)
+        # # That CUUID doesn't look like weight
+        raise NotImplementedError
+
+    async def display_on(self):
+        await self.send_command(self.Command.DISPLAY_WEIGHT)
+        await self.send_command(self.Command.DISPLAY_ON)
+        logger.info("Display on")
+
+    async def display_off(self):
+        await self.send_command(self.Command.DISPLAY_OFF)
+        logger.info("Display off")
+
+    async def set_grams(self):
+        await self.send_command(self.Command.GRAMS)
+        logger.info("Grams selected")
+
+    @property
+    def supports_button_press(self):
+        return True
+
+    async def start_sending_button_updates(self):
+        await self._bleak_client.start_notify(
+            self.Char.BUTTON_NOTIFY_EF82.cuuid,
+            self._create_button_press_hander())
+        logger.info("Sending button updates")
+
+    async def stop_sending_button_updates(self):
+        await self._bleak_client.stop_notify(
+            self.Char.BUTTON_NOTIFY_EF82.cuuid)
+        logger.info("Stopped button updates")
+
+    async def send_command(self, command: Command):
+        await self._bleak_client.write_gatt_char(command.cuuid, command.value,
+            response=self._write_gatt_char_response)
+
+    def _create_weight_update_hander(self) -> Callable:
+        scale = self
+
+        async def weight_update_handler(sender, data):
+            nonlocal scale
+
+            now = time.time()
+
+            w1 = int.from_bytes(data[1:4], byteorder='little',
+                                signed=True) / 10.0
+            w2 = int.from_bytes(data[5:8], byteorder='little',
+                                signed=True) / 10.0
+            # if w1 == w2:
+            #     print(f"{dt:8.6f} {w1}")
+            # else:
+            #     print(f"{dt:8.6f} {w1}  {w2}")
+
+            self._update_scale_time_estimator(now)
+
+            await scale.event_weight_update.publish(
+                ScaleWeightUpdate(
+                    arrival_time=now,
+                    scale_time=self._scale_time_from_latest_arrival(now),
+                    weight=w1
+                ))
+
+        return weight_update_handler
+
+    def _create_button_press_hander(self) -> Callable:
+        scale = self
+
+        async def button_press_handler(sender, data):
+            nonlocal scale
+
+            now = time.time()
+            b = data[0]
+            sbp = ScaleButtonPress(arrival_time=now, button=b)
+            await scale.event_button_press.publish(sbp)
+
+        return button_press_handler
+
+    async def _subscribe_button_press(self):
+        scale = self
+
+        async def button_1_tare(sbp: ScaleButtonPress) -> None:
+            nonlocal scale
+            if sbp.button == 1:
+                await scale.tare()
+                logger.info("Button 1 - Tare requested")
+
+        self._button_1_tare_subscriber_id \
+            = await self._event_button_press.subscribe(button_1_tare)

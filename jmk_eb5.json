@@ -1,0 +1,96 @@
+{
+  "title": "jmk\/EB 5",
+  "author": "Jeff Kletsky",
+  "notes": "Based on Luca's work based on Stéphane's work.",
+  "beverage_type": "Espresso",
+  "steps": [
+    {
+      "name": "preinfusion",
+      "temperature": "93.5",
+      "sensor": "coffee",
+      "pump": "flow",
+      "transition": "fast",
+      "pressure": "1",
+      "flow": "5.00",
+      "seconds": "20.00",
+      "volume": "100",
+      "exit": {
+        "type": "pressure",
+        "condition": "over",
+        "value": "4.00"
+      }
+    },
+    {
+      "name": "dynamic bloom",
+      "temperature": "79.5",
+      "sensor": "coffee",
+      "pump": "flow",
+      "transition": "fast",
+      "pressure": "6.0",
+      "flow": "0",
+      "seconds": "15.00",
+      "volume": "100",
+      "exit": {
+        "type": "pressure",
+        "condition": "under",
+        "value": "1.50"
+      }
+    },
+    {
+      "name": "ramp",
+      "temperature": "92.0",
+      "sensor": "coffee",
+      "pump": "pressure",
+      "transition": "smooth",
+      "pressure": "8.999999999999993",
+      "flow": "2.2",
+      "seconds": "5.00",
+      "volume": "100",
+      "limiter": {
+        "value": "0",
+        "range": "0.6"
+      }
+    },
+    {
+      "name": "flat flow",
+      "temperature": "92.0",
+      "sensor": "coffee",
+      "pump": "pressure",
+      "transition": "fast",
+      "pressure": "8.999999999999993",
+      "flow": "2.2",
+      "seconds": "2.00",
+      "volume": "100",
+      "limiter": {
+        "value": "0",
+        "range": "0.6"
+      }
+    },
+    {
+      "name": "decline",
+      "temperature": "92.0",
+      "sensor": "coffee",
+      "pump": "pressure",
+      "transition": "smooth",
+      "pressure": "3.9999999999999996",
+      "flow": "2.2",
+      "seconds": "25.00",
+      "volume": "100",
+      "limiter": {
+        "value": "0",
+        "range": "0.6"
+      }
+    }
+  ],
+  "tank_temperature": "0",
+  "target_weight": "50",
+  "target_volume": "0",
+  "target_volume_count_start": "2",
+  "legacy_profile_type": "settings_2c",
+  "type": "advanced",
+  "lang": "en",
+  "hidden": "0",
+  "reference_file": "1618410463",
+  "changes_since_last_espresso": "",
+  "version": "2"
+}
