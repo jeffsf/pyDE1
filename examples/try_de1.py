@@ -11,48 +11,38 @@ import logging
 import multiprocessing as mp
 import time
 
-# TODO: Move the imports out of "main" so that the aux processes are clean
-
-from pyDE1.de1 import DE1
-
-from pyDE1.de1.ble import CUUID
-from pyDE1.de1.c_api import API_MachineStates, API_Substates, MMR0x80LowAddr, \
-    FWMapRequest, FWErrorMapRequest, ShotSettings
-from pyDE1.de1.profile import ProfileByFrames
-from pyDE1.de1.firmware_file import FirmwareFile
-
-from pyDE1.shot_file import CombinedShotLogger
-
-
-from pyDE1.scale import AtomaxSkaleII
-from pyDE1.scale.processor import ScaleProcessor
-from pyDE1.flow_sequencer import FlowSequencer
-
-de1_addr = "d9:b2:48:aa:bb:cc"
-skale_addr = "cf:75:75:aa:bb:cc"
+import pyDE1.default_logger
 
 
 def run_api_outbound(api_outbound_queue: mp.Queue):
-    try:
-        de1 = DE1
-    except NameError:
-        de1 = 'DE1 is not defined'
     logging.getLogger('outbound').info(
-        f"Outbound ran: {de1}")
+        f"Outbound ran")
 
 
 def run_api_inbound(api_inbound_queue: mp.Queue):
-    try:
-        de1 = DE1
-    except NameError:
-        de1 = 'DE1 is not defined'
     logging.getLogger('inbound').info(
-        f"Inbound ran {de1}")
+        f"Inbound ran")
 
 
 async def run():
 
     logger = logging.getLogger('main')
+
+    from pyDE1.de1 import DE1
+
+    from pyDE1.de1.ble import CUUID
+    from pyDE1.de1.c_api import API_MachineStates
+    from pyDE1.de1.profile import ProfileByFrames
+    from pyDE1.de1.firmware_file import FirmwareFile
+
+    from pyDE1.shot_file import CombinedShotLogger
+
+    from pyDE1.scale import AtomaxSkaleII
+    from pyDE1.scale.processor import ScaleProcessor
+    from pyDE1.flow_sequencer import FlowSequencer
+
+    de1_addr = "d9:b2:48:aa:bb:cc"
+    skale_addr = "cf:75:75:aa:bb:cc"
 
     try:
         de1 = DE1
@@ -125,7 +115,6 @@ async def run():
     await de1.disconnect()
 
 
-
 if __name__ == "__main__":
 
     mp.set_start_method('spawn')
@@ -136,6 +125,7 @@ if __name__ == "__main__":
     outbound_api_process = mp.Process(target=run_api_outbound,
                                       args=(outbound_api_queue,))
     outbound_api_process.start()
+
     inbound_api_process = mp.Process(target=run_api_inbound,
                                       args=(inbound_api_queue,))
     inbound_api_process.start()
