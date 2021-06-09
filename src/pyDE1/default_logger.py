@@ -7,10 +7,12 @@ SPDX-License-Identifier: GPL-3.0-only
 """
 
 import logging
+import os
 import re
 import time
 
 format_string = "%(asctime)s %(levelname)s %(name)s: %(message)s"
+logfile_directory = '_logs'
 
 logging.basicConfig(level=logging.DEBUG,
                     format=format_string,
@@ -32,12 +34,28 @@ logging.basicConfig(level=logging.DEBUG,
 logging.getLogger('asyncio').setLevel(logging.INFO)
 logging.getLogger('bleak').setLevel(logging.INFO)
 
-# TODO: Windows will need path.join()
-lf_name = time.strftime('_logs/default.%Y-%m-%d_%H%M%S.log', time.localtime())
-lf = logging.FileHandler(lf_name)
+logger = logging.getLogger('Logger')
+
+lf_name = time.strftime('default.%Y-%m-%d_%H%M%S.log', time.localtime())
+lf_name = os.path.join(logfile_directory, lf_name)
+if not os.path.exists(logfile_directory):
+    logger.error(
+        "logfile_directory '{}' does not exist. Creating.".format(
+            os.path.realpath(logfile_directory)
+        )
+    )
+    os.mkdir(logfile_directory)
+try:
+    lf = logging.FileHandler(lf_name)
+except FileNotFoundError:
+    logger.critical(
+        f"Unable to open {os.path.realpath(lf_name)}"
+    )
+    raise
 lf.setFormatter(logging.Formatter(format_string))
 lf.setLevel(logging.DEBUG)
 logging.getLogger('').addHandler(lf)
+logger.info(f"Logging PID {os.getpid()} to {os.path.realpath(lf_name)}")
 
 def data_as_hex(data):
     hex_data = data.hex()

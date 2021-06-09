@@ -40,12 +40,21 @@ class StateUpdate (EventPayload):
             previous_substate = API_Substates.NoState
         self.previous_state = previous_state
         self.previous_substate = previous_substate
+        # External consumers don't have API_Substates.is_error
+        self.is_error_state = (
+                self.state == API_MachineStates.FatalError
+                or self.substate.is_error
+        )
 
 
 class ShotSampleUpdate (EventPayload):
     """
     Derived from ShotSample
+
+    See ShotSampleWithVolumeUpdates for API-visible class
     """
+    _internal_only = True
+
     def __init__(self, arrival_time: float,
                  sample_time: int,
                  group_pressure: float,
@@ -90,6 +99,7 @@ class ShotSampleWithVolumesUpdate (ShotSampleUpdate):
     Delivered after ShotSampleUpdate,
     includes calculated then tracked volumes
     """
+    _internal_only = False
 
     def __init__(self, shot_sample_update: ShotSampleUpdate,
                  volume_preinfuse: float,

@@ -20,6 +20,8 @@ import pyDE1.default_logger
 from pyDE1.scale import Scale
 from pyDE1.scale.events import ScaleWeightUpdate, ScaleButtonPress
 
+from pyDE1.event_manager.events import ConnectivityState, ConnectivityChange
+
 
 logger = logging.getLogger('Scale.AtomaxIIScale')
 
@@ -103,9 +105,17 @@ class AtomaxSkaleII(Scale):
         else:
             return None
 
-    async def standard_config(self):
-        await super(AtomaxSkaleII, self).standard_config()
+    async def standard_initialization(self, hold_notification=False):
+        await super(AtomaxSkaleII, self).standard_initialization(
+            hold_notification=True)
         await self.set_grams()
+        if not hold_notification:
+            await self._event_connectivity.publish(
+                ConnectivityChange(
+                    arrival_time=time.time(),
+                    state=ConnectivityState.READY
+                )
+            )
 
     async def update_self_from_device(self):
         self._model_number = await self._bleak_client.read_gatt_char(

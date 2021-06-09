@@ -68,8 +68,36 @@ class CombinedShotLogger:
         self._last_weight = 0
         self._last_flow = 0
 
+        self._k_ma = 1/10
+        self._show_ma_every = 100  # About 5/second
+
+        self._create_ma_sswvu = 1
+        self._end_to_end_ma_sswvu = 1
+        self._show_ma_count_sswvu = 0
+
+        self._create_ma_wafu = 1
+        self._end_to_end_ma_wafu = 1
+        self._show_ma_count_wafu = 0
+
+
     async def sswvu_subscriber(self, sswvu: ShotSampleWithVolumesUpdate):
         now = time.time()
+        self._show_ma_count_sswvu += 1
+        t_create = (sswvu.create_time - sswvu.arrival_time) * 1000
+        t_end_to_end = (now - sswvu.arrival_time) * 1000
+        self._create_ma_sswvu = self._create_ma_sswvu * (1 - self._k_ma) \
+                                + t_create * self._k_ma
+        self._end_to_end_ma_sswvu = self._end_to_end_ma_sswvu * (1 - self._k_ma) \
+                                    + t_end_to_end * self._k_ma
+        if self._show_ma_count_sswvu % self._show_ma_every == 0:
+            logger.info(
+                "SSWVU create, deliver, e2e: "
+                "{:.3f}  {:.3f}  {:.3f} ms ".format(
+                    self._create_ma_sswvu,
+                    self._end_to_end_ma_sswvu - self._create_ma_sswvu,
+                    self._end_to_end_ma_sswvu
+                )
+            )
         if sswvu.sender._recorder_active:
             line = "{:5.2f} b  {:4.2f} mL/s  {:4.2f} g/s  {:5.1f} g  " \
                    "{:4.1f} °C " \
@@ -86,11 +114,28 @@ class CombinedShotLogger:
                 sswvu.volume_total,
                 [round(v, 1) for v in sswvu.volume_by_frames],
                 sswvu.sample_time,
-                (sswvu.create_time - sswvu.arrival_time) * 1000,
-                (now - sswvu.arrival_time) * 1000,
+                t_create,
+                t_end_to_end,
             )
             logger.info(line)
 
     async def wafu_subscriber(self, wafu: WeightAndFlowUpdate):
+        now = time.time()
+        self._show_ma_count_wafu += 1
+        t_create = (wafu.create_time - wafu.arrival_time) * 1000
+        t_end_to_end = (now - wafu.arrival_time) * 1000
+        self._create_ma_wafu = self._create_ma_wafu * (1 - self._k_ma) \
+                                + t_create * self._k_ma
+        self._end_to_end_ma_wafu = self._end_to_end_ma_wafu * (1 - self._k_ma) \
+                                    + t_end_to_end * self._k_ma
+        if self._show_ma_count_wafu % self._show_ma_every == 0:
+            logger.info(
+                "WAFU create, deliver, e2e: "
+                "{:.3f}  {:.3f}  {:.3f} ms ".format(
+                    self._create_ma_wafu,
+                    self._end_to_end_ma_wafu - self._create_ma_wafu,
+                    self._end_to_end_ma_wafu
+                )
+            )
         self._last_flow = wafu.average_flow
         self._last_weight = wafu.current_weight

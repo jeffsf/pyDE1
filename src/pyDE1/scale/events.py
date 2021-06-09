@@ -12,6 +12,10 @@ from pyDE1.event_manager import EventPayload
 
 
 class ScaleWeightUpdate(EventPayload):
+    """
+    See WeightAndFlowUpdate for API-visible class
+    """
+    _internal_only = True
 
     def __init__(self,
                  arrival_time: float,
@@ -21,6 +25,7 @@ class ScaleWeightUpdate(EventPayload):
         self._version = "1.0.0"
         self.scale_time = scale_time
         self.weight = weight
+
 
 class ScaleButtonPress(EventPayload):
 

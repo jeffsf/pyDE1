@@ -45,9 +45,13 @@ Watchdog? Check on every add?
 
 Don't need a queue to start as there will only be one publisher for an event.
 """
+
 import asyncio
+import enum
 import json
 import logging
+import multiprocessing
+import queue
 import time
 import uuid
 
@@ -57,9 +61,12 @@ from typing import Optional, Coroutine, Union, List
 
 import pyDE1.default_logger
 
+from pyDE1.de1.exceptions import DE1ValueError
+
 logger = logging.getLogger('EventManager')
 
-# TODO: Need loggable representation of payloads
+LOG_DELAYS = False
+
 
 class EventPayload:
     """
@@ -73,11 +80,12 @@ class EventPayload:
     _sender         will be filled out by the Event.publish() method
     _event_time     will be filled out by the Event.publish() method
     """
+    _internal_only = False
 
     def __init__(self,
                  arrival_time: float,
                  create_time: Optional[float] = None,
-                 data: Optional[None] = None):
+                 ):
         self._version = None
         self._sender = None
         self.arrival_time = arrival_time
@@ -113,7 +121,8 @@ class EventPayload:
         are accepted from "private" attributes.
         They are translated to 'name', 'version', 'sender' and 'event_time'
         """
-        work = {k: v for k, v in self.__dict__.items()
+        # IntEnum gets JSON-ified as an int
+        work = {k: fix_enums(v) for k, v in self.__dict__.items()
                 if not k.startswith('_')}
         for key in ('version', 'event_time'):
             try:
@@ -126,13 +135,145 @@ class EventPayload:
         return json.dumps(work)
 
 
+def fix_enums(val):
+    """
+    Return the name of an IntEnum, does not help with IntFlag
+    So far no IntFlag enums headed to the external API
+    """
+    if isinstance(val, enum.IntEnum):
+        return val.name
+    elif isinstance(val, enum.Enum):
+        # or issubclass(enum.Enum, type(val)):
+        return val.value
+    else:
+        return val
+
+# Extend asyncio.Event() to notify over the API as well
+
+class EventNotificationName (enum.Enum):
+    """
+    As "subclassing an enumeration is allowed only
+        if the enumeration does not define any members."
+    all need to be defined here
+    """
+    # From FlowSequencer:
+    GATE_SEQUENCE_START =  "sequence_start"
+    GATE_FLOW_BEGIN = "sequence_flow_begin"
+    GATE_EXPECT_DROPS = "sequence_expect_drops"
+    GATE_EXIT_PREINFUSE = "sequence_exit_preinfuse"
+    GATE_FLOW_END = "sequence_flow_end"
+    GATE_FLOW_STATE_EXIT = "sequence_flow_state_exit"
+    GATE_LAST_DROPS = "sequence_last_drops"
+    GATE_SEQUENCE_COMPLETE = "sequence_complete"
+
+
+class EventNotificationAction (enum.Enum):
+    SET = 'set'
+    CLEAR = 'clear'
+
+
+class EventNotification (EventPayload):
+
+    def __init__(self, arrival_time: Optional[float],
+                 create_time: Optional[float] = None,
+                 sender = None,
+                 name: EventNotificationName = None,
+                 action: EventNotificationAction = None
+                 ):
+        if not isinstance(name, EventNotificationName):
+            raise TypeError(
+                "EventNotification needs a valid EventNotificationName, not "
+                f"'{name}'")
+        if not isinstance(action, EventNotificationAction):
+            raise TypeError(
+                "EventNotification needs a valid EventNotificationAction, not "
+                f"'{action}'")
+        if arrival_time is None:
+            arrival_time = time.time()
+        super(EventNotification, self).__init__(
+            arrival_time=arrival_time,
+            create_time=create_time,
+        )
+        self._version = "1.0.0"
+        self._sender = sender
+        self.name = name.value
+        self.action = action.value
+
+
+class EventWithNotify (asyncio.Event):
+
+    def __init__(self, sender, name: EventNotificationName):
+        if not isinstance(name, EventNotificationName):
+            raise TypeError(
+                "EventNotification needs a valid EventNotificationName, not "
+                f"'{name}'")
+        super(EventWithNotify, self).__init__()
+        self._sender = sender
+        self._event_name = name
+
+    def set(self):
+        super(EventWithNotify, self).set()
+        en = EventNotification(
+            arrival_time=time.time(),
+            sender=self._sender,
+            name=self._event_name,
+            action=EventNotificationAction.SET
+        )
+        asyncio.create_task(send_to_outbound_queue(en))
+
+    def clear(self):
+        super(EventWithNotify, self).clear()
+        en = EventNotification(
+            arrival_time=time.time(),
+            sender=self._sender,
+            name=self._event_name,
+            action=EventNotificationAction.CLEAR
+        )
+        asyncio.create_task(send_to_outbound_queue(en))
+
+
+# TODO: This needs to be unified with SubscribedEvent
+async def send_to_outbound_queue(payload: EventPayload):
+
+    # multiprocessing.queue() can block at least on "full"
+    # macOS doesn't support qsize()
+
+    if SubscribedEvent.outbound_queue is not None:
+        payload._event_time = time.time()
+        try:
+            q_payload = payload.as_json()
+            SubscribedEvent.outbound_queue.put_nowait(q_payload)
+        except queue.Full as e:
+            now = time.time()
+            if now - SubscribedEvent._last_logged_queue_full_time \
+                    > SubscribedEvent._logged_queue_full_interval:
+                logger.error(
+                    "Queue full, payload skipped {} for {}".format(
+                        SubscribedEvent.outbound_queue,
+                        type(payload)
+                    )
+                )
+                SubscribedEvent._last_logged_queue_full_time = now
+
+
 class SubscribedEvent:
     """
     A canonical pub/sub system for EventPayload objects under asyncio
 
     This is intended to be a singleton for each event type
-    and with a single publisher. There is no queue nor lock.
+    and with a single publisher.
+
+    If outbound_queue: Optional[multiprocessing.Queue] is not None
+    and EventPayload._internal_only is False (default)
+    the EventPayload.as_json() will be delivered to that queue.
+
+    SubscribedEvent.outbound_queue and EventPayload._internal_only
+    are class properties at this time.
+
     """
+
+    outbound_queue: Optional[multiprocessing.Queue] = None
+    _logged_queue_full_interval = 5  # Don't log queue-full faster than secs
 
     def __init__(self, sender):
         self._sender = sender
@@ -140,6 +281,7 @@ class SubscribedEvent:
         # perhaps don't need a lock on the list as not threaded
         self._subscriber_list_lock = asyncio.Lock()
         self._last_create_time = 0
+        self._last_logged_queue_full_time = 0
 
     async def subscribe(self,
                         callback: Coroutine[
@@ -226,12 +368,25 @@ class SubscribedEvent:
                 #       from unintentional damage from others
 
                 await s[1](payload)
-        now = time.time()
+        internal_done = time.time()
+
+        # multiprocessing.queue() can block at least on "full"
+        # macOS doesn't support qsize()
+        if not payload._internal_only:
+            await send_to_outbound_queue(payload)
+
+        delivery_done = time.time()
+
+        if LOG_DELAYS and not payload._internal_only:
+            logger.info(
+                "JSON and queueing time: "
+                f"{(delivery_done - internal_done) * 1000:0.3f} ms")
 
         if (interpacket := payload.create_time - self._last_create_time) < 0:
             logger.error(
                 "Out-of-sequence payload delivery by "
                 f"{-interpacket * 1000:0.3f} ms")
-        delay = (now - payload.create_time) * 1000
-        logger.debug( f"Dispatch delay: {delay:.3f} ms {type(payload)}")
+        if LOG_DELAYS:
+            delay = (delivery_done - payload.create_time) * 1000
+            logger.debug( f"Dispatch delay: {delay:.3f} ms {type(payload)}")
         return tasks

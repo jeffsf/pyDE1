@@ -13,7 +13,7 @@ import struct
 import time
 
 from copy import copy
-from typing import Union, Dict, Coroutine, Optional, List
+from typing import Union, Dict, Coroutine, Optional, List, Callable
 
 from bleak import BleakClient
 from bleak.backends.device import BLEDevice
@@ -38,6 +38,7 @@ from pyDE1.de1.notifications import NotificationState, MMR0x80Data
 from pyDE1.de1.profile import ProfileByFrames, DE1ProfileValidationError
 
 from pyDE1.i_target_manager import I_TargetManager
+from pyDE1.event_manager.events import ConnectivityState, ConnectivityChange
 
 # Importing from the module-level init fails
 # from pyDE1.flow_sequencer import I_TargetManager
@@ -85,6 +86,7 @@ class DE1:
         for mmr in MMR0x80LowAddr:
             self._mmr_dict[mmr] = MMR0x80Data(mmr)
 
+        self._event_connectivity = SubscribedEvent(self)
         self._event_state_update = SubscribedEvent(self)
         self._event_shot_sample = SubscribedEvent(self)
         self._event_water_levels = SubscribedEvent(self)
@@ -119,6 +121,11 @@ class DE1:
         asyncio.create_task(self._event_shot_sample.subscribe(
             self._create_self_callback_ssu()))
 
+    # TODO: Rework initialization
+    async def notify_initialized(self):
+        await self._event_connectivity.publish(
+        ConnectivityChange(arrival_time=time.time(),
+                           state=ConnectivityState.READY))
 
     @classmethod
     def device_adv_is_recognized_by(cls, device: BLEDevice, adv: AdvertisementData):
@@ -162,22 +169,47 @@ class DE1:
             if self.address is None:
                 raise DE1NoAddressError
             self._bleak_client = BleakClient(self.address)
-        await self._bleak_client.connect(timeout=timeout)
+        self._bleak_client.set_disconnected_callback(
+            self._create_disconnect_callback()
+        )
+        await asyncio.gather(self._event_connectivity.publish(
+            ConnectivityChange(arrival_time=time.time(),
+                               state=ConnectivityState.CONNECTING)),
+            self._bleak_client.connect(timeout=timeout),
+        )
         if self.is_connected:
-            logger.info(f"Connected to DE1 at {self.address}")
             self.register_atexit_disconnect()
+            logger.info(f"Connected to DE1 at {self.address}")
+            await self._event_connectivity.publish(
+                ConnectivityChange(arrival_time=time.time(),
+                                   state=ConnectivityState.CONNECTED))
         else:
             logger.error(f"Connection failed to DE1 at {self.address}")
+            await self._event_connectivity.publish(
+                ConnectivityChange(arrival_time=time.time(),
+                                   state=ConnectivityState.DISCONNECTED))
 
     async def disconnect(self):
         logger.info(f"Disconnecting from DE1")
         if self._bleak_client is None:
             logger.info(f"Disconnecting from DE1; no client")
-        await self._bleak_client.disconnect()
+        await asyncio.gather(
+            self._bleak_client.disconnect(),
+            self._event_connectivity.publish(
+                ConnectivityChange(arrival_time=time.time(),
+                                   state=ConnectivityState.DISCONNECTING))
+        )
         if self.is_connected:
             logger.error(f"Disconnect failed from DE1 at {self.address}")
+            await self._event_connectivity.publish(
+                ConnectivityChange(arrival_time=time.time(),
+                                   state=ConnectivityState.CONNECTED))
         else:
             logger.info(f"Disconnected from DE1 at {self.address}")
+            await self._event_connectivity.publish(
+                ConnectivityChange(arrival_time=time.time(),
+                                   state=ConnectivityState.DISCONNECTED))
+
         # TODO: Unregister atexit disconnect
 
     def _atexit_disconnect(self):
@@ -198,8 +230,27 @@ class DE1:
     def register_atexit_disconnect(self):
         atexit.register(self._atexit_disconnect())
 
-
     # TODO: Decide how to handle  self._disconnected_callback
+    #   disconnected_callback (callable): Callback that will be scheduled in the
+    #   event loop when the client is disconnected. The callable must take one
+    #   argument, which will be this client object.
+
+    # The callback seems to be expected to be a "plain" function
+    # RuntimeWarning: coroutine 'DE1._create_disconnect_callback.<locals>.disconnect_callback'
+    #                 was never awaited
+
+    def _create_disconnect_callback(self) -> Callable:
+        de1 = self
+
+        def disconnect_callback(client: BleakClient):
+            nonlocal de1
+            logger.info(f"Disconnected from DE1 at {de1.address}")
+            asyncio.create_task(de1._event_connectivity.publish(
+                ConnectivityChange(arrival_time=time.time(),
+                                   state=ConnectivityState.DISCONNECTED)))
+
+        return disconnect_callback
+
 
     @property
     def is_connected(self):
@@ -750,3 +801,4 @@ class DE1:
     # TODO: Support for clean, descale, travel
 
     # TODO: Settings object that then uploads if needed
+

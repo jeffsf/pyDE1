@@ -10,6 +10,7 @@ FlowSequencer
 
 Responsible for coordinating the actions around any of the flow modes
 """
+import enum
 import time
 
 import asyncio
@@ -27,9 +28,71 @@ from pyDE1.i_target_manager import I_TargetManager
 from pyDE1.scale.processor import ScaleProcessor
 from pyDE1.scale.events import WeightAndFlowUpdate
 
+from pyDE1.event_manager import EventWithNotify, EventNotificationName, \
+    EventPayload, send_to_outbound_queue
+
 from pyDE1.utils import cancel_tasks_by_name
 
 logger = logging.getLogger('FlowSequencer')
+
+
+# TODO: These didn't neatly become inner classes
+
+class StopAtNotificationAction (enum.Enum):
+    ENABLED = 'enabled'
+    TRIGGERED = 'triggered'
+    DISABLED = 'disabled'
+
+
+class StopAtType (enum.Enum):
+    TIME = 'time'
+    VOLUME = 'volume'
+    WEIGHT = 'weight'
+
+
+class StopAtNotification (EventPayload):
+    """
+    Enable, disable, trigger of the various stop-at conditions
+    current_value is generally only set for StopAtNotificationAction.TRIGGERED
+
+    ENABLED notifications are given even if the target is None as the target
+    can be changed during the shot, at least when managed by the FlowSequencer
+    (On-the-fly profile changes are not supported at this time.
+     On-the-fly changes to steam duration have not been tested at this time.)
+    """
+    def __init__(self, stop_at: StopAtType,
+                 action: StopAtNotificationAction,
+                 target_value: Optional[float] = None,
+                 current_value: Optional[float] = None,
+                 active_state: API_MachineStates = API_MachineStates.NoRequest):
+        now = time.time()
+        super(StopAtNotification, self).__init__(
+            arrival_time=now,
+            create_time=now
+        )
+        self._version = "1.0.0"
+        self.stop_at = stop_at
+        self.action = action
+        self.target_value = target_value
+        self.current_value = current_value
+        self.active_state = active_state
+
+
+class AutoTareNotificationAction (enum.Enum):
+    ENABLED = 'enabled'
+    DISABLED = 'disabled'
+
+
+class AutoTareNotification (EventPayload):
+
+    def __init__(self, action: AutoTareNotificationAction):
+        now = time.time()
+        super(AutoTareNotification, self).__init__(
+            arrival_time=now,
+            create_time=now
+        )
+        self._version = "1.0.0"
+        self.action = action
 
 
 class FlowSequencer (I_TargetManager):
@@ -46,22 +109,31 @@ class FlowSequencer (I_TargetManager):
         # For later cancellation. Should this be static or dynamic?
         self._sequence_task_name: str = "SequencerSubtask"
 
-        self._gate_sequence_start = asyncio.Event()
+        self._gate_sequence_start = EventWithNotify(self,
+            EventNotificationName.GATE_SEQUENCE_START)
         # These are not necessarily in order
-        self._gate_flow_begin = asyncio.Event()
-        self._gate_expect_drops = asyncio.Event()
+        self._gate_flow_begin = EventWithNotify(self,
+            EventNotificationName.GATE_FLOW_BEGIN)
+        self._gate_expect_drops = EventWithNotify(self,
+            EventNotificationName.GATE_EXPECT_DROPS)
         # self._gate_first_drops = asyncio.Event()
-        self._gate_exit_preinfuse = asyncio.Event()
-        self._gate_flow_end = asyncio.Event()
-        self._gate_flow_state_exit = asyncio.Event()
-        self._gate_last_drops = asyncio.Event()
+        self._gate_exit_preinfuse = EventWithNotify(self,
+            EventNotificationName.GATE_EXIT_PREINFUSE)
+        self._gate_flow_end = EventWithNotify(self,
+            EventNotificationName.GATE_FLOW_END)
+        self._gate_flow_state_exit = EventWithNotify(self,
+            EventNotificationName.GATE_FLOW_STATE_EXIT)
+        self._gate_last_drops = EventWithNotify(self,
+            EventNotificationName.GATE_LAST_DROPS)
         # Though always "done" here (and should always be triggered)
-        self._gate_sequence_complete = asyncio.Event()
+        self._gate_sequence_complete = EventWithNotify(self,
+            EventNotificationName.GATE_SEQUENCE_COMPLETE)
 
         self._all_gates = [
             self._gate_sequence_start,
             self._gate_flow_begin,
             self._gate_expect_drops,
+            self._gate_exit_preinfuse,
             self._gate_flow_end,
             self._gate_flow_state_exit,
             self._gate_last_drops,
@@ -175,6 +247,8 @@ class FlowSequencer (I_TargetManager):
             state = self.active_state
         try:
             retval = self._stop_at_weight[state]
+            if retval and retval <= 0:
+                retval = None
         except KeyError:
             retval = None
         return retval
@@ -185,6 +259,8 @@ class FlowSequencer (I_TargetManager):
             state = self.active_state
         try:
             retval = self._stop_at_volume[state]
+            if retval and retval <= 0:
+                retval = None
         except KeyError:
             retval = None
         return retval
@@ -195,6 +271,8 @@ class FlowSequencer (I_TargetManager):
             state = self.active_state
         try:
             retval = self._stop_at_time[state]
+            if retval and retval <= 0:
+                retval = None
         except KeyError:
             retval = None
         return retval
@@ -444,94 +522,161 @@ class FlowSequencer (I_TargetManager):
         if self.active_state not in self.autotare_states:
             scale.hold_at_tare = False
             logger.debug(f"Scale: release - {self.active_state.name}")
+            await send_to_outbound_queue(AutoTareNotification(
+                AutoTareNotificationAction.DISABLED))
             return
         try:
             await self._gate_sequence_start.wait()
             scale.hold_at_tare = True
             logger.debug("Scale: hold at tare")
+            await send_to_outbound_queue(AutoTareNotification(
+                AutoTareNotificationAction.ENABLED))
 
             await self._gate_expect_drops.wait()
             scale.hold_at_tare = False
             logger.debug("Scale: release")
+            await send_to_outbound_queue(AutoTareNotification(
+                AutoTareNotificationAction.DISABLED))
 
         except asyncio.CancelledError:
             scale = self._scale_processor.scale
             scale.hold_at_tare = False
             logger.info("Scale: release - on cancel")
+            await send_to_outbound_queue(AutoTareNotification(
+                AutoTareNotificationAction.DISABLED))
             raise
 
     async def _sequence_stop_at_volume(self):
         if self.active_state not in self.stop_at_volume_states:
             self._stop_at_volume_active = False
             logger.debug(f"StopAtVolume: disable - {self.active_state.name}")
+            await self.stop_at_notify(
+                stop_at=StopAtType.VOLUME,
+                action=StopAtNotificationAction.DISABLED)
             return
         try:
             await self._gate_sequence_start.wait()
             self._stop_at_volume_active = False
             logger.debug("StopAtVolume: disable")
+            await self.stop_at_notify(
+                stop_at=StopAtType.VOLUME,
+                action=StopAtNotificationAction.DISABLED)
 
             await self._gate_exit_preinfuse.wait()
             self._stop_at_volume_active = True
             logger.debug("StopAtVolume: enable")
+            await self.stop_at_notify(
+                stop_at=StopAtType.VOLUME,
+                action=StopAtNotificationAction.ENABLED)
 
             await self._gate_flow_end.wait()
             self._stop_at_volume_active = False
             logger.debug("StopAtVolume: disable")
+            await self.stop_at_notify(
+                stop_at=StopAtType.VOLUME,
+                action=StopAtNotificationAction.DISABLED)
 
         except asyncio.CancelledError:
             self._stop_at_volume_active = False
             logger.info("StopAtVolume: disable - on cancel")
+            await self.stop_at_notify(
+                stop_at=StopAtType.VOLUME,
+                action=StopAtNotificationAction.DISABLED)
             raise
 
     async def _sequence_stop_at_weight(self):
         if self.active_state not in self.stop_at_weight_states:
             self._stop_at_weight_active = False
             logger.info(f"StopAtWeight: disable - {self.active_state.name}")
+            await self.stop_at_notify(
+                stop_at=StopAtType.WEIGHT,
+                action=StopAtNotificationAction.DISABLED)
             return
         try:
             await self._gate_sequence_start.wait()
             self._stop_at_weight_active = False
             logger.debug("StopAtWeight: disable")
+            await self.stop_at_notify(
+                stop_at=StopAtType.WEIGHT,
+                action=StopAtNotificationAction.DISABLED)
 
             await self._gate_expect_drops.wait()
             self._stop_at_weight_active = True
             logger.debug("StopAtWeight: enable")
+            await self.stop_at_notify(
+                stop_at=StopAtType.WEIGHT,
+                action=StopAtNotificationAction.ENABLED)
 
             await self._gate_flow_end.wait()
             self._stop_at_weight_active = False
             logger.debug("StopAtWeight: disable")
+            await self.stop_at_notify(
+                stop_at=StopAtType.WEIGHT,
+                action=StopAtNotificationAction.DISABLED)
 
         except asyncio.CancelledError:
             self._stop_at_weight_active = False
             logger.info("StopAtWeight: disable - on cancel")
+            await self.stop_at_notify(
+                stop_at=StopAtType.WEIGHT,
+                action=StopAtNotificationAction.DISABLED)
             raise
 
     async def _sequence_stop_at_time(self):
         if self.active_state not in self.stop_at_time_states:
             self._stop_at_time_active = False
             logger.info(f"StopAtTime: disable - {self.active_state.name}")
+            await self.stop_at_notify(
+                stop_at=StopAtType.TIME,
+                action=StopAtNotificationAction.DISABLED)
             return
         try:
             await self._gate_sequence_start.wait()
             self._stop_at_time_active = False
             logger.debug("StopAtTime: disable")
+            await self.stop_at_notify(
+                stop_at=StopAtType.TIME,
+                action=StopAtNotificationAction.DISABLED)
+
+            # NB: Changing the time after starting won't alter the duration
+            #     at least as presently implemented
+
+            wait = self.stop_at_time()
+
+            if wait is None or wait <= 0:
+                return
 
             await self._gate_flow_begin.wait()
             self._stop_at_time_active = True
-            wait = self.stop_at_time(self.active_state)
+            t0 = time.time()
+            wait = self.stop_at_time()
             logger.debug(f"StopAtTime: enable ({wait} seconds)")
-            await asyncio.sleep(self.stop_at_time(self.active_state))
+            await self.stop_at_notify(
+                stop_at=StopAtType.TIME,
+                action=StopAtNotificationAction.ENABLED)
+
+            await asyncio.sleep(self.stop_at_time())
             logger.debug(f"StopAtTime: triggered, requesting stop_flow")
             await self.de1.stop_flow()
             logger.debug(f"StopAtTime: triggered ({wait} seconds)")
+            await self.stop_at_notify(
+                stop_at=StopAtType.TIME,
+                action=StopAtNotificationAction.TRIGGERED,
+                current=(time.time() - t0))
 
             await self._gate_flow_end.wait()
             self._stop_at_time_active = False
             logger.debug("StopAtTime: disable")
+            await self.stop_at_notify(
+                stop_at=StopAtType.TIME,
+                action=StopAtNotificationAction.DISABLED)
 
         except asyncio.CancelledError:
             self._stop_at_time_active = False
             logger.info("StopAtTime: disable - on cancel")
+            await self.stop_at_notify(
+                stop_at=StopAtType.TIME,
+                action=StopAtNotificationAction.DISABLED)
             raise
 
     async def _sequence_recorder(self):
@@ -568,6 +713,10 @@ class FlowSequencer (I_TargetManager):
                     sav_logger.info(
                         "Triggered at {:.1f} mL for {:.1f} mL target".format(
                             sswvu.volume_pour, target))
+                    await flow_sequencer.stop_at_notify(
+                        stop_at=StopAtType.VOLUME,
+                        action=StopAtNotificationAction.TRIGGERED,
+                        current=sswvu.volume_pour)
 
         return stop_at_volume
 
@@ -598,5 +747,29 @@ class FlowSequencer (I_TargetManager):
                         saw_logger.info(
                             "Triggered at {:.1f} g for {:.1f} g target".format(
                                 wafu.current_weight, target))
+                        await flow_sequencer.stop_at_notify(
+                            stop_at=StopAtType.WEIGHT,
+                            action=StopAtNotificationAction.TRIGGERED,
+                            current=wafu.current_weight)
 
         return stop_at_weight
+
+    async def stop_at_notify(self, stop_at: StopAtType,
+                             action: StopAtNotificationAction,
+                             current: Optional[float]=None):
+        if stop_at == StopAtType.TIME:
+            target = self.stop_at_time()
+        elif stop_at == StopAtType.VOLUME:
+            target = self.stop_at_volume()
+        elif stop_at == StopAtType.WEIGHT:
+            target = self.stop_at_weight()
+        else:
+            target = None
+        await send_to_outbound_queue(StopAtNotification(
+            stop_at=stop_at,
+            action=action,
+            target_value=target,
+            current_value=current,
+            active_state=self.active_state
+        ))
+

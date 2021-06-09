@@ -19,6 +19,13 @@ from pyDE1.scale.processor import ScaleProcessor, ScaleProcessorError
 
 logger = logging.getLogger('Estimator')
 
+# Test to see how much of the ~4.5 ms delay is coming from calling mean()
+# Quick check shows delay dropped to ~2.5 ms, so leaving False for now
+# Resulting std. dev. is probably around 100 ms / sqrt(2)\
+
+# TODO: Come back and revisit this decision
+_USE_MEAN_FOR_TIME = False
+
 class Estimator:
     """
     Generic estimator
@@ -104,7 +111,11 @@ class AverageFlow (Estimator):
         # (latest - dt/2) has a deviation of sigma + that of dt (small)
         # (latest + oldest)/2 has a deviation of sigma/sqrt(2) if independent
         # Following this, the average over the window should be even better
-        tval = mean(self._scale_processor._history_time[-self.samples:])
+        if _USE_MEAN_FOR_TIME:
+            tval = mean(self._scale_processor._history_time[-self.samples:])
+        else:
+            tval = (self._scale_processor._history_time[-self.samples]
+                    + self._scale_processor._history_time[-1]) / 2
         return val, tval
 
     @property
@@ -127,7 +138,11 @@ class MedianWeight (Estimator):
 
     def _estimate_inner(self):
         val = median(self._scale_processor._history_weight[-self.samples:])
-        tval = mean(self._scale_processor._history_time[-self.samples:])
+        if _USE_MEAN_FOR_TIME:
+            tval = mean(self._scale_processor._history_time[-self.samples:])
+        else:
+            tval = (self._scale_processor._history_time[-self.samples]
+                    + self._scale_processor._history_time[-1]) / 2
         return val, tval
 
     @property
@@ -173,7 +188,11 @@ class MedianFlow (Estimator):
         m1 = median(self._scale_processor._history_weight[p3:p2])
         dt = self.samples * self._scale_processor.scale.estimated_period
         val = (m0 - m1)/dt
-        tval = mean(self._scale_processor._history_time[p3:p0])
+        if _USE_MEAN_FOR_TIME:
+            tval = mean(self._scale_processor._history_time[p3:p0])
+        else:
+            tval = (self._scale_processor._history_time[p3]
+                    + self._scale_processor._history_time[p0]) / 2
         return val, tval
 
     @property

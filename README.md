@@ -44,6 +44,7 @@ Python 3.8 or later.
 Available through `pip`:
 * `bleak`
 * `aiologger`
+* `asyncio-mqtt` (for the MQTT API)
 
 The Raspberry Pi version of Debian *Buster* ships with Python 3.7, which does not support named `asyncio.Task()` The "walrus operator" is also used.
 
@@ -56,7 +57,8 @@ The `bleak` library is supported on macOS, Linux, and Windows. Some development 
 ## What Seems To Be Working – High Level Functionality
 
 * Connect by address to DE1
-* Read and decode BLE characteristics
+* Read and decode BLE characteristics 
+* Encode and write BLE characteristics
 * Read and decode MMR registers
 * Encode and write MMR registers
 * Upload firmware
@@ -88,6 +90,36 @@ The main process runs under Python's native `asyncio` framework. There are many 
 * Adding, removing, or replacing the DE1 or scale with the `FlowSequencer`
 * Move to `aiologger` to reduce logging delays
 * Develop an example "inbound" API implementation, probably REST-like with `nginx` over a pipe.
+* Single-command read of the DE1 debug register
+
+## Installing Mosquitto 2.0
+
+The example outbound API uses MQTT 5. If you don't already have a local MQTT 5 broker configured, there are some
+public test servers ("brokers"), such as https://test.mosquitto.org/, that can let you try things out quickly. 
+A local broker is better from both a security standpoint, as well as for delay. The preferred configuration 
+is to have a broker running on the same machine as this code, using a Unix domain socket if possible, or 
+loopback if not supported by your OS.
+
+The example outbound API does not use encryption as it runs over a socket local to the host, the data
+is not considered "sensitive", and there is no control over the DE1. Token-based authentication, 
+such as password, should be done over an encrypted channel if can be "snooped" by others.
+
+Mosquitto 2.0 is a MQTT broker that supports MQTT 5. Older distributions only supply 1.x versions, such as 1.5.7 on 
+Debian *Buster.* Debian *Bullseye* is showing that it will support 2.0.10 at this time. 
+
+MQTT 3.1/3.1.1 *clients,* such as GUIs or loggers, should be able to connect to a mosquitto 2.0 broker, 
+even though the publisher is using MQTT 5. 
+
+Mosquitto 2.0 can be installed onto Debian systems without needing to build from source using the 
+[Mosquitto Debian Repository](https://mosquitto.org/blog/2013/01/mosquitto-debian-repository/). The usual
+caveats around making personal decisions about which sources you trust apply.
+
+You likely will want both `mosquitto` (the broker) and `mosquitto-clients`.
+
+Installing on RPi will enable the `mosquitto.service` using `/etc/mosquitto/mosquitto.conf`. 
+If you've used v1.x in the past, I'd suggest reading [the release announcement](https://mosquitto.org/blog/2020/12/version-2-0-0-released/)
+as well as the notes on [migrating from 1.x to 2.0](https://mosquitto.org/documentation/migrating-to-2-0/)
+
 
 ## Notes
 
