@@ -98,6 +98,8 @@ class ShotSampleWithVolumesUpdate (ShotSampleUpdate):
     """
     Delivered after ShotSampleUpdate,
     includes calculated then tracked volumes
+
+    de1_time is preferred as it may eventually be time-base adjusted
     """
     _internal_only = False
 
@@ -122,8 +124,9 @@ class ShotSampleWithVolumesUpdate (ShotSampleUpdate):
             steam_temp=shot_sample_update.steam_temp,
         )
         # TODO: This will need to be managed carefully as depends on super
-        self._version = "1.0.0"  # Major version incremented on breaking change
+        self._version = "1.1.0"  # Major version incremented on breaking change
 
+        self.de1_time = self.arrival_time
         self.volume_preinfuse = volume_preinfuse
         self.volume_pour = volume_pour
         self.volume_total = volume_total
