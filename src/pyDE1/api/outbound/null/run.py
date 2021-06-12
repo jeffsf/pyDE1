@@ -12,7 +12,7 @@ logging every update_period seconds (and resetting the count)
 
 # Only import the minimal here, as it potentially ends up in all processes.\
 
-import multiprocessing
+import multiprocessing, multiprocessing.connection
 import logging
 
 # TODO: look into how loggers here relate to the root logger from "main"
@@ -49,12 +49,3 @@ def run_api_outbound(api_outbound_queue: multiprocessing.Queue):
     loop = asyncio.get_event_loop()
     loop.set_debug(True)
     loop.run_until_complete(run(api_outbound_queue=api_outbound_queue))
-
-
-
-
-
-
-
-
-

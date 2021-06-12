@@ -22,8 +22,10 @@ from pyDE1.de1 import DE1
 from pyDE1.de1.events import ShotSampleUpdate, StateUpdate, \
     ShotSampleWithVolumesUpdate
 from pyDE1.de1.c_api import API_MachineStates, API_Substates, CUUID
+from pyDE1.de1.exceptions import DE1APIError, DE1APITypeError, DE1APIValueError, \
+    DE1APIAttributeError
 
-from pyDE1.i_target_manager import I_TargetManager
+from pyDE1.i_target_setter import I_TargetSetter
 
 from pyDE1.scale.processor import ScaleProcessor
 from pyDE1.scale.events import WeightAndFlowUpdate
@@ -32,6 +34,10 @@ from pyDE1.event_manager import EventWithNotify, EventNotificationName, \
     EventPayload, send_to_outbound_queue
 
 from pyDE1.utils import cancel_tasks_by_name
+
+from pyDE1.flow_sequencer.mode_control import ByModeControl, \
+    StopAtTime, StopAtWeight, StopAtVolume,  \
+    EspressoControl, SteamControl, HotWaterControl, HotWaterRinseControl
 
 logger = logging.getLogger('FlowSequencer')
 
@@ -95,7 +101,7 @@ class AutoTareNotification (EventPayload):
         self.action = action
 
 
-class FlowSequencer (I_TargetManager):
+class FlowSequencer (I_TargetSetter):
 
     def __init__(self):
         self._de1: Optional[DE1] = None
@@ -140,13 +146,12 @@ class FlowSequencer (I_TargetManager):
             self._gate_sequence_complete,
         ]
 
-        # Pressure at which _gate_expect_drops is triggered
-        self._expect_drops_pressure = 2.0
+        self.espresso_control = EspressoControl()
+        self.steam_control = SteamControl()
+        self.hot_water_control = HotWaterControl()
+        self.hot_water_rinse_control = HotWaterRinseControl()
 
-        # How soon after flow-exit is reported can
-        # _gate_last_drops be opened
-        self._last_drops_minimum_time = 3.0
-
+        # TODO: Refactor these out in favor of None in the ByModeControl
         self.autotare_states: list[API_MachineStates] = [
             API_MachineStates.Espresso,
             API_MachineStates.HotWater,
@@ -174,12 +179,6 @@ class FlowSequencer (I_TargetManager):
         ]
 
         # Recorder gets managed by the recorder itself
-
-        # See getters and setters later
-
-        self._stop_at_volume: dict[API_MachineStates, Optional[float]] = {}
-        self._stop_at_weight: dict[API_MachineStates, Optional[float]] = {}
-        self._stop_at_time: dict[API_MachineStates, Optional[float]] = {}
 
         # Internal flag, use None or value for
         # de1.stop_at_weight and/or de1.stop_at_volume
@@ -241,73 +240,22 @@ class FlowSequencer (I_TargetManager):
     def active_state(self):
         return self._active_state
 
-    def stop_at_weight(self, state: Optional[API_MachineStates]=None) \
-            -> Optional[float]:
-        if state is None:
-            state = self.active_state
-        try:
-            retval = self._stop_at_weight[state]
-            if retval and retval <= 0:
-                retval = None
-        except KeyError:
-            retval = None
+    def active_control_for_state(self, state: API_MachineStates) \
+            -> ByModeControl:
+        retval = None
+        if state is API_MachineStates.Espresso:
+            retval = self.espresso_control
+        elif state is API_MachineStates.Steam:
+            retval = self.steam_control
+        elif state is API_MachineStates.HotWater:
+            retval = self.hot_water_control
+        elif state is API_MachineStates.HotWaterRinse:
+            retval = self.hot_water_rinse_control
         return retval
 
-    def stop_at_volume(self, state: Optional[API_MachineStates]=None) \
-            -> Optional[float]:
-        if state is None:
-            state = self.active_state
-        try:
-            retval = self._stop_at_volume[state]
-            if retval and retval <= 0:
-                retval = None
-        except KeyError:
-            retval = None
-        return retval
-
-    def stop_at_time(self, state: Optional[API_MachineStates]=None) \
-            -> Optional[float]:
-        if state is None:
-            state = self.active_state
-        try:
-            retval = self._stop_at_time[state]
-            if retval and retval <= 0:
-                retval = None
-        except KeyError:
-            retval = None
-        return retval
-
-    def stop_at_weight_set(self, state: API_MachineStates, weight: float):
-        self._stop_at_weight[state] = weight
-
-    def stop_at_volume_set(self, state: API_MachineStates, volume: float):
-        self._stop_at_volume[state] = volume
-
-    def stop_at_time_set(self, state: API_MachineStates,
-                         duration: float) -> asyncio.Task:
-        logger.debug("You can await stop_at_time_set_async() directly")
-        return asyncio.create_task(self.stop_at_time_set_async(
-            state=state,
-            duration=duration,
-        ))
-
-    async def stop_at_time_set_async(self, state: API_MachineStates,
-                                     duration: float):
-        # TODO: Clean this up, can/should it be made sync to the caller?
-        # TODO: Consider updating with a read after every write
-        # NB:   The read seems to cost about 100 ms
-        #           Trust that it wrote and do it in the background?
-        #           Are simultaneous transactions on different CUUIDs are OK?
-        #       Should be done in DE1 as SOR
-        if state == API_MachineStates.Steam:
-            ss = await self.de1.read_cuuid(CUUID.ShotSettings)
-            # ss = ShotSettings().from_wire_bytes(ss_bytes)
-            logger.debug(f"ShotSettings: read: {ss.log_string()}")
-            if ss.TargetSteamLength != duration:
-                ss.TargetSteamLength = duration
-                await self.de1.write_packed_attr(ss)
-            logger.debug(f"ShotSettings: Done")
-        self._stop_at_time[state] = duration
+    @property
+    def active_control(self) -> ByModeControl:
+        return self.active_control_for_state(self.active_state)
 
     @property
     def sequence_start_time(self):
@@ -379,11 +327,16 @@ class FlowSequencer (I_TargetManager):
 
             # Yet another place having to use current [sub]state off DE1
             de1 = flow_sequencer.de1
+            try:
+                threshold = flow_sequencer.active_control.first_drops_threshold
+            except AttributeError:
+                threshold = None
             if de1.current_state.is_flow_state \
+                    and threshold is not None \
                     and not flow_sequencer._gate_expect_drops.is_set() \
                     and de1.current_substate.flow_phase == 'during' \
                     and ssu.group_pressure \
-                        > flow_sequencer._expect_drops_pressure:
+                        > flow_sequencer.active_control.first_drops_threshold:
                 flow_sequencer._gate_expect_drops.set()
                 logger.info("Gate: Expect drops")
 
@@ -434,7 +387,9 @@ class FlowSequencer (I_TargetManager):
         logger.info("Gate: Sequence start")
 
     async def _wait_for_last_drops(self):
-        await asyncio.sleep(self._last_drops_minimum_time)
+        ldmt = self.active_control.last_drops_minimum_time
+        if ldmt:
+            await asyncio.sleep(ldmt)
         self._gate_last_drops.set()
         logger.info("Gate: Last drops")
 
@@ -444,10 +399,11 @@ class FlowSequencer (I_TargetManager):
         in one place.
         """
         await self._gate_flow_state_exit.wait()
-        if self.active_state in self.last_drops_states:
+        ldmt = self.active_control.last_drops_minimum_time
+        if ldmt:
             try:
                 await asyncio.wait_for(self._gate_last_drops.wait(),
-                                  timeout=self._last_drops_minimum_time)
+                                  timeout=ldmt)
             except asyncio.exceptions.TimeoutError:
                 pass
         await self._end_sequence()
@@ -641,7 +597,7 @@ class FlowSequencer (I_TargetManager):
             # NB: Changing the time after starting won't alter the duration
             #     at least as presently implemented
 
-            wait = self.stop_at_time()
+            wait = self.active_control.stop_at_time
 
             if wait is None or wait <= 0:
                 return
@@ -649,13 +605,12 @@ class FlowSequencer (I_TargetManager):
             await self._gate_flow_begin.wait()
             self._stop_at_time_active = True
             t0 = time.time()
-            wait = self.stop_at_time()
             logger.debug(f"StopAtTime: enable ({wait} seconds)")
             await self.stop_at_notify(
                 stop_at=StopAtType.TIME,
                 action=StopAtNotificationAction.ENABLED)
 
-            await asyncio.sleep(self.stop_at_time())
+            await asyncio.sleep(wait)
             logger.debug(f"StopAtTime: triggered, requesting stop_flow")
             await self.de1.stop_flow()
             logger.debug(f"StopAtTime: triggered ({wait} seconds)")
@@ -706,8 +661,9 @@ class FlowSequencer (I_TargetManager):
         async def stop_at_volume(sswvu: ShotSampleWithVolumesUpdate):
             nonlocal flow_sequencer, sav_logger
 
-            if flow_sequencer._stop_at_volume_active \
-                    and (target := flow_sequencer.stop_at_volume()) is not None:
+            if (flow_sequencer._stop_at_volume_active
+                    and (target := flow_sequencer.active_control.stop_at_volume)
+                    is not None):
                 if sswvu.volume_pour >= target:
                     await flow_sequencer.de1.stop_flow()
                     sav_logger.info(
@@ -730,8 +686,9 @@ class FlowSequencer (I_TargetManager):
         async def stop_at_weight(wafu: WeightAndFlowUpdate):
             nonlocal flow_sequencer, saw_logger
 
-            if flow_sequencer._stop_at_weight_active \
-                    and (target := flow_sequencer.stop_at_weight()) is not None:
+            if (flow_sequencer._stop_at_weight_active
+                    and (target := flow_sequencer.active_control.stop_at_weight)
+                    is not None):
                 # TODO: where does this belong?
                 adjust = -0.3  # seconds, larger means more in cup
                 # TODO: where does this belong?
@@ -757,12 +714,13 @@ class FlowSequencer (I_TargetManager):
     async def stop_at_notify(self, stop_at: StopAtType,
                              action: StopAtNotificationAction,
                              current: Optional[float]=None):
+
         if stop_at == StopAtType.TIME:
-            target = self.stop_at_time()
+            target = self.active_control.stop_at_time
         elif stop_at == StopAtType.VOLUME:
-            target = self.stop_at_volume()
+            target = self.active_control.stop_at_volume
         elif stop_at == StopAtType.WEIGHT:
-            target = self.stop_at_weight()
+            target = self.active_control.stop_at_weight
         else:
             target = None
         await send_to_outbound_queue(StopAtNotification(
@@ -773,3 +731,74 @@ class FlowSequencer (I_TargetManager):
             active_state=self.active_state
         ))
 
+    # Implement I_TargetSetter
+
+    # TODO: Handle profile lock. try/except AttributeError?
+
+    def stop_at_time_set(self, state: API_MachineStates, duration: float):
+        bmc = self.active_control_for_state(state)
+        if bmc is None:
+            raise DE1APIValueError(
+                f"No ByModeController for {state}")
+        if not isinstance(bmc, StopAtTime):
+            raise DE1APIAttributeError(
+                f"Not a StopAtTime ByModeControl {bmc}"
+            )
+        try:
+            if not bmc.profile_can_override_stop_limits:
+                return
+        except AttributeError:
+            pass
+        bmc.stop_at_time = duration
+
+    def stop_at_volume_set(self, state: API_MachineStates, volume: float):
+        bmc = self.active_control_for_state(state)
+        if bmc is None:
+            raise DE1APIValueError(
+                f"No ByModeController for {state}")
+        if not isinstance(bmc, StopAtVolume):
+            raise DE1APIAttributeError(
+                f"Not a StopAtTime ByModeControl {bmc}"
+            )
+        try:
+            if not bmc.profile_can_override_stop_limits:
+                return
+        except AttributeError:
+            pass
+        bmc.stop_at_volume = volume
+
+    def stop_at_weight_set(self, state: API_MachineStates, weight: float):
+        bmc = self.active_control_for_state(state)
+        if bmc is None:
+            raise DE1APIValueError(
+                f"No ByModeController for {state}")
+        if not isinstance(bmc, StopAtWeight):
+            raise DE1APIAttributeError(
+                f"Not a StopAtTime ByModeControl {bmc}"
+            )
+        try:
+            if not bmc.profile_can_override_stop_limits:
+                return
+        except AttributeError:
+            pass
+        bmc.stop_at_weight = weight
+
+    def profile_can_override_stop_limits(self, state: API_MachineStates):
+        bmc = self.active_control_for_state(state)
+        if bmc is None:
+            raise DE1APIValueError(
+                f"No ByModeController for {state}")
+        try:
+            return bmc.profile_can_override_stop_limits
+        except AttributeError:
+            return True
+
+    def profile_can_override_tank_temperature(self, state: API_MachineStates):
+        bmc = self.active_control_for_state(state)
+        if bmc is None:
+            raise DE1APIValueError(
+                f"No ByModeController for {state}")
+        try:
+            return bmc.profile_can_override_tank_temperature
+        except AttributeError:
+            return True

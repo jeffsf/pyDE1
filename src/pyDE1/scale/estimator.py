@@ -11,7 +11,8 @@ Estimators to use with ScaleProcessor
 
 import logging
 
-from statistics import mean, median
+# from statistics import mean
+from statistics import median
 from typing import Tuple
 
 import pyDE1.default_logger
@@ -24,7 +25,20 @@ logger = logging.getLogger('Estimator')
 # Resulting std. dev. is probably around 100 ms / sqrt(2)\
 
 # TODO: Come back and revisit this decision
-_USE_MEAN_FOR_TIME = False
+_USE_MEAN_FOR_TIME = True
+
+# This drops the delay to ~2.5 ms as well
+def mean(data: list[float]):
+    return sum(data)/len(data)
+
+# A perhaps good-enough median estimator (lower of even-length list)
+# Still around 2.4 ms, so not really a significant gain -- use statistics.median
+# def median(data: list[float]):
+#     # .sort() is in-place
+#     dcopy = data.copy()
+#     dcopy.sort()
+#     return dcopy[int(len(data)/2)]
+
 
 class Estimator:
     """

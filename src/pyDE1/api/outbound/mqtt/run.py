@@ -12,24 +12,35 @@ logging every update_period seconds (and resetting the count)
 
 
 # Only import the minimal here, as it potentially ends up in all processes.
-
-import multiprocessing
-import logging
-import os
-
-from socket import gethostname
+import multiprocessing, multiprocessing.connection
 
 # TODO: look into how loggers here relate to the root logger from "main"
 
 # TODO: Look into or resolve processes' loggers writing over each other
-import time
 
 
 def run_api_outbound(api_outbound_queue: multiprocessing.Queue):
-    logger = logging.getLogger('outbound')
+
+    import logging
+    import os
+    import time
+
+    from socket import gethostname
+
+    logger = logging.getLogger(multiprocessing.current_process().name)
 
     import asyncio
     import json
+    import sys
+
+    # cpn = multiprocessing.current_process().name
+    # for k in sys.modules.keys():
+    #     if (k.startswith('pyDE1')
+    #             or k.startswith('bleak')
+    #             or k.startswith('asyncio-mqtt')):
+    #         print(
+    #             f"{cpn}: {k}"
+    #         )
 
     import asyncio_mqtt
     import asyncio_mqtt.client
@@ -104,12 +115,3 @@ def run_api_outbound(api_outbound_queue: multiprocessing.Queue):
     loop.set_debug(True)
     # loop.run_until_complete(run(api_outbound_queue=api_outbound_queue))
     loop.run_until_complete(run(api_outbound_queue=api_outbound_queue))
-
-
-
-
-
-
-
-
-

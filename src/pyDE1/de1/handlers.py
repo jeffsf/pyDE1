@@ -18,7 +18,7 @@ from pyDE1.de1.c_api import Versions, RequestedState, SetTime, \
     ShotSample, StateInfo, ShotDescHeader, ShotFrame, \
     ShotExtFrame, ShotTail, HeaderWrite, FrameWrite, \
     WaterLevels, FWMapRequest, \
-    MMR0x80LowAddr, decode_one_mmr, MMRAddressOffsetError
+    MMR0x80LowAddr, decode_one_mmr
 from pyDE1.default_logger import data_as_hex, data_as_readable, \
     data_as_readable_or_hex
 
@@ -27,7 +27,7 @@ from pyDE1.de1.c_api import API_MachineStates, API_Substates
 
 from pyDE1.de1.ble import CUUID
 import pyDE1.de1.notifications
-from pyDE1.de1.exceptions import DE1ErrorStateReported
+from pyDE1.de1.exceptions import DE1ErrorStateReported, MMRAddressOffsetError
 
 from bleak import BleakClient
 from bleak.backends.device import BLEDevice
@@ -140,6 +140,16 @@ def create_ReadFromMMR_callback(de1: de1):
     async def ReadFromMMR_callback(sender: int, data: Union[bytes, bytearray]):
         nonlocal de1
         arrival_time = time.time()
+
+        # A read of CUUID.ReadFromMMR returns the request ReadFromMMR
+        # not the "usual" data from the MMR that is "notified" here
+        # For this case, Len means number of words - 1 for the request
+        # It needs to be special-cased here
+        # and probably doesn't need the read-on-write behavior
+
+        # It's not obvious how to know this is reading back
+        # from CUUID.ReadFromMMR as the request has the target address
+
         obj = ReadFromMMR().from_wire_bytes(data, arrival_time,
                                             from_response=True)
         # Logging of the full response is intentionally

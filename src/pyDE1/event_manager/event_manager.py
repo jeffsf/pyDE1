@@ -50,18 +50,15 @@ import asyncio
 import enum
 import json
 import logging
-import multiprocessing
+import multiprocessing, multiprocessing.connection
 import queue
 import time
 import uuid
 
-from copy import copy
-from inspect import iscoroutine, iscoroutinefunction, signature
+from inspect import iscoroutinefunction, signature
 from typing import Optional, Coroutine, Union, List
 
-import pyDE1.default_logger
-
-from pyDE1.de1.exceptions import DE1ValueError
+from pyDE1.utils import fix_enums
 
 logger = logging.getLogger('EventManager')
 
@@ -134,19 +131,6 @@ class EventPayload:
 
         return json.dumps(work)
 
-
-def fix_enums(val):
-    """
-    Return the name of an IntEnum, does not help with IntFlag
-    So far no IntFlag enums headed to the external API
-    """
-    if isinstance(val, enum.IntEnum):
-        return val.name
-    elif isinstance(val, enum.Enum):
-        # or issubclass(enum.Enum, type(val)):
-        return val.value
-    else:
-        return val
 
 # Extend asyncio.Event() to notify over the API as well
 

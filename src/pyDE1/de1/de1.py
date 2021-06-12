@@ -6,10 +6,11 @@ GNU General Public License v3.0 only
 SPDX-License-Identifier: GPL-3.0-only
 """
 
+# TODO: Notifying locks on profile and firmware upload
+
 import asyncio
 import atexit
 import logging
-import struct
 import time
 
 from copy import copy
@@ -21,8 +22,7 @@ from bleak.backends.scanner import AdvertisementData
 
 import pyDE1.default_logger
 
-from pyDE1.de1.exceptions import DE1NoAddressError, DE1NoHandlerError, \
-    DE1ValueError
+from pyDE1.de1.exceptions import *
 from pyDE1.de1.ble import UnsupportedBLEActionError
 
 # general utilities
@@ -31,13 +31,14 @@ from pyDE1.de1.c_api import \
     PackedAttr, RequestedState, ReadFromMMR, WriteToMMR, StateInfo, \
     FWMapRequest, FWErrorMapRequest, FWErrorMapResponse, \
     API_MachineStates, API_Substates, MAX_FRAMES, get_cuuid, MMR0x80LowAddr, \
-    packed_attr_from_cuuid, pack_one_mmr0x80_write, DE1APIValueError
+    packed_attr_from_cuuid, pack_one_mmr0x80_write
 
 from pyDE1.de1.ble import CUUID
 from pyDE1.de1.notifications import NotificationState, MMR0x80Data
 from pyDE1.de1.profile import ProfileByFrames, DE1ProfileValidationError
 
-from pyDE1.i_target_manager import I_TargetManager
+
+from pyDE1.i_target_setter import I_TargetSetter
 from pyDE1.event_manager.events import ConnectivityState, ConnectivityChange
 
 # Importing from the module-level init fails
@@ -50,6 +51,11 @@ import pyDE1.de1.handlers
 from pyDE1.event_manager import SubscribedEvent
 from pyDE1.de1.events import ShotSampleUpdate, \
     ShotSampleWithVolumesUpdate
+
+from pyDE1.utils import task_name_exists, cancel_tasks_by_name
+
+from pyDE1.dispatcher.resource import ConnectivityEnum, DE1ModeEnum
+
 
 # If True, randomly skips upload packets
 _TEST_BLE_LOSS_DURING_FW_UPLOAD = False
@@ -72,7 +78,7 @@ class DE1:
         self._address = address
         self._name = None
         self._bleak_client: Optional[BleakClient] = None
-        self._flow_sequencer: Optional[I_TargetManager] = None
+        self._flow_sequencer: Optional[I_TargetSetter] = None
 
         # TODO: Should the handlers be able to be changed on the fly?
         self._handlers = pyDE1.de1.handlers.default_handler_map(self)
@@ -122,10 +128,15 @@ class DE1:
             self._create_self_callback_ssu()))
 
     # TODO: Rework initialization
-    async def notify_initialized(self):
+    async def _notify_ready(self):
         await self._event_connectivity.publish(
-        ConnectivityChange(arrival_time=time.time(),
-                           state=ConnectivityState.READY))
+            ConnectivityChange(arrival_time=time.time(),
+                               state=ConnectivityState.READY))
+
+    async def _notify_not_ready(self):
+        await self._event_connectivity.publish(
+            ConnectivityChange(arrival_time=time.time(),
+                               state=ConnectivityState.NOT_READY))
 
     @classmethod
     def device_adv_is_recognized_by(cls, device: BLEDevice, adv: AdvertisementData):
@@ -179,6 +190,12 @@ class DE1:
         )
         if self.is_connected:
             self.register_atexit_disconnect()
+            self._address = self._bleak_client.address
+            if self.name is None:
+                try:
+                    self._name = self._bleak_client._device_info['Name']
+                except KeyError:
+                    pass
             logger.info(f"Connected to DE1 at {self.address}")
             await self._event_connectivity.publish(
                 ConnectivityChange(arrival_time=time.time(),
@@ -278,19 +295,56 @@ class DE1:
             raise DE1NoHandlerError(f"No handler found for {cuuid}")
         return done
 
-    async def start_standard_notifiers(self):
+    async def start_standard_read_write_notifiers(self):
+        await asyncio.gather(
+            self.start_notifying(CUUID.Versions),
+            self.start_notifying(CUUID.RequestedState),
+            self.start_notifying(CUUID.SetTime),
+            # self.start_notifying(CUUID.ShotDirectory),
+            self.start_notifying(CUUID.ReadFromMMR),
+            self.start_notifying(CUUID.WriteToMMR),
+            # self.start_notifying(CUUID.ShotMapRequest),
+            # self.start_notifying(CUUID.DeleteShotRange),
+            self.start_notifying(CUUID.FWMapRequest),
+            # self.start_notifying(CUUID.Temperatures),
+            self.start_notifying(CUUID.ShotSettings),
+            # self.start_notifying(CUUID.Deprecated),
+            # self.start_notifying(CUUID.ShotSample),   # periodic
+            # self.start_notifying(CUUID.StateInfo),    # periodic
+            self.start_notifying(CUUID.HeaderWrite),
+            self.start_notifying(CUUID.FrameWrite),
+            # self.start_notifying(CUUID.WaterLevels),  # periodic
+            self.start_notifying(CUUID.Calibration),
+        )
+        # As slick as this looks, I haven't been able to resolve
+        # the circular import problem with DE1 and MAPPING
+
+        # cuuid_list = list(
+        #     get_target_sets(mapping=MAPPING,
+        #                     include_can_read=True,
+        #                     include_can_write=True, )['PackedAttr'])
+        # coro_list = map(lambda pa: self.start_notifying(pa.cuuid), cuuid_list)
+        # await asyncio.gather(*coro_list)
+
+    async def start_standard_periodic_notifiers(self):
         """
         Enable the return of read requests from MMR
         as well as the current, periodic reports:
         ShotSample, StateInfo, and WaterLevels
         """
-        await self.start_notifying(CUUID.ReadFromMMR)
-        await self.start_notifying(CUUID.ShotSample)
-        await self.start_notifying(CUUID.StateInfo)
-        await self.start_notifying(CUUID.WaterLevels)
+        await asyncio.gather(
+            self.start_notifying(CUUID.ShotSample),
+            self.start_notifying(CUUID.StateInfo),
+            self.start_notifying(CUUID.WaterLevels),
+        )
 
     async def read_cuuid(self, cuuid: CUUID):
+        if not cuuid.can_read:
+            logging.getLogger(f"{cuuid.__str__()}.Read").error(
+                "Denied read request from non-readable CUUID")
+            return None
         logging.getLogger(f"{cuuid.__str__()}.Read").debug("Requested")
+        # self._cuuid_dict[cuuid].mark_requested()  # TODO: This isn't ideal
         wire_bytes = await self._bleak_client.read_gatt_char(cuuid.uuid)
         obj = packed_attr_from_cuuid(cuuid, wire_bytes)
         self._cuuid_dict[cuuid].mark_updated(obj)
@@ -299,8 +353,28 @@ class DE1:
     async def write_packed_attr(self, obj: PackedAttr):
         cuuid = get_cuuid(obj)
         logging.getLogger(f"{cuuid.__str__()}.Write").debug(obj.log_string())
-        return await self._bleak_client.write_gatt_char(cuuid.uuid,
-                                                        obj.as_wire_bytes())
+
+        await self._bleak_client.write_gatt_char(cuuid.uuid,
+                                                 obj.as_wire_bytes())
+
+        # Read-back ensures that local cache is consistent
+        if isinstance(obj, WriteToMMR):
+            try:
+                addr = MMR0x80LowAddr(obj.addr_low)
+                if addr.can_read:
+                    wait_for = self.read_one_mmr0x80_and_wait(addr)
+                else:
+                    wait_for = None
+            except ValueError:
+                # Not a known addr, so not readable
+                wait_for = None
+        elif cuuid.can_read:  # Presently excludes CUUID.WriteToMMR
+            wait_for =  self.read_cuuid(cuuid)
+        else:
+            wait_for = None
+
+        if wait_for is not None:
+            await wait_for
 
     async def write_packed_attr_return_notification(self, obj: PackedAttr):
         """
@@ -317,9 +391,9 @@ class DE1:
         """
         cuuid = get_cuuid(obj)
         logger = logging.getLogger(cuuid.__str__())
-        if not cuuid.can_write_then_return():
+        if not cuuid.can_write_then_return:
             raise UnsupportedBLEActionError(
-                "write_cuuid_return_notification not supported for " \
+                "write_cuuid_return_notification not supported for "
                 + cuuid.__str__()
             )
         logger.debug(f"Acquiring write/return lock")
@@ -339,11 +413,10 @@ class DE1:
         await self.write_packed_attr(rs)
 
     # TODO: Should this be public or private?
-    async def read_mmr(self, length, addr_high, addr_low, data=b''
+    async def read_mmr(self, length, addr_high, addr_low, data_bytes=b''
                        ) -> List[asyncio.Event]:
         mmr = ReadFromMMR(Len=length, addr_high=addr_high, addr_low=addr_low,
-                          Data=data)
-        packed = mmr.as_wire_bytes()
+                          Data=data_bytes)
         ready_events = list()
         if addr_high == 0x80:
             #
@@ -369,13 +442,19 @@ class DE1:
         await self.write_packed_attr(mmr)
         return ready_events
 
+    # TODO: Public or private?
     async def read_one_mmr0x80(self, mmr0x80: MMR0x80LowAddr) -> asyncio.Event:
         ready_events = await self.read_mmr(
-            length=4,
+            length=0,
             addr_high=0x80,
             addr_low=mmr0x80
         )
         return ready_events[0]
+
+    # TODO: Think through all of this as it applies to PATCH
+    async def read_one_mmr0x80_and_wait(self, mmr0x80: MMR0x80LowAddr) -> None:
+        ready_event = await self.read_one_mmr0x80(mmr0x80)
+        await ready_event.wait()
 
 #
 # MMR-based properties
@@ -418,66 +497,107 @@ class DE1:
     #
 
     async def upload_profile(self, profile: ProfileByFrames,
-                             override_flow_sequencer_targets=True):
-
-        # TODO: How does this get interrupted if an API call requests
-        #       a different profile to be uploaded?
-
-        if not profile.validate():
-            raise DE1ProfileValidationError
-
-        for cuuid in (CUUID.HeaderWrite, CUUID.FrameWrite):
-            if not self._cuuid_dict[cuuid].is_notifying:
-                done = await self.start_notifying(cuuid)
-                # await done.wait()
-
-        if profile.number_of_preinfuse_frames is not None:
-            self._number_of_preinfuse_frames = \
-                profile.number_of_preinfuse_frames
-
-        if profile.tank_temperature is not None:
-            await self.write_and_read_back_mmr0x80(
-                addr_low=MMR0x80LowAddr.TANK_WATER_THRESHOLD,
-                value=profile.tank_temperature
+                             force=True):
+        try:
+            osl = self._flow_sequencer.profile_can_override_stop_limits(
+                API_MachineStates.Espresso
             )
+            ott = self._flow_sequencer.profile_can_override_tank_temperature(
+                API_MachineStates.Espresso
+            )
+        except AttributeError:
+            logger.error(
+                "Profile upload called without a FlowSequencer. Not uploading")
+            return
 
-        if override_flow_sequencer_targets and self._flow_sequencer is not None:
+        if task_name_exists('upload_profile'):
+            if force:
+                logger.warning('Profile upload in progress being canceled')
+                await self.cancel_profile_upload()
+            else:
+                raise DE1OperationInProgressError
+        profile_upload_stopped = asyncio.Event()
+        await asyncio.create_task(self._upload_profile(
+            profile=profile,
+            override_stop_limits=osl,
+            override_tank_temperature=ott,
+            profile_upload_stopped=profile_upload_stopped)
+        )
+        await profile_upload_stopped.wait()
+        # TODO: Not clear here if interrupted or successful
 
-            if (target := profile.target_volume) is not None:
-                if target <= 0:
-                    target = None
-                self._flow_sequencer.stop_at_volume_set(
-                    state=API_MachineStates.Espresso,
-                    volume=target
-                )
 
-            if (target := profile.target_weight) is not None:
-                if target <= 0:
-                    target = None
-                self._flow_sequencer.stop_at_weight_set(
-                    state=API_MachineStates.Espresso,
-                    weight=target
-                )
+    @staticmethod
+    async def cancel_profile_upload():
+        cancel_tasks_by_name('upload_profile')
 
-        # async with asyncio.wait_for(self._profile_lock.acquire(), timeout=3):
-        async with self._profile_lock:
+    async def _upload_profile(self, profile: ProfileByFrames,
+                              override_stop_limits,
+                              override_tank_temperature,
+                              profile_upload_stopped: asyncio.Event):
 
+        try:
+            if not profile.validate():
+                raise DE1ProfileValidationError
+
+            # async with asyncio.wait_for(self._profile_lock.acquire(), timeout=3):
             # TODO: Should there be some way to acquire lock on the two CUUIDs?
 
-            await self.write_packed_attr(profile.header_write())
-            for frame in profile.shot_frame_writes():
-                await self.write_packed_attr(frame)
-            for frame in profile.ext_shot_frame_writes():
-                await self.write_packed_attr(frame)
-            await self.write_packed_attr(profile.shot_tail_write())
+            async with self._profile_lock:
+
+                for cuuid in (CUUID.HeaderWrite, CUUID.FrameWrite):
+                    if not self._cuuid_dict[cuuid].is_notifying:
+                        done = await self.start_notifying(cuuid)
+                        # await done.wait()
+
+                await self.write_packed_attr(profile.header_write())
+                for frame in profile.shot_frame_writes():
+                    await self.write_packed_attr(frame)
+                for frame in profile.ext_shot_frame_writes():
+                    await self.write_packed_attr(frame)
+                await self.write_packed_attr(profile.shot_tail_write())
+
+                if profile.number_of_preinfuse_frames is not None:
+                    self._number_of_preinfuse_frames = \
+                        profile.number_of_preinfuse_frames
+
+                if profile.tank_temperature is not None \
+                    and override_tank_temperature:
+                    await self.write_and_read_back_mmr0x80(
+                        addr_low=MMR0x80LowAddr.TANK_WATER_THRESHOLD,
+                        value=profile.tank_temperature
+                    )
+
+                if override_stop_limits:
+
+                    if (target := profile.target_volume) is not None:
+                        if target <= 0:
+                            target = None
+                        self._flow_sequencer.stop_at_volume_set(
+                            state=API_MachineStates.Espresso,
+                            volume=target
+                        )
+
+                    if (target := profile.target_weight) is not None:
+                        if target <= 0:
+                            target = None
+                        self._flow_sequencer.stop_at_weight_set(
+                            state=API_MachineStates.Espresso,
+                            weight=target
+                        )
+
+
+        except asyncio.CancelledError:
+            pass
+        finally:
+            profile_upload_stopped.set()
 
     async def write_and_read_back_mmr0x80(self, addr_low: MMR0x80LowAddr,
                                           value: float):
-
-        if not addr_low.writable:
+        if not addr_low.can_write:
             raise DE1APIValueError(
                 f"MMR target address not writable: {addr_low.__repr__()}")
-        if not addr_low.readable:
+        if not addr_low.can_read:
             raise DE1APIValueError(
                 f"MMR target address not readable: {addr_low.__repr__()}")
 
@@ -508,7 +628,20 @@ class DE1:
 
     # TODO: Does it need a lock?
 
-    async def upload_firmware(self, fw: FirmwareFile):
+    async def upload_firmware(self, fw: FirmwareFile, force=False):
+        if task_name_exists('upload_firmware'):
+            if force:
+                logger.warning('Firmware upload in progress being canceled')
+                await self.cancel_firmware_upload()
+            else:
+                raise DE1OperationInProgressError
+        await asyncio.create_task(self._upload_firmware(fw))
+
+    @staticmethod
+    async def cancel_firmware_upload():
+        cancel_tasks_by_name('upload_firmware')
+
+    async def _upload_firmware(self, fw: FirmwareFile):
         start_addr = 0x000000
         write_size = 0x10
         offsets = range(0, len(fw.file_contents), write_size)
@@ -530,7 +663,8 @@ class DE1:
 
         for offset in offsets[0:10]:
             if _TEST_BLE_LOSS_DURING_FW_UPLOAD \
-                    and random.choices((True, False), cum_weights=(0.001, 1))[0]:
+                    and random.choices((True, False),
+                                       cum_weights=(0.001, 1))[0]:
                 logger.info(f"Randomly skipping 0x{offset:06x}")
                 continue
             data = fw.file_contents[offset:(offset + write_size)]
@@ -723,6 +857,7 @@ class DE1:
 
                     # TODO: Convince Ray to return substate and state
                     #       in ShotSample so don't need to use frame count
+                    #       (also could help with the missed-Idle de1app bug)
                     if ssu.frame_number > de1._number_of_preinfuse_frames:
                         de1._volume_dispensed_pour += v_inc
                     else:
@@ -802,3 +937,85 @@ class DE1:
 
     # TODO: Settings object that then uploads if needed
 
+    # For API
+    @property
+    def connectivity(self):
+        if self.is_connected:
+            retval = ConnectivityEnum.CONNECTED
+        else:
+            # intentionally vague, as PUT "connecting" isn't needed
+            retval = ConnectivityEnum.NOT_CONNECTED
+        return retval
+
+    @connectivity.setter
+    async def connectivity(self, value):
+        if value == ConnectivityEnum.CONNECTED \
+                and not self.is_connected:
+            await self.connect()
+        elif value == ConnectivityEnum.NOT_CONNECTED \
+                and self.is_connected:
+            await self.disconnect()
+
+    @property
+    def auto_off_time(self):
+        return None
+
+    async def set_mode(self, mode: DE1ModeEnum):
+
+        cs = self.current_state
+        logger.debug(f"Would set mode to {mode} from {cs}")
+
+        if mode is DE1ModeEnum.SLEEP:
+            if cs is API_MachineStates.Idle:
+                await self.sleep()
+            if self.current_state in (API_MachineStates.Sleep,
+                                      API_MachineStates.GoingToSleep):
+                pass
+            else:
+                raise DE1APIUnsupportedStateTransitionError (mode, cs)
+
+        elif mode is DE1ModeEnum.WAKE:
+            if cs in (API_MachineStates.Sleep,
+                      API_MachineStates.GoingToSleep):
+                await self.idle()
+            else:
+                pass
+
+        elif mode is DE1ModeEnum.STOP:
+            if cs in (API_MachineStates.Sleep,
+                      API_MachineStates.GoingToSleep,
+                      API_MachineStates.SchedIdle,
+                      API_MachineStates.Idle):
+                pass
+            elif cs in (API_MachineStates.ShortCal,
+                        API_MachineStates.SelfTest,
+                        API_MachineStates.LongCal,
+                        API_MachineStates.FatalError,
+                        API_MachineStates.Init,
+                        API_MachineStates.NoRequest,
+                        API_MachineStates.SkipToNext,
+                        API_MachineStates.Refill,
+                        API_MachineStates.InBootLoader):
+                raise DE1APIUnsupportedStateTransitionError(mode, cs)
+            else:
+                await self.idle()
+
+        elif mode is DE1ModeEnum.SKIP_TO_NEXT:
+
+            if cs in (API_MachineStates.Espresso) \
+                and self.current_substate in (API_Substates.PreInfuse,
+                                              API_Substates.Pour):
+                await self.skip_to_next()
+            else:
+                raise DE1APIUnsupportedStateTransitionError(
+                    mode, f"{cs}, {self.current_substate}")
+
+
+
+
+
+
+
+
+# from pyDE1.dispatcher.mapping import MAPPING
+# from pyDE1.dispatcher.implementation import get_target_sets

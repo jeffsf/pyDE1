@@ -35,8 +35,8 @@ Ideally, the consumers of these APIs will only need to understand high-level act
 
 ## Revision History
 
-2021-06-11 – Updated for release 0.1.0
-2021-06-08 – Initial release
+* 2021-06-11 – Updated for release 0.1.0
+* 2021-06-08 – Initial release
 
 ## What's New
 

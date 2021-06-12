@@ -16,19 +16,7 @@ from typing import Optional
 
 from pyDE1.de1.c_api import API_MachineStates
 
-class I_TargetManager:
-
-    def stop_at_weight(self, state: Optional[API_MachineStates] = None) \
-            -> Optional[float]:
-        raise NotImplementedError
-
-    def stop_at_volume(self, state: Optional[API_MachineStates] = None) \
-            -> Optional[float]:
-        raise NotImplementedError
-
-    def stop_at_time(self, state: Optional[API_MachineStates] = None) \
-            -> Optional[float]:
-        raise NotImplementedError
+class I_TargetSetter:
 
     def stop_at_weight_set(self, state: API_MachineStates, weight: float):
         raise NotImplementedError
@@ -37,4 +25,10 @@ class I_TargetManager:
         raise NotImplementedError
 
     def stop_at_time_set(self, state: API_MachineStates, duration: float):
+        raise NotImplementedError
+
+    def profile_can_override_stop_limits(self, state: API_MachineStates):
+        raise NotImplementedError
+
+    def profile_can_override_tank_temperature(self, state: API_MachineStates):
         raise NotImplementedError

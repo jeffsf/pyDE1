@@ -49,19 +49,27 @@ class CUUID (enum.Enum):
         # TODO: Decide if locking the "profile" is sufficient
         self._lock = asyncio.Lock()
 
+    @property
     def can_read(self) -> bool:
         """
         Hard-coded test of the CUUID supports read.
 
         Does not take into account if the DE! is connected or not.
+
+        The ReadFromMMR requests are in words, not bytes
+        They are not properly recognized at this time by ReadFromMMR_callback
+        For now, declare as not readable
         """
-        return not (self in (CUUID.WriteToMMR,
+        return not (self in (CUUID.ReadFromMMR,
+                             #
+                             CUUID.WriteToMMR,
                              CUUID.ShotMapRequest,
                              CUUID.DeleteShotRange,
                              CUUID.FWMapRequest,
                              )
                     )
 
+    @property
     def can_write(self) -> bool:
         """
         Hard-coded test of the CUUID supports write.
@@ -75,6 +83,7 @@ class CUUID (enum.Enum):
                              )
                     )
 
+    @property
     def can_notify(self) -> bool:
         """
         Hard-coded test of the CUUID supports notify.
@@ -89,6 +98,7 @@ class CUUID (enum.Enum):
     # Even if a notify comes, if the command is "bad"
     # nothing may ever come back
     # Not FrameWrite as it does not notify on write
+    @property
     def can_write_then_return(self) -> bool:
         """
         Hard-coded test of the CUUID supports write and will then notify.
@@ -110,8 +120,22 @@ class CUUID (enum.Enum):
     def lock(self) -> asyncio.Lock:
         return self._lock
 
+    @property
+    def is_read_once(self):
+        """
+        Those that don't change with time (except at reboot)
+        """
+        return self is self.Versions
 
-from pyDE1.de1.c_api import DE1APIError
+    @property
+    def is_stable(self):
+        """
+        Those that don't change without being written
+        """
+        return self.is_read_once or self is self.Calibration
+
+
+from pyDE1.de1.exceptions import DE1APIError
 
 
 class UnsupportedBLEActionError(DE1APIError):

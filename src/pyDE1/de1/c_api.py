@@ -16,7 +16,8 @@ import traceback
 
 from typing import Union, Optional
 
-from pyDE1.de1.exceptions import DE1Error
+from pyDE1.de1.exceptions import DE1APITypeError, DE1APIValueError, \
+    DE1APITooManyFramesError, MMRTypeError, MMRValueError, MMRDataTooLongError
 from pyDE1.default_logger import data_as_hex
 from pyDE1.de1.ble import CUUID
 
@@ -24,55 +25,6 @@ logger = logging.getLogger('c_api')
 
 # TODO: log_string() is not "None-safe"
 #       TypeError: unsupported format string passed to NoneType.__format__
-
-class DE1APIError (DE1Error):
-    def __init__(self, *args, **kwargs):
-        super(DE1APIError, self).__init__(*args, **kwargs)
-
-
-class DE1APITypeError (TypeError, DE1APIError):
-    def __init__(self, *args, **kwargs):
-        super(DE1APITypeError, self).__init__(*args, **kwargs)
-
-
-class DE1APIValueError (ValueError, DE1APIError):
-    def __init__(self, *args, **kwargs):
-        super(DE1APIValueError, self).__init__(*args, **kwargs)
-
-
-class DE1APITooManyFramesError (DE1APIValueError):
-    def __init__(self, *args, **kwargs):
-        super(DE1APITooManyFramesError, self).__init__(*args, **kwargs)
-
-
-class MMRTypeError (DE1APITypeError):
-    def __init__(self, *args, **kwargs):
-        super(MMRTypeError, self).__init__(*args, **kwargs)
-
-
-class MMRValueError (DE1APIValueError):
-    def __init__(self, *args, **kwargs):
-        super(MMRValueError, self).__init__(*args, **kwargs)
-
-
-class MMRDataTooLongError (MMRValueError):
-    def __init__(self, *args, **kwargs):
-        super(MMRDataTooLongError, self).__init__(*args, **kwargs)
-
-
-class MMRAddressError (MMRValueError):
-    def __init__(self, *args, **kwargs):
-        super(MMRAddressError, self).__init__(*args, **kwargs)
-
-
-class MMRAddressRangeError (MMRAddressError):
-    def __init__(self, *args, **kwargs):
-        super(MMRAddressRangeError, self).__init__(*args, **kwargs)
-
-
-class MMRAddressOffsetError (MMRAddressError):
-    def __init__(self, *args, **kwargs):
-        super(MMRAddressOffsetError, self).__init__(*args, **kwargs)
 
 
 #
@@ -195,20 +147,26 @@ class PackedAttr:
     def arrival_time(self):
         return self._arrival_time
 
+    # Boilerplate here (could all be False for base class with cuuid = None)
     cuuid = None
+    can_read = bool(cuuid is not None and cuuid.can_read)
+    can_write = bool(cuuid is not None and cuuid.can_write)
+    can_notify = bool(cuuid is not None and cuuid.can_notify)
+    can_write_then_return = bool(cuuid is not None
+                                 and cuuid.can_write_then_return)
 
-    # Causes failures from the subclass
-    # @classmethod
-    # def __setattr__(self, cuuid, value):
-    #     raise AttributeError("Read-only attribute: cuuid")
 
 
 def get_cuuid(packed_attr: PackedAttr) -> CUUID:
+    """
+    :Protecting" getter -- raises if None
+    """
     if (cuuid := packed_attr.cuuid) is None:
         raise DE1APIValueError(
             f"Not an over-the-wire PackedAttr {packed_attr}"
         )
     return cuuid
+
 
 
 # def packed_attr_from_cuuid(cuuid: CUUID) -> PackedAttr:
@@ -324,6 +282,11 @@ class FWVersion (PackedAttr):
 class Versions (PackedAttr):
 
     cuuid = CUUID.Versions
+    can_read = bool(cuuid is not None and cuuid.can_read)
+    can_write = bool(cuuid is not None and cuuid.can_write)
+    can_notify = bool(cuuid is not None and cuuid.can_notify)
+    can_write_then_return = bool(cuuid is not None
+                                 and cuuid.can_write_then_return)
 
     def __init__(self, BLEVersion=None, LVVersion=None):
         super(Versions, self).__init__()
@@ -456,6 +419,11 @@ class TemperatureSet (PackedAttr):
 class Temperatures (PackedAttr):
 
     cuuid = CUUID.Temperatures
+    can_read = bool(cuuid is not None and cuuid.can_read)
+    can_write = bool(cuuid is not None and cuuid.can_write)
+    can_notify = bool(cuuid is not None and cuuid.can_notify)
+    can_write_then_return = bool(cuuid is not None
+                                 and cuuid.can_write_then_return)
 
     def __init__(self, Current=None, Target=None):
         super(Temperatures, self).__init__()
@@ -506,6 +474,7 @@ class Temperatures (PackedAttr):
 
 
 class SteamSetting (enum.IntFlag):
+    NoneSet   = 0x00  # Otherwise returns SlowStart
     FastStart = 0x80
     SlowStart = 0x00
     HighPower = 0x40
@@ -515,6 +484,11 @@ class SteamSetting (enum.IntFlag):
 class ShotSettings (PackedAttr):
 
     cuuid = CUUID.ShotSettings
+    can_read = bool(cuuid is not None and cuuid.can_read)
+    can_write = bool(cuuid is not None and cuuid.can_write)
+    can_notify = bool(cuuid is not None and cuuid.can_notify)
+    can_write_then_return = bool(cuuid is not None
+                                 and cuuid.can_write_then_return)
 
     def __init__(self, SteamSettings=None,
                  TargetSteamTemp=None, TargetSteamLength=None,
@@ -586,11 +560,33 @@ class ShotSettings (PackedAttr):
 
     @property
     def SteamSettings(self):
-        return self._SteamSettings
+        return SteamSetting(self._SteamSettings)
 
     @SteamSettings.setter
     def SteamSettings(self, value):
         self._SteamSettings = validate_u_p_noneok(value, 8, 0)
+
+    @property
+    def steam_setting_fast_start(self):
+        return bool(self.SteamSettings & SteamSetting.FastStart)
+
+    @steam_setting_fast_start.setter
+    def steam_setting_fast_start(self, val: bool):
+        if val:
+            self.SteamSettings = self.SteamSettings | SteamSetting.FastStart
+        else:
+            self.SteamSettings = self.SteamSettings & ~ SteamSetting.FastStart
+
+    @property
+    def steam_setting_high_power(self):
+        return bool(self.SteamSettings & SteamSetting.FastStart)
+
+    @steam_setting_high_power.setter
+    def steam_setting_high_power(self, val: bool):
+        if val:
+            self.SteamSettings = self.SteamSettings | SteamSetting.HighPower
+        else:
+            self.SteamSettings = self.SteamSettings ^ SteamSetting.HighPower
 
     @property
     def TargetSteamTemp(self):
@@ -751,6 +747,11 @@ class API_Substates (enum.IntEnum):
 class StateInfo (PackedAttr):
 
     cuuid = CUUID.StateInfo
+    can_read = bool(cuuid is not None and cuuid.can_read)
+    can_write = bool(cuuid is not None and cuuid.can_write)
+    can_notify = bool(cuuid is not None and cuuid.can_notify)
+    can_write_then_return = bool(cuuid is not None
+                                 and cuuid.can_write_then_return)
 
     def __init__(self, State=None, SubState=None):
         super(StateInfo, self).__init__()
@@ -801,6 +802,11 @@ class StateInfo (PackedAttr):
 class RequestedState (PackedAttr):
 
     cuuid = CUUID.RequestedState
+    can_read = bool(cuuid is not None and cuuid.can_read)
+    can_write = bool(cuuid is not None and cuuid.can_write)
+    can_notify = bool(cuuid is not None and cuuid.can_notify)
+    can_write_then_return = bool(cuuid is not None
+                                 and cuuid.can_write_then_return)
 
     # NB: struct member is RequestedState
     def __init__(self, State=None):
@@ -836,6 +842,11 @@ class RequestedState (PackedAttr):
 class WaterLevels (PackedAttr):
 
     cuuid = CUUID.WaterLevels
+    can_read = bool(cuuid is not None and cuuid.can_read)
+    can_write = bool(cuuid is not None and cuuid.can_write)
+    can_notify = bool(cuuid is not None and cuuid.can_notify)
+    can_write_then_return = bool(cuuid is not None
+                                 and cuuid.can_write_then_return)
 
     def __init__(self, Level=None, StartFillLevel=None):
         super(WaterLevels, self).__init__()
@@ -1370,6 +1381,11 @@ class ShotDescHeader (PackedAttr):
 class HeaderWrite (PackedAttr):
 
     cuuid = CUUID.HeaderWrite
+    can_read = bool(cuuid is not None and cuuid.can_read)
+    can_write = bool(cuuid is not None and cuuid.can_write)
+    can_notify = bool(cuuid is not None and cuuid.can_notify)
+    can_write_then_return = bool(cuuid is not None
+                                 and cuuid.can_write_then_return)
 
     def __init__(self, Header=None):
         super(HeaderWrite, self).__init__()
@@ -1404,6 +1420,11 @@ class HeaderWrite (PackedAttr):
 class FrameWrite (PackedAttr):
 
     cuuid = CUUID.FrameWrite
+    can_read = bool(cuuid is not None and cuuid.can_read)
+    can_write = bool(cuuid is not None and cuuid.can_write)
+    can_notify = bool(cuuid is not None and cuuid.can_notify)
+    can_write_then_return = bool(cuuid is not None
+                                 and cuuid.can_write_then_return)
 
     def __init__(self, FrameToWrite: Optional[int] = None,
                  Frame: Optional[Union[ShotFrame,
@@ -1712,6 +1733,11 @@ class ShotState (PackedAttr):
 class ShotSample (PackedAttr):
 
     cuuid = CUUID.ShotSample
+    can_read = bool(cuuid is not None and cuuid.can_read)
+    can_write = bool(cuuid is not None and cuuid.can_write)
+    can_notify = bool(cuuid is not None and cuuid.can_notify)
+    can_write_then_return = bool(cuuid is not None
+                                 and cuuid.can_write_then_return)
 
     def __init__(self, SampleTime=None, State=None):
         super(ShotSample, self).__init__()
@@ -2029,6 +2055,11 @@ class ReadFromMMR (MMRData):
     """
 
     cuuid = CUUID.ReadFromMMR
+    can_read = bool(cuuid is not None and cuuid.can_read)
+    can_write = bool(cuuid is not None and cuuid.can_write)
+    can_notify = bool(cuuid is not None and cuuid.can_notify)
+    can_write_then_return = bool(cuuid is not None
+                                 and cuuid.can_write_then_return)
 
     def __init__(self, Len=None, Address=None,
                  addr_high=None, addr_low=None,
@@ -2094,6 +2125,11 @@ class ReadFromMMR (MMRData):
 class WriteToMMR (MMRData):
 
     cuuid = CUUID.WriteToMMR
+    can_read = bool(cuuid is not None and cuuid.can_read)
+    can_write = bool(cuuid is not None and cuuid.can_write)
+    can_notify = bool(cuuid is not None and cuuid.can_notify)
+    can_write_then_return = bool(cuuid is not None
+                                 and cuuid.can_write_then_return)
 
     def __init__(self, Len=None, Address=None,
                  addr_high=None, addr_low=None,
@@ -2170,6 +2206,11 @@ class FWMapRequest(PackedAttr):
     """
 
     cuuid = CUUID.FWMapRequest
+    can_read = bool(cuuid is not None and cuuid.can_read)
+    can_write = bool(cuuid is not None and cuuid.can_write)
+    can_notify = bool(cuuid is not None and cuuid.can_notify)
+    can_write_then_return = bool(cuuid is not None
+                                 and cuuid.can_write_then_return)
 
     # TODO: FirstError is ambiguous as 0x00 0000 is either
     #       * Response of Ignore from an erase request
@@ -2317,6 +2358,11 @@ class FWMapRequest(PackedAttr):
 class SetTime (PackedAttr):
 
     cuuid = CUUID.SetTime
+    can_read = bool(cuuid is not None and cuuid.can_read)
+    can_write = bool(cuuid is not None and cuuid.can_write)
+    can_notify = bool(cuuid is not None and cuuid.can_notify)
+    can_write_then_return = bool(cuuid is not None
+                                 and cuuid.can_write_then_return)
 
     def __init__(self, Timestamp=None):
         super(SetTime, self).__init__()
@@ -2379,6 +2425,7 @@ class MMRFirmwareModelCode (enum.IntEnum):
 
 
 class MMRGHCInfoBitMask (enum.IntFlag):
+    NONE_SET                    = 0x00
     LED_CONTROLLER_PRESENT      = 0x01
     TOUCH_CONTROLLER_PRESENT    = 0x02
     GHC_ACTIVE                  = 0x04
@@ -2425,16 +2472,15 @@ class MMR0x80LowAddr (enum.IntEnum):
                                            str, int, float, bool,
                                            dict]] = None
 
-
     @property
-    def readable(self):
+    def can_read(self):
         return self not in {
             MMR0x80LowAddr.GHC_PREFERRED_INTERFACE,
             MMR0x80LowAddr.MAXIMUM_PRESSURE,
         }
 
     @property
-    def writable(self):
+    def can_write(self):
         return self in {
             MMR0x80LowAddr.FAN_THRESHOLD,
             MMR0x80LowAddr.TANK_WATER_THRESHOLD,
@@ -2485,6 +2531,10 @@ class MMR0x80LowAddr (enum.IntEnum):
                 addr_name = ""
         return addr_name
 
+    def __repr__(self):
+        return "<%s.%s: 0x%04x>" % (
+                self.__class__.__name__, self._name_, self._value_)
+
 
 def decode_one_mmr(addr_high: int, addr_low: Union[MMR0x80LowAddr, int],
                    mmr_bytes: Union[bytes, bytearray]):
@@ -2517,7 +2567,6 @@ def decode_one_mmr(addr_high: int, addr_low: Union[MMR0x80LowAddr, int],
         retval = val / 100
 
     elif addr_low in {
-        MMR0x80LowAddr.TANK_WATER_THRESHOLD,
         MMR0x80LowAddr.HEATER_PHASE1_FLOW,
         MMR0x80LowAddr.HEATER_PHASE2_FLOW,
         MMR0x80LowAddr.HEATER_IDLE_TEMPERATURE,
@@ -2560,7 +2609,7 @@ def decode_one_mmr(addr_high: int, addr_low: Union[MMR0x80LowAddr, int],
 def pack_one_mmr0x80_write(addr_low: MMR0x80LowAddr,
                              value: Union[float, int]) -> WriteToMMR:
 
-    if not addr_low.writable:
+    if not addr_low.can_write:
         # TODO: Reconsider this exclusion for testing
         raise DE1APIValueError(
             f"Not encoding a non-writable MMR target address: {addr_low}")
@@ -2577,7 +2626,6 @@ def pack_one_mmr0x80_write(addr_low: MMR0x80LowAddr,
         binval = pack('<I', int(round(value * 100)))
 
     elif addr_low in (
-        MMR0x80LowAddr.TANK_WATER_THRESHOLD,
         MMR0x80LowAddr.HEATER_PHASE1_FLOW,
         MMR0x80LowAddr.HEATER_PHASE2_FLOW,
         MMR0x80LowAddr.HEATER_IDLE_TEMPERATURE,
@@ -2586,6 +2634,7 @@ def pack_one_mmr0x80_write(addr_low: MMR0x80LowAddr,
         binval = pack('<I', int(round(value * 10)))
 
     elif addr_low in (
+        MMR0x80LowAddr.TANK_WATER_THRESHOLD,  # 0-60°C ?
         MMR0x80LowAddr.FAN_THRESHOLD,
     ):
         binval = pack('<I', int(round(value)))
@@ -2593,6 +2642,11 @@ def pack_one_mmr0x80_write(addr_low: MMR0x80LowAddr,
     else:
         raise DE1APIValueError(
             f"Not encoding an unrecognized MMR target address: {addr_low}")
+
+    if addr_low == MMR0x80LowAddr.FAN_THRESHOLD:
+        if not (0 <= value <= 60):
+            logger.warning(
+                f"Fan threshold seems out of range: 0 <= {value} <= 60")
 
     return WriteToMMR(
         addr_high=0x80,

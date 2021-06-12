@@ -21,6 +21,7 @@ from bleak.backends.device import BLEDevice
 from bleak.backends.scanner import AdvertisementData
 
 import pyDE1.default_logger
+from pyDE1.dispatcher.resource import ConnectivityEnum
 from pyDE1.event_manager import EventPayload, SubscribedEvent
 from pyDE1.event_manager.events import ConnectivityState, ConnectivityChange
 from pyDE1.scale.events import ScaleWeightUpdate, ScaleButtonPress, \
@@ -139,6 +140,12 @@ class Scale:
         )
         if self.is_connected:
             self.register_atexit_disconnect()
+            self._address = self._bleak_client.address
+            if self.name is None:
+                try:
+                    self._name = self._bleak_client._device_info['Name']
+                except KeyError:
+                    pass
             logger.info(f"Connected to {type(self)} at {self.address}")
             await self._event_connectivity.publish(
                 ConnectivityChange(arrival_time=time.time(),
@@ -156,12 +163,17 @@ class Scale:
         if self.supports_button_press:
             await self.start_sending_button_updates()
         if not hold_notification:
-            await self._event_connectivity.publish(
-                ConnectivityChange(
-                    arrival_time=time.time(),
-                    state=ConnectivityState.READY
-                )
-            )
+            await self._notify_ready()
+
+    async def _notify_ready(self):
+        await self._event_connectivity.publish(
+            ConnectivityChange(arrival_time=time.time(),
+                               state=ConnectivityState.READY))
+
+    async def _notify_not_ready(self):
+        await self._event_connectivity.publish(
+            ConnectivityChange(arrival_time=time.time(),
+                               state=ConnectivityState.NOT_READY))
 
     async def disconnect(self):
         logger.info(f"Disconnecting from {type(self)}")
@@ -235,6 +247,7 @@ class Scale:
                 f"Tare request skipped, too soon, {dt:0.3f} seconds")
         return self._last_tare_request_sent
 
+
     async def _tare_internal(self):
         raise NotImplementedError
 
@@ -246,6 +259,16 @@ class Scale:
 
     async def display_off(self):
         raise NotImplementedError
+
+    async def tare_with_bool(self, do_it=True):
+        if do_it:
+            await self.tare()
+
+    async def display_bool(self, on):
+        if on:
+            await self.display_on()
+        else:
+            await self.display_off()
 
     @property
     def estimated_period(self):
@@ -411,3 +434,24 @@ class Scale:
 
     def register_atexit_disconnect(self):
         atexit.register(self.atexit_disconnect())
+
+    # TODO: Deal with connectivity as a mixin
+
+    # For API
+    @property
+    def connectivity(self):
+        if self.is_connected:
+            retval = ConnectivityEnum.CONNECTED
+        else:
+            # intentionally vague, as PUT "connecting" isn't needed
+            retval = ConnectivityEnum.NOT_CONNECTED
+        return retval
+
+    @connectivity.setter
+    async def connectivity(self, value):
+        if value == ConnectivityEnum.CONNECTED \
+                and not self.is_connected:
+            await self.connect()
+        elif value == ConnectivityEnum.NOT_CONNECTED \
+                and self.is_connected:
+            await self.disconnect()
