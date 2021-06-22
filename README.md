@@ -10,16 +10,6 @@ GNU General Public License v3.0 only
 
 SPDX-License-Identifier: GPL-3.0-only
 
-This code is work in progress. Although many features are working, as described in Section 15 and elsewhere of the GPLv3.0 `LICENSE`:
-
-> THERE IS NO WARRANTY FOR THE PROGRAM, TO THE EXTENT PERMITTED BY
-APPLICABLE LAW.  EXCEPT WHEN OTHERWISE STATED IN WRITING THE COPYRIGHT
-HOLDERS AND/OR OTHER PARTIES PROVIDE THE PROGRAM "AS IS" WITHOUT WARRANTY
-OF ANY KIND, EITHER EXPRESSED OR IMPLIED, INCLUDING, BUT NOT LIMITED TO,
-THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR
-PURPOSE.  THE ENTIRE RISK AS TO THE QUALITY AND PERFORMANCE OF THE PROGRAM
-IS WITH YOU.  SHOULD THE PROGRAM PROVE DEFECTIVE, YOU ASSUME THE COST OF
-ALL NECESSARY SERVICING, REPAIR OR CORRECTION. 
 
 ## Overview
 
@@ -35,10 +25,69 @@ Ideally, the consumers of these APIs will only need to understand high-level act
 
 ## Revision History
 
+* 2021-06-22 - Updated for release 0.2.0
 * 2021-06-11 – Updated for release 0.1.0
 * 2021-06-08 – Initial release
 
+## Status
+
+This code is work in progress and is neither feature-complete nor fully tested. Although most features are working, as described in Section 15 and elsewhere of the GPLv3.0 `LICENSE`:
+
+> THERE IS NO WARRANTY FOR THE PROGRAM, TO THE EXTENT PERMITTED BY
+APPLICABLE LAW.  EXCEPT WHEN OTHERWISE STATED IN WRITING THE COPYRIGHT
+HOLDERS AND/OR OTHER PARTIES PROVIDE THE PROGRAM "AS IS" WITHOUT WARRANTY
+OF ANY KIND, EITHER EXPRESSED OR IMPLIED, INCLUDING, BUT NOT LIMITED TO,
+THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR
+PURPOSE.  THE ENTIRE RISK AS TO THE QUALITY AND PERFORMANCE OF THE PROGRAM
+IS WITH YOU.  SHOULD THE PROGRAM PROVE DEFECTIVE, YOU ASSUME THE COST OF
+ALL NECESSARY SERVICING, REPAIR OR CORRECTION. 
+
 ## What's New
+
+### 0.2.0
+
+#### Inbound Control and Query API
+
+An inbound API has been provided using a REST-like interface over HTTP. The API should be reasonably complete in its payload and method definitions and comments are welcomed on its sufficency and completeness.
+
+Both the inbound and outbound APIs run in separate *processes* to reduce the load on the controller itself.
+
+GET should be available for the registered resources. See, in `src/pyDE1/dispatcher`
+
+* `resource.py` for the registered resources, and
+* `mapping.py` for the elements they contain, the expected value types, and how they nest.
+
+`None` or `null` are often used to me "no value", such as for stop-at limits. As a result, though similar, this is not an [RFC7368 JSON Merge Patch](https://datatracker.ietf.org/doc/html/rfc7386).
+
+In Python notation, `Optional[int]` means an `int` or `None`. Where `float` is specified, a JSON value such as `20` is permitted.
+
+GET presently returns "unreadable" values to be able to better show the structure of the JSON. When a value is unreadable, `math.nan` is used internally, which is output as the JSON `NaN` token.
+
+GET also returns empty nodes to illustrate the structure of the document. This can be controlled with the `PRUNE_EMPTY_NODES` variable in `implementation.py`
+
+Although PATCH has been implemented for most payloads, PUT is not yet enabled. PUT will be the appropriate verb for`DE1_PROFILE` and `DE1_FIRMWARE` as, at this time, in-place modification of these is not supported. The API mechanism for starting a firmware upload as not been determined, as it should be able to abort as it runs in the background, as well as notify when complete. Profile upload is likely to be similar, though it occurs on a much faster time scale.
+
+If you'd like the convenience of a GET of the same resource after a PATCH, you can set `READ_BACK_ON_PATCH` to `True` in `dispacher.py`
+
+> The Python `http.server` module is used. It is not appropriate for exposed use.
+> There is no security to the control and query API at this time.
+> See further https://docs.python.org/3/library/http.server.html
+
+It is likely that the server, itself, will be moved to a uWSGI (or similar) process. 
+
+With either the present HTTP implementation or a future uWSGI one, use of a webserver, such as `nginx`, will be able to provide TLS, authentication, and authorization, as well as a more "production-ready" exposure.
+
+
+#### Other Significant Changes
+
+* `ShotSampleWithVolumeUpdates` (v1.1.0) adds `de1_time`. `de1_time` and `scale_time` are preferred over `arrival_time` as, in a future version, these will be estimates that remove some of the jitter relative to packet-arrival time.
+
+* To be able to keep cached values of DE1 variables current, a read-back is requested on each write. 
+* `NoneSet` and `NONE_SET` added to some `enum.IntFlag` to provide clearer representations
+* Although `is_read_once` and `is_stable` have been roughed in, optimizations using them have not been done
+* Disabled reads of `CUUID.ReadFromMMR` as it returns the request itself (which is not easily distinguashable from the data read. These two interpret their `Length` field differently, making it difficult to determine if `5` is an unexpected value or if it was just that 6 words were requested to be read.
+* Scaling on `MMR0x80LowAddr.TANK_WATER_THRESHOLD` was corrected.
+
 
 ### 0.1.0
 
@@ -123,13 +172,17 @@ The `bleak` library is supported on macOS, Linux, and Windows. Some development 
 * Outbound API over MQTT
 * Basic connectivity tracking
 * Find and use first DE1 and Skale
+* Inbound control and query API over HTTP
 
 The main process runs under Python's native `asyncio` framework. There are many tutorials out there that make asynchronous programming *look* easy. "Hello world!" is always easy. For a better understanding, I found Lynn Root's *[asyncio: We Did It Wrong](https://www.roguelynn.com/words/asyncio-we-did-it-wrong/)* to be very insightful.
 
 ## Work In Progress
 
-* Develop an example "inbound" API implementation, probably REST-like with `nginx` over a pipe.
-* Bring in [find-first-matching functionality](https://github.com/hbldh/bleak/pull/565) when available from release `bleak`
+* Convert `DE1`, `FlowSequencer` and probably `ScaleProcessor` to singletons. 
+* Retain the possiblity of a "bare" scale (though the API does not yet support a second, independent scale).
+* Provide graceful shutdown of all processes.
+* Daemonize with supervision of Tasks and secondary processes.
+* Bring in [find-first-matching functionality](https://github.com/hbldh/bleak/pull/565) when available from release `bleak`.
 * Clean up the imports with likely a combination of pulling events and exceptions out, along with interface definitions.
 * Documentation, including more doc strings, and typing
 
@@ -149,7 +202,7 @@ The main process runs under Python's native `asyncio` framework. There are many 
 
 * Onboard, unattended sleep timeout with override (GUI or HA can provide complex "scheduler")
 * Background firmware update
-* * MQTT will and MQTT 5 message expiry time
+* MQTT will and MQTT 5 message expiry time
 
 <a name="installing-mosquitto"></a>
 ## Installing Mosquitto 2.0
