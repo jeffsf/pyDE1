@@ -194,7 +194,8 @@ class DE1:
             if self.name is None:
                 try:
                     self._name = self._bleak_client._device_info['Name']
-                except KeyError:
+                except (KeyError, AttributeError):
+                    # CoreBluetooth on bleak 0.11.0 and 0.12.0
                     pass
             logger.info(f"Connected to DE1 at {self.address}")
             await self._event_connectivity.publish(
