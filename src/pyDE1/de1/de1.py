@@ -17,6 +17,7 @@ from copy import copy
 from typing import Union, Dict, Coroutine, Optional, List, Callable
 
 from bleak import BleakClient
+from bleak.backends.bluezdbus.client import BleakClientBlueZDBus
 from bleak.backends.device import BLEDevice
 from bleak.backends.scanner import AdvertisementData
 
@@ -51,6 +52,7 @@ import pyDE1.de1.handlers
 from pyDE1.event_manager import SubscribedEvent
 from pyDE1.de1.events import ShotSampleUpdate, \
     ShotSampleWithVolumesUpdate
+from pyDE1.singleton import Singleton
 
 from pyDE1.utils import task_name_exists, cancel_tasks_by_name
 
@@ -72,12 +74,24 @@ logger = logging.getLogger('de1')
 # NB: It doesn't look like CoreBluetooth reveals an identifier that is stable
 #     across boots.  It uses a UUID rather than the MAC address of the device.
 
-class DE1:
+class DE1 (Singleton):
 
-    def __init__(self, address=None):
-        self._address = address
+    # NB: This is intentionally done in _singleton_init() and not __init__()
+    #     See Singleton and Guido's notes there
+    #
+    #     No parameters are passed as there is no guarantee that any call
+    #     will be "the first" call that is the one that initializes
+    #
+    # def __init__(self):
+    #     pass
+
+    def _singleton_init(self):
+        self._address = None
         self._name = None
         self._bleak_client: Optional[BleakClient] = None
+
+        # TODO: This one is probably going to need some care
+        #       to transform to Singleton use
         self._flow_sequencer: Optional[I_TargetSetter] = None
 
         # TODO: Should the handlers be able to be changed on the fly?
@@ -148,7 +162,22 @@ class DE1:
 
     @property
     def address(self):
-        return self._address
+        addr = self._address
+        if isinstance(addr, BLEDevice):
+            addr = addr.address
+        return addr
+
+    @address.setter
+    def address(self, address: Union[BLEDevice, str]):
+        if self.address is not None:
+            raise DE1APIValueError(
+                "Changing the DE1 address is not yet supported")
+        # If using BLEDevice directly
+        # AttributeError: 'BleakClientBlueZDBus' object has no attribute 'lower'
+        if isinstance(address, BleakClientBlueZDBus):
+            self._address = address.address
+        else:
+            self._address = address
 
     @property
     def name(self):

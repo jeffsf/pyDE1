@@ -13,14 +13,16 @@ import logging
 import re
 import time
 
-from typing import Optional, Callable, Coroutine, Any
+from typing import Optional, Callable, Coroutine, Any, Union
 
 from bleak import BleakScanner, BleakClient, BleakError
 from bleak import BleakError, BleakClient, BleakScanner
+from bleak.backends.bluezdbus.client import BleakClientBlueZDBus
 from bleak.backends.device import BLEDevice
 from bleak.backends.scanner import AdvertisementData
 
 import pyDE1.default_logger
+from pyDE1.de1.exceptions import DE1APIValueError
 from pyDE1.dispatcher.resource import ConnectivityEnum
 from pyDE1.event_manager import EventPayload, SubscribedEvent
 from pyDE1.event_manager.events import ConnectivityState, ConnectivityChange
@@ -47,8 +49,8 @@ class ScaleNotConnectedError(ScaleError):
 
 class Scale:
 
-    def __init__(self, address=None):
-        self._address: Optional[str] = address
+    def __init__(self):
+        self._address = None
         self._name: Optional[str] = None
 
         # These are often model-specific, override in subclass init
@@ -109,13 +111,22 @@ class Scale:
 
     @property
     def address(self):
-        return self._address
+        addr = self._address
+        if isinstance(addr, BLEDevice):
+            addr = addr.address
+        return addr
 
-    @property
-    def address_is_persistent(self):
-        # macOS UUIDs don't seem to be persistent across Mac reboots
-        return bool(re.match(r'([0-9a-fA-F]{2}:){5}[0-9a-fA-F]{2}$',
-                             self._address))
+    @address.setter
+    def address(self, address: Union[BLEDevice, str]):
+        if self.address is not None:
+            raise DE1APIValueError(
+                "Changing the scale address is not yet supported")
+        # If using BLEDevice directly
+        # AttributeError: 'BleakClientBlueZDBus' object has no attribute 'lower'
+        if isinstance(address, BleakClientBlueZDBus):
+            self._address = address.address
+        else:
+            self._address = address
 
     @property
     def name(self):

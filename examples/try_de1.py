@@ -51,9 +51,6 @@ async def run(request_pipe: multiprocessing.connection.Connection,
 
     # ppp(MAPPING)  # Pretty messy, needs to be custom mapped
 
-    # TODO: Clean up the init/add/remove/change of FlowSequencer
-    fs = FlowSequencer()
-
     request_queue = asyncio.Queue()
     response_queue = asyncio.Queue()
 
@@ -62,11 +59,8 @@ async def run(request_pipe: multiprocessing.connection.Connection,
         queue_to_put=request_queue,
     )
 
-    start_request_queue_processor(
-        request_queue=request_queue,
-        response_queue=response_queue,
-        flow_sequencer=fs,
-    )
+    start_request_queue_processor(request_queue=request_queue,
+                                  response_queue=response_queue)
 
     start_response_queue_processor(
         response_queue=response_queue,
@@ -83,10 +77,22 @@ async def run(request_pipe: multiprocessing.connection.Connection,
 
     # There's a bug in creating from device on bleak 0.11.0 on macOS
 
-    de1 = DE1(de1_device.address)
-    skale = AtomaxSkaleII(skale_device.address)
-    sp = ScaleProcessor(skale)
+    # TODO: Note that this initialization is order-sensitive
+    #       It is failing here as DE1() has been called by
+    #       _request_queue_processor
+    #       de1 = DE1(de1_device)
 
+    de1 = DE1()
+    de1.address = de1_device
+
+    skale = AtomaxSkaleII()
+    skale.address = skale_device
+
+    sp = ScaleProcessor()
+    await sp.set_scale(skale)
+
+    # TODO: Clean up the init/add/remove/change of FlowSequencer
+    fs = FlowSequencer()
     await fs.set_de1(de1)
     await fs.set_scale_processor(sp)
     shot_logger = CombinedShotLogger()

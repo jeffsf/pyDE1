@@ -19,6 +19,7 @@ from pyDE1.scale import Scale, ScaleError
 from pyDE1.event_manager import SubscribedEvent
 from pyDE1.scale.events import ScaleWeightUpdate, ScaleTareSeen, \
     WeightAndFlowUpdate
+from pyDE1.singleton import Singleton
 
 
 class ScaleProcessorError (ScaleError):
@@ -26,7 +27,7 @@ class ScaleProcessorError (ScaleError):
         super(ScaleProcessorError, self).__init__()
 
 
-class ScaleProcessor:
+class ScaleProcessor (Singleton):
     """
     Subscribes to weight-update events from a scale
     Provides estimates of weight and mass-flow via
@@ -36,7 +37,13 @@ class ScaleProcessor:
     Scales should be able to be changed on the fly
     """
 
-    def __init__(self, scale: Optional[Scale]=None):
+    # NB: This is intentionally done in _singleton_init() and not __init__()
+    #     See Singleton and Guido's notes there
+    #
+    # def __init__(self):
+    #     pass
+
+    def _singleton_init(self, scale: Optional[Scale]=None):
 
         self._scale: Optional[Scale] = None
         self._scale_weight_update_id: Optional[UUID] = None

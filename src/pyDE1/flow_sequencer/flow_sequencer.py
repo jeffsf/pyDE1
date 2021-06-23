@@ -32,6 +32,7 @@ from pyDE1.scale.events import WeightAndFlowUpdate
 
 from pyDE1.event_manager import EventWithNotify, EventNotificationName, \
     EventPayload, send_to_outbound_queue
+from pyDE1.singleton import Singleton
 
 from pyDE1.utils import cancel_tasks_by_name
 
@@ -101,9 +102,15 @@ class AutoTareNotification (EventPayload):
         self.action = action
 
 
-class FlowSequencer (I_TargetSetter):
+class FlowSequencer (Singleton, I_TargetSetter):
 
-    def __init__(self):
+    # NB: This is intentionally done in _singleton_init() and not __init__()
+    #     See Singleton and Guido's notes there
+    #
+    # def __init__(self):
+    #     pass
+
+    def _singleton_init(self):
         self._de1: Optional[DE1] = None
         self._scale_processor: Optional[ScaleProcessor] = None
 

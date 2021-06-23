@@ -19,6 +19,7 @@ from pyDE1.dispatcher.mapping import MAPPING
 from pyDE1.dispatcher.payloads import APIRequest, APIResponse, HTTPMethod
 from pyDE1.dispatcher.implementation import get_resource_to_dict, \
     patch_resource_from_dict
+from pyDE1.scale.processor import ScaleProcessor
 
 READ_BACK_ON_PATCH = False
 
@@ -67,21 +68,20 @@ async def _response_queue_processor(response_queue: asyncio.Queue,
 # write to the outbound queue.
 # TODO: Move the outbound to an asyncio.Queue() later
 
-def start_request_queue_processor(
-        request_queue: asyncio.Queue,
-        response_queue: asyncio.Queue,
-        flow_sequencer: FlowSequencer):
+def start_request_queue_processor(request_queue: asyncio.Queue,
+                                  response_queue: asyncio.Queue):
     asyncio.create_task(_request_queue_processor(request_queue=request_queue,
-                                                 response_queue=response_queue,
-                                                 flow_sequencer=flow_sequencer),
+                                                 response_queue=response_queue),
                         name='InboundQueueProcessor')
 
 
-async def _request_queue_processor(
-        request_queue: asyncio.Queue,
-        response_queue: asyncio.Queue,
-        flow_sequencer: FlowSequencer):
+async def _request_queue_processor(request_queue: asyncio.Queue,
+                                   response_queue: asyncio.Queue):
 
+    flow_sequencer = FlowSequencer()
+    de1 = DE1()
+    scale_processor = ScaleProcessor()
+    # scale = ScaleProcessor.scale  # No .scale when this starts
     while True:
         got = await request_queue.get()
         print(f"{type(got)}: {got.method} {got.resource}")
@@ -91,17 +91,16 @@ async def _request_queue_processor(
             try:
                 # TODO: Is it worth checking which is needed?
                 # TODO: Should be "ready" and not just "connected"
-                if not flow_sequencer.de1.is_connected:
+                if not de1.is_connected:
                     raise DE1NotConnectedError("DE1 not connected")
-                if not flow_sequencer.scale_processor.scale.is_connected:
+                if not scale_processor.scale.is_connected:
                     raise DE1NotConnectedError("Scale not connected")
-                resource_dict = await get_resource_to_dict(
-                    got.resource, flow_sequencer=flow_sequencer
-                )
-            except Exception as exception:
+                resource_dict = await get_resource_to_dict(got.resource)
+            except Exception as e:
+                exception = e
                 logger.error(
                     f"Exception in processing {got.method} {got.resource}"
-                    f"{repr(exception)}")
+                    f" {repr(exception)}")
             response = APIResponse(
                 original_timestamp=got.timestamp,
                 timestamp=time.time(),
@@ -112,25 +111,22 @@ async def _request_queue_processor(
             try:
                 # TODO: Is it worth checking which is needed?
                 # TODO: Should be "ready" and not just "connected"
-                if not flow_sequencer.de1.is_connected:
+                if not de1.is_connected:
                     raise DE1NotConnectedError("DE1 not connected")
-                if not flow_sequencer.scale_processor.scale.is_connected:
+                if not scale_processor.scale.is_connected:
                     raise DE1NotConnectedError("Scale not connected")
-                resource_dict = await patch_resource_from_dict(
-                    got.resource, got.payload, flow_sequencer=flow_sequencer
-                )
-            except Exception as exc:
+                resource_dict = await patch_resource_from_dict(got.resource,
+                                                               got.payload)
+            except Exception as e:
                 # TODO: Why without this:
                 #       local variable 'exception' referenced before assignment
-                exception = exc
+                exception = e
                 logger.error(
                     f"Exception in processing {got.method} {got.resource}"
                     f" {repr(exception)}")
             if READ_BACK_ON_PATCH and \
                     exception is None and got.resource.can_get:
-                resource_dict = await get_resource_to_dict(
-                    got.resource, flow_sequencer=flow_sequencer
-                )
+                resource_dict = await get_resource_to_dict(got.resource)
             response = APIResponse(
                 original_timestamp=got.timestamp,
                 timestamp=time.time(),

@@ -28,8 +28,8 @@ logger = logging.getLogger('Scale.AtomaxIIScale')
 
 class AtomaxSkaleII(Scale):
 
-    def __init__(self, address=None):
-        super(AtomaxSkaleII, self).__init__(address)
+    def __init__(self):
+        super(AtomaxSkaleII, self).__init__()
         self._nominal_period = 0.1  # seconds per sample
         self._minimum_tare_request_interval = 2.5 * self._nominal_period
         self._sensor_lag = 0.38  # seconds, including all transit delays

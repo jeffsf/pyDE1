@@ -65,7 +65,7 @@ async def _value_to_property_setter(prop, value):
 # NB: This assumes that the MMR and CUUID are kept up to date
 #     and that those that are read don't change on their own
 
-async def _get_isat_value(isat: IsAt, flow_sequencer: FlowSequencer):
+async def _get_isat_value(isat: IsAt):
 
     # TODO: if IsAt.use_getter is enabled in the future, changes needed here
 
@@ -74,8 +74,10 @@ async def _get_isat_value(isat: IsAt, flow_sequencer: FlowSequencer):
     if attr_path is None:
         raise DE1APIAttributeError(f"Write-only attribute {isat.__repr__()}")
 
-    de1 = flow_sequencer.de1
-    scale = flow_sequencer.scale_processor.scale
+    de1 = DE1()
+    flow_sequencer = FlowSequencer()
+    scale_processor = ScaleProcessor()
+    scale = scale_processor.scale
 
     retval = None
 
@@ -146,8 +148,7 @@ async def _get_isat_value(isat: IsAt, flow_sequencer: FlowSequencer):
     return fix_enums(retval)
 
 
-async def _get_mapping_to_dict(partial_dict: dict,
-                               flow_sequencer: FlowSequencer) -> dict:
+async def _get_mapping_to_dict(partial_dict: dict) -> dict:
     """
     Takes a "branch" of a mapping and
       * Fills in any IsAt values
@@ -162,14 +163,14 @@ async def _get_mapping_to_dict(partial_dict: dict,
     for k, v in partial_dict.items():
         if isinstance(v, IsAt):
             try:
-                this_val = await _get_isat_value(v, flow_sequencer)
+                this_val = await _get_isat_value(v)
             except AttributeError:
                 if PRUNE_EMPTY_NODES:
                     continue # Don't write the key's entry
                 else:
                     this_val = math.nan
         elif isinstance(v, dict):
-            this_val = await _get_mapping_to_dict(v, flow_sequencer)
+            this_val = await _get_mapping_to_dict(v)
             # Suppress aggregates with nothing to aggregate
             if len(this_val) == 0 and PRUNE_EMPTY_NODES:
                 continue
@@ -239,11 +240,11 @@ def get_target_sets(mapping: dict,
     return retval
 
 
-async def get_resource_to_dict(resource: Resource,
-                               flow_sequencer: FlowSequencer) -> dict:
+async def get_resource_to_dict(resource: Resource) -> dict:
 
     mapping = MAPPING[resource]
-    de1 = flow_sequencer.de1
+    de1 = DE1()
+    flow_sequencer = FlowSequencer()
 
     # target_sets = get_target_sets(mapping)
     # pa_coros = list(map(lambda pa: de1.read_cuuid(pa.cuuid),
@@ -266,7 +267,7 @@ async def get_resource_to_dict(resource: Resource,
     # logger.debug(
     #     f"Read of mmr_coros took \t{(t1 - t0) * 1000:6.1f} ms"
     # )
-    return await _get_mapping_to_dict(mapping, flow_sequencer)
+    return await _get_mapping_to_dict(mapping)
 
 
 # PATCH and PUT are related, but have slightly different requirements
@@ -279,8 +280,7 @@ async def get_resource_to_dict(resource: Resource,
 #
 # TODO: How to handle read-only attributes in the PUT case is TBD
 
-async def patch_resource_from_dict(resource: Resource, values_dict: dict,
-                                   flow_sequencer: FlowSequencer):
+async def patch_resource_from_dict(resource: Resource, values_dict: dict):
 
     mapping = MAPPING[resource]
 
@@ -295,7 +295,8 @@ async def patch_resource_from_dict(resource: Resource, values_dict: dict,
     target_sets = get_target_sets(values_dict, include_can_write=True)
 
     # Lock here
-    de1 = flow_sequencer.de1
+    de1 = DE1()
+    flow_sequencer = FlowSequencer()
 
     for pa in target_sets['PackedAttr']:
         pa: PackedAttr
@@ -318,10 +319,8 @@ async def patch_resource_from_dict(resource: Resource, values_dict: dict,
         # pending_packed_attrs[pa] = last_value
 
     pending_packed_attrs = {}
-    await _patch_dict_to_mapping_inner(values_dict,
-                                       mapping,
-                                       pending_packed_attrs,
-                                       flow_sequencer)
+    await _patch_dict_to_mapping_inner(values_dict, mapping,
+                                       pending_packed_attrs)
 
     # if there are pending_packed_attrs, send them
 
@@ -338,8 +337,7 @@ async def patch_resource_from_dict(resource: Resource, values_dict: dict,
 async def _patch_dict_to_mapping_inner(partial_value_dict: dict,
                                        partial_mapping_dict: dict,
                                        pending_packed_attrs: dict[
-                                           type(PackedAttr), PackedAttr],
-                                       flow_sequencer: FlowSequencer):
+                                           type(PackedAttr), PackedAttr]):
     """
     This assumes that everything has been determined as "valid"
     """
@@ -366,6 +364,11 @@ async def _patch_dict_to_mapping_inner(partial_value_dict: dict,
     #
     #           The merge patch format is not appropriate for all JSON syntaxes.
 
+    de1 = DE1()
+    flow_sequencer = FlowSequencer()
+    scale_processor = ScaleProcessor()
+    scale = scale_processor.scale
+
     for key, new_value in partial_value_dict.items():
 
         try:
@@ -387,11 +390,11 @@ async def _patch_dict_to_mapping_inner(partial_value_dict: dict,
 
             if target in (DE1, FlowSequencer, Scale):
                 if target is DE1:
-                    this_target = flow_sequencer.de1
+                    this_target = de1
                 elif target is FlowSequencer:
                     this_target = flow_sequencer
                 elif target is Scale:
-                    this_target = flow_sequencer.scale_processor.scale
+                    this_target = scale
                 else:
                     raise DE1APITypeError(
                         f"Unsupported target for '{key}': {mapping_isat}")
@@ -425,7 +428,6 @@ async def _patch_dict_to_mapping_inner(partial_value_dict: dict,
 
                 logger.debug(f"MMR to be written: {mmr_write.as_wire_bytes()}")
 
-                de1 = flow_sequencer.de1
                 await de1.write_packed_attr(mmr_write)
 
                 # TODO: Should this wait on ready.wait() ??
@@ -437,7 +439,6 @@ async def _patch_dict_to_mapping_inner(partial_value_dict: dict,
                 # NB: This assumes that the CUUIDs are kept up to date
                 #     and that those that are read don't change on their own
 
-                de1 = flow_sequencer.de1
                 packed_attr = (de1._cuuid_dict[target.cuuid]).last_value
                 # TODO: Is this the right way to deal with these?
                 if packed_attr is None:
@@ -456,9 +457,7 @@ async def _patch_dict_to_mapping_inner(partial_value_dict: dict,
 
         elif isinstance(mapping_isat, dict):
             this_val = await _patch_dict_to_mapping_inner(
-                partial_value_dict[key],
-                partial_mapping_dict[key],
-                pending_packed_attrs,
-                flow_sequencer)
+                partial_value_dict[key], partial_mapping_dict[key],
+                pending_packed_attrs)
         else:
             this_val = new_value
