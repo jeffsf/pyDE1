@@ -20,7 +20,7 @@ import math  # for nan to be uniquely math.nan
 import sys
 import time
 
-from typing import Optional, Union
+from typing import Optional, Union, Dict, Set
 
 from pyDE1.de1.ble import CUUID
 from pyDE1.de1.notifications import NotificationState
@@ -183,8 +183,8 @@ async def _get_mapping_to_dict(partial_dict: dict) -> dict:
 # TODO: set and get versions
 
 def _get_target_sets_inner(partial_dict: dict,
-                           dict_of_sets: dict[
-                               str, set[Union[PackedAttr, MMR0x80LowAddr]]],
+                           dict_of_sets: Dict[
+                               str, Set[Union[PackedAttr, MMR0x80LowAddr]]],
                            include_can_read: bool,
                            include_can_write: bool):
     """
@@ -228,7 +228,7 @@ def _get_target_sets_inner(partial_dict: dict,
 
 def get_target_sets(mapping: dict,
                     include_can_read=False, include_can_write=False) \
-        -> dict[str, set[Union[MMR0x80LowAddr, PackedAttr]]]:
+        -> Dict[str, Set[Union[MMR0x80LowAddr, PackedAttr]]]:
 
     retval = {
         'MMR0x80LowAddr': set(),
@@ -336,7 +336,7 @@ async def patch_resource_from_dict(resource: Resource, values_dict: dict):
 
 async def _patch_dict_to_mapping_inner(partial_value_dict: dict,
                                        partial_mapping_dict: dict,
-                                       pending_packed_attrs: dict[
+                                       pending_packed_attrs: Dict[
                                            type(PackedAttr), PackedAttr]):
     """
     This assumes that everything has been determined as "valid"

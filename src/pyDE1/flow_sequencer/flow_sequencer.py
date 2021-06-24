@@ -16,7 +16,7 @@ import time
 import asyncio
 import logging
 
-from typing import Optional, Callable, Coroutine
+from typing import Optional, Callable, Coroutine, List
 
 from pyDE1.de1 import DE1
 from pyDE1.de1.events import ShotSampleUpdate, StateUpdate, \
@@ -159,17 +159,17 @@ class FlowSequencer (Singleton, I_TargetSetter):
         self.hot_water_rinse_control = HotWaterRinseControl()
 
         # TODO: Refactor these out in favor of None in the ByModeControl
-        self.autotare_states: list[API_MachineStates] = [
+        self.autotare_states: List[API_MachineStates] = [
             API_MachineStates.Espresso,
             API_MachineStates.HotWater,
         ]
 
-        self.stop_at_weight_states: list[API_MachineStates] = [
+        self.stop_at_weight_states: List[API_MachineStates] = [
             API_MachineStates.Espresso,
             API_MachineStates.HotWater,
         ]
 
-        self.stop_at_volume_states: list[API_MachineStates] = [
+        self.stop_at_volume_states: List[API_MachineStates] = [
             API_MachineStates.Espresso,
             API_MachineStates.HotWater,
         ]

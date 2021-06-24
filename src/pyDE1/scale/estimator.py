@@ -13,7 +13,7 @@ import logging
 
 # from statistics import mean
 from statistics import median
-from typing import Tuple
+from typing import Tuple, List
 
 import pyDE1.default_logger
 from pyDE1.scale.processor import ScaleProcessor, ScaleProcessorError
@@ -28,12 +28,12 @@ logger = logging.getLogger('Estimator')
 _USE_MEAN_FOR_TIME = True
 
 # This drops the delay to ~2.5 ms as well
-def mean(data: list[float]):
+def mean(data: List[float]):
     return sum(data)/len(data)
 
 # A perhaps good-enough median estimator (lower of even-length list)
 # Still around 2.4 ms, so not really a significant gain -- use statistics.median
-# def median(data: list[float]):
+# def median(data: List[float]):
 #     # .sort() is in-place
 #     dcopy = data.copy()
 #     dcopy.sort()

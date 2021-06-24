@@ -53,7 +53,7 @@ MQTT_PROTOCOL_VERSION = asyncio_mqtt.client.ProtocolVersion.V5
 
 async def run():
 
-    collector: dict[str, dict[str, list[float]]] = {}
+    collector: dict[str, dict[str, List[float]]] = {}
     collector_lock = asyncio.Lock()
     collector_rows = (
         'Total',
