@@ -21,6 +21,8 @@ from bleak.backends.bluezdbus.client import BleakClientBlueZDBus
 from bleak.backends.device import BLEDevice
 from bleak.backends.scanner import AdvertisementData
 
+from pyDE1.bleak_client_wrapper import BleakClientWrapped
+
 import pyDE1.default_logger
 
 from pyDE1.de1.exceptions import *
@@ -88,7 +90,7 @@ class DE1 (Singleton):
     def _singleton_init(self):
         self._address = None
         self._name = None
-        self._bleak_client: Optional[BleakClient] = None
+        self._bleak_client: Optional[BleakClientWrapped] = None
 
         # TODO: This one is probably going to need some care
         #       to transform to Singleton use
@@ -208,7 +210,7 @@ class DE1 (Singleton):
         if self._bleak_client is None:
             if self.address is None:
                 raise DE1NoAddressError
-            self._bleak_client = BleakClient(self.address)
+            self._bleak_client = BleakClientWrapped(self.address)
         self._bleak_client.set_disconnected_callback(
             self._create_disconnect_callback()
         )
@@ -218,14 +220,9 @@ class DE1 (Singleton):
             self._bleak_client.connect(timeout=timeout),
         )
         if self.is_connected:
-            self.register_atexit_disconnect()
             self._address = self._bleak_client.address
             if self.name is None:
-                try:
-                    self._name = self._bleak_client._device_info['Name']
-                except (KeyError, AttributeError):
-                    # CoreBluetooth on bleak 0.11.0 and 0.12.0
-                    pass
+                self._name = self._bleak_client.name
             logger.info(f"Connected to DE1 at {self.address}")
             await self._event_connectivity.publish(
                 ConnectivityChange(arrival_time=time.time(),
@@ -252,30 +249,11 @@ class DE1 (Singleton):
                 ConnectivityChange(arrival_time=time.time(),
                                    state=ConnectivityState.CONNECTED))
         else:
-            logger.info(f"Disconnected from DE1 at {self.address}")
+            logger.info(f"DE1.disconnect(): Disconnected from DE1 at {self.address}")
             await self._event_connectivity.publish(
                 ConnectivityChange(arrival_time=time.time(),
                                    state=ConnectivityState.DISCONNECTED))
 
-        # TODO: Unregister atexit disconnect
-
-    def _atexit_disconnect(self):
-        """
-        Try a closure to capture self
-        """
-        def sync_disconnect():
-            nonlocal self
-            if not self.is_connected:
-                logger.debug("atexit sync_disconnect: Not connected to DE1")
-                return
-            else:
-                logger.info(f"atexit sync_disconnect: Disconnecting DE1")
-                loop = asyncio.get_event_loop()
-                loop.run_until_complete(self.disconnect())
-        return sync_disconnect
-
-    def register_atexit_disconnect(self):
-        atexit.register(self._atexit_disconnect())
 
     # TODO: Decide how to handle  self._disconnected_callback
     #   disconnected_callback (callable): Callback that will be scheduled in the
@@ -289,9 +267,13 @@ class DE1 (Singleton):
     def _create_disconnect_callback(self) -> Callable:
         de1 = self
 
-        def disconnect_callback(client: BleakClient):
+        def disconnect_callback(client: BleakClientWrapped):
             nonlocal de1
-            logger.info(f"Disconnected from DE1 at {de1.address}")
+            logger.info(
+                "disconnect_callback: "
+                f"Disconnected from DE1 at {client.address}, "
+                "willful_disconnect: "
+                f"{client.willful_disconnect}")
             asyncio.create_task(de1._event_connectivity.publish(
                 ConnectivityChange(arrival_time=time.time(),
                                    state=ConnectivityState.DISCONNECTED)))

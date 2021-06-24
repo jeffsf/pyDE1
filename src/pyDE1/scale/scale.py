@@ -12,6 +12,7 @@ import enum
 import logging
 import re
 import time
+import traceback
 
 from typing import Optional, Callable, Coroutine, Any, Union
 
@@ -22,6 +23,7 @@ from bleak.backends.device import BLEDevice
 from bleak.backends.scanner import AdvertisementData
 
 import pyDE1.default_logger
+from pyDE1.bleak_client_wrapper import BleakClientWrapped
 from pyDE1.de1.exceptions import DE1APIValueError
 from pyDE1.dispatcher.resource import ConnectivityEnum
 from pyDE1.event_manager import EventPayload, SubscribedEvent
@@ -67,7 +69,7 @@ class Scale:
         self._tare_threshold = 0.05  # grams, within this, considered "at zero"
         self.hold_at_tare = False
 
-        self._bleak_client: Optional[BleakClient] = None
+        self._bleak_client: Optional[BleakClientWrapped] = None
 
         self._event_connectivity: SubscribedEvent = SubscribedEvent(self)
         self._event_weight_update: SubscribedEvent = SubscribedEvent(self)
@@ -137,10 +139,12 @@ class Scale:
         return self._sensor_lag
 
     async def connect(self, timeout=5.0):
+        class_name = type(self).__name__
+        logger.info(f"Connecting to {class_name} at {self.address}")
         if self._bleak_client is None:
             if self.address is None:
                 raise ScaleNoAddressError
-            self._bleak_client = BleakClient(self.address)
+            self._bleak_client = BleakClientWrapped(self.address)
         self._bleak_client.set_disconnected_callback(
             self._create_disconnect_callback()
         )
@@ -150,21 +154,16 @@ class Scale:
             self._bleak_client.connect(timeout=timeout),
         )
         if self.is_connected:
-            self.register_atexit_disconnect()
             self._address = self._bleak_client.address
             if self.name is None:
-                try:
-                    self._name = self._bleak_client._device_info['Name']
-                except (KeyError, AttributeError):
-                    # CoreBluetooth on bleak 0.11.0 and 0.12.0
-                    pass
-            logger.info(f"Connected to {type(self)} at {self.address}")
+                self._name = self._bleak_client.name
+            logger.info(f"Connected to {class_name} at {self.address}")
             await self._event_connectivity.publish(
                 ConnectivityChange(arrival_time=time.time(),
                                    state=ConnectivityState.CONNECTED))
         else:
             logger.error(
-                f"Connection failed to {type(self)} at {self.address}")
+                f"Connection failed to {class_name} at {self.address}")
             await self._event_connectivity.publish(
                 ConnectivityChange(arrival_time=time.time(),
                                    state=ConnectivityState.DISCONNECTED))
@@ -188,9 +187,10 @@ class Scale:
                                state=ConnectivityState.NOT_READY))
 
     async def disconnect(self):
-        logger.info(f"Disconnecting from {type(self)}")
+        class_name = type(self).__name__
+        logger.info(f"Disconnecting from {class_name}")
         if self._bleak_client is None:
-            logger.info(f"Disconnecting from {type(self)}; no client")
+            logger.info(f"Disconnecting from {class_name}; no client")
         await asyncio.gather(
             self._bleak_client.disconnect(),
             self._event_connectivity.publish(
@@ -199,17 +199,15 @@ class Scale:
         )
         if self.is_connected:
             logger.error(
-                f"Disconnect failed from {type(self)} at {self.address}")
+                f"Disconnect failed from {class_name} at {self.address}")
             await self._event_connectivity.publish(
                 ConnectivityChange(arrival_time=time.time(),
                                    state=ConnectivityState.CONNECTED))
         else:
-            logger.info(f"Disconnected from {type(self)} at {self.address}")
+            logger.info(f"Scale.disconnect(): Disconnected from {class_name} at {self.address}")
             await self._event_connectivity.publish(
                 ConnectivityChange(arrival_time=time.time(),
                                    state=ConnectivityState.DISCONNECTED))
-
-        # TODO: Unregister atexit disconnect
 
     # TODO: Decide how to handle  self._disconnected_callback
 
@@ -361,9 +359,14 @@ class Scale:
     def _create_disconnect_callback(self) -> Callable:
         scale = self
 
-        def disconnect_callback(client: BleakClient):
+        def disconnect_callback(client: BleakClientWrapped):
             nonlocal scale
-            logger.info(f"Disconnected from {type(scale)} at {scale.address}")
+            class_name = type(self).__name__
+            logger.info(
+                "disconnect_callback: "
+                f"Disconnected from {class_name} at {client.address}, "
+                "willful_disconnect: "
+                f"{client.willful_disconnect}")
             asyncio.create_task(scale._event_connectivity.publish(
                 ConnectivityChange(arrival_time=time.time(),
                                    state=ConnectivityState.DISCONNECTED)))
@@ -428,24 +431,6 @@ class Scale:
                     self._n_counter = 0
                     logger.debug(f"Scale period: {self._ma}")
 
-    def atexit_disconnect(self):
-
-        def sync_disconnect():
-            nonlocal self
-            if not self.is_connected:
-                logger.debug(
-                    f"atexit sync_disconnect: Not connected to {self}")
-                return
-            else:
-                logger.info(
-                    f"atexit sync_disconnect: Disconnecting {self}")
-                loop = asyncio.get_event_loop()
-                loop.run_until_complete(self.disconnect())
-
-        return sync_disconnect
-
-    def register_atexit_disconnect(self):
-        atexit.register(self.atexit_disconnect())
 
     # TODO: Deal with connectivity as a mixin
 
