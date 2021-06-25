@@ -50,13 +50,29 @@ def run_api_inbound(api_pipe: multiprocessing.connection.Connection):
     from pyDE1.dispatcher.payloads import APIRequest, APIResponse, HTTPMethod
     from pyDE1.dispatcher.validate import validate_patch
 
+    try:
+        str.removeprefix  # Python 3.9 and later
+
+        def remove_prefix(string: str, prefix: str) -> str:
+            return string.removeprefix(prefix)
+
+    except AttributeError:
+
+        def remove_prefix(string: str, prefix: str) -> str:
+            if string.startswith(prefix):
+                return string[len(prefix):]
+            else:
+                return string
+
+
     class RequestHandler (http.server.BaseHTTPRequestHandler):
 
         def do_GET(self):
             timestamp = time.time()
 
             try:
-                resource = Resource(self.path.removeprefix(SERVER_ROOT))
+                # resource = Resource(self.path.removeprefix(SERVER_ROOT))
+                resource = Resource(remove_prefix(self.path, SERVER_ROOT))
             except ValueError:
                 self.send_response(HTTPStatus.NOT_FOUND)
                 self.send_header("Content-type", "text/plain")
@@ -134,7 +150,8 @@ def run_api_inbound(api_pipe: multiprocessing.connection.Connection):
             timestamp = time.time()
 
             try:
-                resource = Resource(self.path.removeprefix(SERVER_ROOT))
+                # resource = Resource(self.path.removeprefix(SERVER_ROOT))
+                resource = Resource(remove_prefix(self.path, SERVER_ROOT))
             except ValueError:
                 self.send_response(HTTPStatus.NOT_FOUND)
                 self.send_header("Content-type", "text/plain")
