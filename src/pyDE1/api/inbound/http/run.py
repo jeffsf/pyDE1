@@ -30,7 +30,7 @@ def run_api_inbound(api_pipe: multiprocessing.connection.Connection):
     logger.info(
         f"Inbound ran: id {id(sys.modules)}")
 
-    from pyDE1.dispatcher.mapping import MAPPING
+    from pyDE1.dispatcher.mapping import MAPPING, mapping_requires
 
     # cpn = multiprocessing.current_process().name
     # for k in sys.modules.keys():
@@ -48,7 +48,7 @@ def run_api_inbound(api_pipe: multiprocessing.connection.Connection):
 
     from pyDE1.dispatcher.resource import Resource
     from pyDE1.dispatcher.payloads import APIRequest, APIResponse, HTTPMethod
-    from pyDE1.dispatcher.validate import validate_patch
+    from pyDE1.dispatcher.validate import validate_patch_return_targets
 
     try:
         str.removeprefix  # Python 3.9 and later
@@ -87,14 +87,20 @@ def run_api_inbound(api_pipe: multiprocessing.connection.Connection):
                 self.wfile.write(bytes('GET not permitted', 'utf-8'))
                 return
 
+            # Not actionable here as connectivity is unknown
+            requires = mapping_requires(MAPPING[resource])
+
             req = APIRequest(timestamp=timestamp,
                              method=HTTPMethod.GET,
                              resource=resource,
+                             connectivity_required=requires,
                              payload=None)
+
             api_pipe.send(req)
 
             # TODO: This should be async or otherwise to provide a timeout
             resp: APIResponse = api_pipe.recv()
+
             if resp.exception is None:
                 resp_str = json.dumps(resp.payload,
                                       sort_keys=True, indent=4) + "\n"
@@ -186,7 +192,8 @@ def run_api_inbound(api_pipe: multiprocessing.connection.Connection):
 
             try:
                 patch = json.loads(content)
-                validate_patch(resource=resource, patch=patch)
+                targets = validate_patch_return_targets(resource=resource,
+                                                        patch=patch)
             except (json.JSONDecodeError, DE1APIError) as exception:
                 self.send_response(HTTPStatus.BAD_REQUEST)
                 self.send_header("Content-type", "text/plain")
@@ -197,6 +204,7 @@ def run_api_inbound(api_pipe: multiprocessing.connection.Connection):
             req = APIRequest(timestamp=timestamp,
                              method=HTTPMethod.PATCH,
                              resource=resource,
+                             connectivity_required=targets,
                              payload=patch)
 
             api_pipe.send(req)

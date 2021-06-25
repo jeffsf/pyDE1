@@ -270,6 +270,8 @@ class Scale:
     async def display_off(self):
         raise NotImplementedError
 
+    # The two *_bool for API
+
     async def tare_with_bool(self, do_it=True):
         if do_it:
             await self.tare()
@@ -444,11 +446,13 @@ class Scale:
             retval = ConnectivityEnum.NOT_CONNECTED
         return retval
 
-    @connectivity.setter
-    async def connectivity(self, value):
-        if value == ConnectivityEnum.CONNECTED \
+    async def connectivity_setter(self, value: ConnectivityEnum):
+        assert isinstance(value, ConnectivityEnum), \
+            f"mode of {value} not a ConnectivityEnum " \
+            "in Scale.connectivity_setter()"
+        if value is ConnectivityEnum.CONNECTED \
                 and not self.is_connected:
             await self.connect()
-        elif value == ConnectivityEnum.NOT_CONNECTED \
+        elif value is ConnectivityEnum.NOT_CONNECTED \
                 and self.is_connected:
             await self.disconnect()

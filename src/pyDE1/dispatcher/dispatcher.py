@@ -82,18 +82,20 @@ async def _request_queue_processor(request_queue: asyncio.Queue,
     de1 = DE1()
     scale_processor = ScaleProcessor()
     # scale = ScaleProcessor.scale  # No .scale when this starts
+
     while True:
-        got = await request_queue.get()
-        print(f"{type(got)}: {got.method} {got.resource}")
+        got: APIRequest = await request_queue.get()
+        print(f"{type(got)}: {got.method} {got.resource} {got.connectivity_required}")
         resource_dict = {}
         exception = None
         if got.method is HTTPMethod.GET:
             try:
-                # TODO: Is it worth checking which is needed?
                 # TODO: Should be "ready" and not just "connected"
-                if not de1.is_connected:
+                if not de1.is_connected \
+                        and got.connectivity_required['DE1']:
                     raise DE1NotConnectedError("DE1 not connected")
-                if not scale_processor.scale.is_connected:
+                if not scale_processor.scale.is_connected \
+                    and got.connectivity_required['Scale']:
                     raise DE1NotConnectedError("Scale not connected")
                 resource_dict = await get_resource_to_dict(got.resource)
             except Exception as e:
@@ -109,17 +111,16 @@ async def _request_queue_processor(request_queue: asyncio.Queue,
             )
         elif got.method is HTTPMethod.PATCH:
             try:
-                # TODO: Is it worth checking which is needed?
                 # TODO: Should be "ready" and not just "connected"
-                if not de1.is_connected:
+                if not de1.is_connected \
+                        and got.connectivity_required['DE1']:
                     raise DE1NotConnectedError("DE1 not connected")
-                if not scale_processor.scale.is_connected:
+                if not scale_processor.scale.is_connected \
+                    and got.connectivity_required['Scale']:
                     raise DE1NotConnectedError("Scale not connected")
                 resource_dict = await patch_resource_from_dict(got.resource,
                                                                got.payload)
             except Exception as e:
-                # TODO: Why without this:
-                #       local variable 'exception' referenced before assignment
                 exception = e
                 logger.error(
                     f"Exception in processing {got.method} {got.resource}"

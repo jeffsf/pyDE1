@@ -960,12 +960,14 @@ class DE1 (Singleton):
             retval = ConnectivityEnum.NOT_CONNECTED
         return retval
 
-    @connectivity.setter
-    async def connectivity(self, value):
-        if value == ConnectivityEnum.CONNECTED \
+    async def connectivity_setter(self, value):
+        assert isinstance(value, ConnectivityEnum), \
+            f"mode of {value} not a ConnectivityEnum " \
+            "in DE1.connectivity_setter()"
+        if value is ConnectivityEnum.CONNECTED \
                 and not self.is_connected:
             await self.connect()
-        elif value == ConnectivityEnum.NOT_CONNECTED \
+        elif value is ConnectivityEnum.NOT_CONNECTED \
                 and self.is_connected:
             await self.disconnect()
 
@@ -973,13 +975,21 @@ class DE1 (Singleton):
     def auto_off_time(self):
         return None
 
-    async def set_mode(self, mode: DE1ModeEnum):
-
+    async def mode_setter(self, mode: DE1ModeEnum):
+        assert isinstance(mode, DE1ModeEnum), \
+            f"mode of {mode} not a DE1ModeEnum in DE1.mode_setter()"
         cs = self.current_state
-        logger.debug(f"Would set mode to {mode} from {cs}")
+        if cs is API_MachineStates.NoRequest:
+            logger.warning(f"Refreshing current state as is NoRequest")
+            await self.read_cuuid(CUUID.StateInfo)
+            cs = self.current_state
+        logger.debug(f"Request to change mode to {mode} "
+                     f"while in {API_MachineStates(cs).name}")
+
 
         if mode is DE1ModeEnum.SLEEP:
             if cs is API_MachineStates.Idle:
+                logger.debug("API triggered sleep()")
                 await self.sleep()
             if self.current_state in (API_MachineStates.Sleep,
                                       API_MachineStates.GoingToSleep):
@@ -988,8 +998,10 @@ class DE1 (Singleton):
                 raise DE1APIUnsupportedStateTransitionError (mode, cs)
 
         elif mode is DE1ModeEnum.WAKE:
+            logger.debug(f"In WAKE, cs: {API_MachineStates(cs).name}")
             if cs in (API_MachineStates.Sleep,
                       API_MachineStates.GoingToSleep):
+                logger.debug("API triggered idle()")
                 await self.idle()
             else:
                 pass
@@ -1011,6 +1023,7 @@ class DE1 (Singleton):
                         API_MachineStates.InBootLoader):
                 raise DE1APIUnsupportedStateTransitionError(mode, cs)
             else:
+                logger.debug("API triggered idle()")
                 await self.idle()
 
         elif mode is DE1ModeEnum.SKIP_TO_NEXT:
@@ -1018,6 +1031,7 @@ class DE1 (Singleton):
             if cs in (API_MachineStates.Espresso) \
                 and self.current_substate in (API_Substates.PreInfuse,
                                               API_Substates.Pour):
+                logger.debug("API triggered skip_to_next()")
                 await self.skip_to_next()
             else:
                 raise DE1APIUnsupportedStateTransitionError(

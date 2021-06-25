@@ -15,7 +15,7 @@ For PUT (if implemented)
   * All entries in MAPPING[resource] are present in the supplied data
 """
 
-from typing import Optional, Union, get_args  # get_origin, get_type_hints
+from typing import Optional, Union, Set, get_args  # get_origin, get_type_hints
 
 # t = Union[int, float]
 # isinstance(2, t)
@@ -27,19 +27,24 @@ from typing import Optional, Union, get_args  # get_origin, get_type_hints
 # isinstance(2, get_args(t))
 #   True
 
-from pyDE1.de1.exceptions import DE1APIAttributeError, DE1APITypeError
+from pyDE1.de1.exceptions import DE1APIAttributeError, DE1APITypeError, \
+    DE1APIValueError
 from pyDE1.dispatcher.resource import Resource
 from pyDE1.dispatcher.mapping import MAPPING, IsAt
 
 
-def validate_patch(resource: Resource, patch: dict):
+def validate_patch_return_targets(resource: Resource, patch: dict) -> dict:
+    results = {
+        'DE1': False,
+        'Scale': False
+    }
     _validate_patch_inner(patch=patch,
                           mapping=MAPPING[resource],
-                          path='')
+                          path='',
+                          targets=results)
+    return results
 
-
-def _validate_patch_inner(patch: dict, mapping: dict, path: str):
-
+def _validate_patch_inner(patch: dict, mapping: dict, path: str, targets: dict):
 
     for key, new_value in patch.items():
 
@@ -58,6 +63,7 @@ def _validate_patch_inner(patch: dict, mapping: dict, path: str):
                 patch=patch[key],
                 mapping=mapping_value,
                 path=this_path,
+                targets=targets,
             )
 
         else:
@@ -89,3 +95,16 @@ def _validate_patch_inner(patch: dict, mapping: dict, path: str):
                     f"Expected {mapping_value.v_type} value at {this_path}:, "
                     f"not {new_value}"
                 )
+
+            if mapping_value.requires_connected_de1:
+                targets['DE1'] = True
+            if mapping_value.requires_connected_scale:
+                targets['Scale'] = True
+
+            # Not really "validate", but this is a good place to do it
+
+            if (t := mapping_value.internal_type) is not None:
+                try:
+                    patch[key] = t(new_value)
+                except ValueError as e:
+                    raise DE1APIValueError(*e.args)

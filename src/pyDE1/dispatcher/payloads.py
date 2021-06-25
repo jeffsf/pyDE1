@@ -47,11 +47,13 @@ class APIRequest:
     def __init__(self, timestamp: float,
                  method: HTTPMethod,
                  resource: Resource,
+                 connectivity_required: dict,
                  payload,
                  ):
         self._timestamp = timestamp
         self._method = method
         self._resource = resource
+        self._connectivity_required = connectivity_required
         self._payload = payload
 
     @property
@@ -65,6 +67,10 @@ class APIRequest:
     @property
     def resource(self):
         return self._resource
+
+    @property
+    def connectivity_required(self):
+        return self._connectivity_required
 
     @property
     def payload(self):

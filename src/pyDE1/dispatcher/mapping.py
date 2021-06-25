@@ -18,7 +18,8 @@ import multiprocessing, multiprocessing.connection
 import sys
 from typing import Optional, Union, NamedTuple
 
-from pyDE1.dispatcher.resource import Resource, RESOURCE_VERSION
+from pyDE1.dispatcher.resource import Resource, RESOURCE_VERSION, \
+    DE1ModeEnum, ConnectivityEnum
 
 # TODO: Work through main and remote thread imports
 
@@ -61,7 +62,7 @@ from pyDE1.de1.c_api import PackedAttr, MMR0x80LowAddr, get_cuuid, \
 
 from pyDE1.de1.exceptions import DE1APIValueError
 
-MAPPING_VERSION = "1.1.0"
+MAPPING_VERSION = "2.0.0"
 
 
 class IsAt (NamedTuple):
@@ -75,7 +76,51 @@ class IsAt (NamedTuple):
     setter_path: Optional[str] = None   # If not a property and a different path
                                         # path of setter relative to target
     read_only: Optional[bool] = False
+    internal_type: Optional[Union[type(DE1ModeEnum),
+                                  type(ConnectivityEnum)]] = None
     # write_only: attr_path=None and setter_path=setter_attribute_name
+
+    @property
+    def requires_connected_de1(self) -> bool:
+        return (
+            self.target in (PackedAttr, MMR0x80LowAddr) or
+            (self.target is DE1
+             and self.setter_path not in (None, 'connectivity_setter'))
+        )
+
+    @property
+    def requires_connected_scale(self) -> bool:
+        return (
+                self.target is Scale
+                and self.setter_path not in (None, 'connectivity_setter')
+        )
+
+
+def mapping_requires(mapping: dict) -> dict:
+    results = {
+        'DE1': False,
+        'Scale': False
+    }
+    return _mapping_requires_inner(mapping, results)
+
+
+def _mapping_requires_inner(mapping: dict, results: dict) -> dict:
+
+    for val in mapping.values():
+        if isinstance(val, IsAt):
+            if val.requires_connected_de1:
+                results['DE1'] = True
+            if val.requires_connected_scale:
+                results['Scale'] = True
+
+        if isinstance(val, dict):
+            _mapping_requires_inner(val, results)
+
+        # TODO: Maybe one day generify this
+        if results['DE1'] and results['Scale']:
+            break
+
+    return results
 
 
 def from_packed_attr(packed_attr: PackedAttr, attr_path: str, v_type: type,
@@ -156,8 +201,8 @@ MAPPING[Resource.DE1_ID] = {
 # NB: A single-entry tuple needs to end with a comma
 
 MAPPING[Resource.DE1_MODE] = {
-    'mode': IsAt(target=DE1, attr_path=None, setter_path='set_mode',
-                 v_type=str,),
+    'mode': IsAt(target=DE1, attr_path=None, setter_path='mode_setter',
+                 v_type=str, internal_type=DE1ModeEnum),
 }
 # TODO: de1.mode()
 
@@ -170,7 +215,9 @@ MAPPING[Resource.DE1_MODE] = {
 # DE1_FIRMWARE_UPLOAD = 'de1/firmware/{id}/upload'
 
 MAPPING[Resource.DE1_CONNECTIVITY] = {
-    'mode': IsAt(target=DE1, attr_path='connectivity', v_type=str,),
+    'mode': IsAt(target=DE1, attr_path='connectivity',
+                 setter_path='connectivity_setter', v_type=str,
+                 internal_type=ConnectivityEnum),
 }
 
 # DE1_CONTROL = 'de1/control' -- aggregate
@@ -360,7 +407,9 @@ MAPPING[Resource.SCALE_ID] = {
 }
 
 MAPPING[Resource.SCALE_CONNECTIVITY] = {
-    'mode': IsAt(target=Scale, attr_path='connectivity', v_type=str,),
+    'mode': IsAt(target=Scale, attr_path='connectivity',
+                 setter_path="connectivity_setter", v_type=str,
+                 internal_type=ConnectivityEnum),
 }
 
 MAPPING[Resource.SCALE_TARE] = {
