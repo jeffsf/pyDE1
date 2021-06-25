@@ -1,0 +1,18 @@
+version: "3"
+services:
+  mqtt:
+    image: eclipse-mosquitto:2.0.11
+    ports:
+      - "9001:9001"
+      - "1883:1883"
+    volumes:
+      - mosquittoVolume:/mosquitto
+      - ./mosquitto.conf:/mosquitto/config/mosquitto.conf
+  pyde1:
+    build: .
+    cap_add:
+      - ALL
+    network_mode: host
+    privileged: true
+volumes:
+  mosquittoVolume: {}
