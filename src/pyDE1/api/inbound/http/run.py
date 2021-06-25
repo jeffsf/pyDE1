@@ -5,12 +5,12 @@ License for this software, part of the pyDE1 package, is granted under
 GNU General Public License v3.0 only
 SPDX-License-Identifier: GPL-3.0-only
 """
-import multiprocessing, multiprocessing.connection
+import multiprocessing.connection
 import time
 
 from email.utils import formatdate  # RFC2822 dates
 
-from pyDE1.de1.exceptions import *
+from pyDE1.exceptions import *
 
 # Right now, this is all "sync" processing. As it is a benefit to only have
 # one request pending at a time, this shouldn't be a big problem.
@@ -20,15 +20,15 @@ from pyDE1.de1.exceptions import *
 
 def run_api_inbound(api_pipe: multiprocessing.connection.Connection):
 
+    SERVER_HOST = ''
+    SERVER_PORT = 1234
     SERVER_ROOT = '/'
     PATCH_SIZE_LIMIT = 4096
 
     import logging
-    import sys
+    import multiprocessing
 
     logger = logging.getLogger(multiprocessing.current_process().name)
-    logger.info(
-        f"Inbound ran: id {id(sys.modules)}")
 
     from pyDE1.dispatcher.mapping import MAPPING, mapping_requires
 
@@ -41,18 +41,55 @@ def run_api_inbound(api_pipe: multiprocessing.connection.Connection):
     #             f"{cpn}: {k}"
     #         )
 
+    import asyncio
     import http.server
     import json
+    import multiprocessing
+    import signal
 
     from http import HTTPStatus
 
     # This one is needed as it has specific fields that need to be unpickled
-    from pyDE1.de1.exceptions import DE1APIUnsupportedStateTransitionError, \
+    from pyDE1.exceptions import DE1APIUnsupportedStateTransitionError, \
         DE1APIUnsupportedFeatureError
 
     from pyDE1.dispatcher.resource import Resource
     from pyDE1.dispatcher.payloads import APIRequest, APIResponse, HTTPMethod
     from pyDE1.dispatcher.validate import validate_patch_return_targets
+
+    from pyDE1.utils import cancel_tasks_by_name
+
+    logger = logging.getLogger(multiprocessing.current_process().name)
+
+    loop = asyncio.get_event_loop()
+    loop.set_debug(True)
+
+    signals = (
+        signal.SIGHUP,
+        signal.SIGINT,
+        signal.SIGQUIT,
+        signal.SIGABRT,
+        signal.SIGTERM,
+    )
+
+    async def signal_handler(signal: signal.Signals,
+                             loop: asyncio.AbstractEventLoop):
+        process = multiprocessing.current_process()
+        logger.info(signal)
+        graceful_shutdown()
+
+    for sig in signals:
+        loop.add_signal_handler(
+            sig,
+            lambda sig=sig: asyncio.create_task(signal_handler(sig, loop),
+                                                name=str(sig)))
+
+    async def heartbeat():
+        while True:
+            await asyncio.sleep(10)
+            logger.info("===== BOOP =====")
+
+    loop.create_task(heartbeat(), name='Heartbeat')
 
     try:
         str.removeprefix  # Python 3.9 and later
@@ -380,7 +417,24 @@ def run_api_inbound(api_pipe: multiprocessing.connection.Connection):
             )
             return
 
-
-    server = http.server.HTTPServer(('localhost', 1234),
+    server = http.server.HTTPServer((SERVER_HOST, SERVER_PORT),
                                     RequestHandler)
-    server.serve_forever()
+
+    def graceful_shutdown():
+        logger.info("Shutting down HTTP server")
+        server.shutdown()
+        logger.info("Shutting down other tasks")
+        cancel_tasks_by_name('', starts_with=True)
+        logger.info("Stopping loop")
+        loop.stop()
+        logger.info("Loop stopped, closing this process")
+        # AttributeError: 'NoneType' object has no attribute 'kill'
+        # multiprocessing.current_process().kill()
+        multiprocessing.current_process().close()
+        logger.info("Process closed")
+
+
+    # loop.call_soon(server.serve_forever)
+    loop.run_in_executor(None, server.serve_forever)
+    loop.run_forever()
+

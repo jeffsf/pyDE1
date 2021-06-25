@@ -10,31 +10,22 @@ import asyncio
 import logging
 import time
 
-from typing import Optional, Union
+from typing import Union
 
 from pyDE1 import de1
 from pyDE1.de1.c_api import Versions, RequestedState, SetTime, \
-    MMRData, ReadFromMMR, WriteToMMR, Temperatures, ShotSettings, \
-    ShotSample, StateInfo, ShotDescHeader, ShotFrame, \
-    ShotExtFrame, ShotTail, HeaderWrite, FrameWrite, \
+    ReadFromMMR, WriteToMMR, Temperatures, ShotSettings, \
+    ShotSample, StateInfo, HeaderWrite, FrameWrite, \
     WaterLevels, FWMapRequest, \
-    MMR0x80LowAddr, decode_one_mmr
-from pyDE1.default_logger import data_as_hex, data_as_readable, \
-    data_as_readable_or_hex
+    MMR0x80LowAddr
 
 from pyDE1.de1.events import StateUpdate, ShotSampleUpdate, WaterLevelUpdate
 from pyDE1.de1.c_api import API_MachineStates, API_Substates
 
 from pyDE1.de1.ble import CUUID
-import pyDE1.de1.notifications
-from pyDE1.de1.exceptions import DE1ErrorStateReported, MMRAddressOffsetError
+from pyDE1.exceptions import DE1ErrorStateReported, MMRAddressOffsetError
 
-from bleak import BleakClient
-from bleak.backends.device import BLEDevice
-
-import pyDE1.default_logger
-
-from pyDE1.default_logger import data_as_readable_or_hex
+from pyDE1.utils import data_as_readable_or_hex
 
 # Logging is set to DEBUG by default. This effectively disables them
 # with independent control. (The evaluation of the f-string is still done)

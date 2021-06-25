@@ -20,9 +20,8 @@ from bleak import BleakScanner, BleakClient
 from bleak.backends.device import BLEDevice
 from bleak.backends.scanner import AdvertisementData
 
-import pyDE1.default_logger
-
 logger = logging.getLogger('Scanner')
+
 
 async def stop_scanner_if_running(scanner: BleakScanner):
     logger = logging.getLogger('StopScanner')

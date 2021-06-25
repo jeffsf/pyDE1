@@ -14,7 +14,6 @@ from copy import deepcopy
 from typing import Union, Optional
 
 from pyDE1.de1.ble import CUUID
-from pyDE1.de1.exceptions import DE1Error
 
 from pyDE1.de1.c_api import PackedAttr, MMR0x80LowAddr, decode_one_mmr
 

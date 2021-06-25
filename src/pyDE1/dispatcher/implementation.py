@@ -11,33 +11,27 @@ SPDX-License-Identifier: GPL-3.0-only
 
 # TODO: Wipe cached state on disconnect
 
-import asyncio
 import copy
-import importlib.metadata as im
 import inspect
 import logging
 import math  # for nan to be uniquely math.nan
-import sys
 import time
 
-from typing import Optional, Union, Dict, Set
+from typing import Union, Dict, Set
 
-from pyDE1.de1.ble import CUUID
 from pyDE1.de1.notifications import NotificationState
 from pyDE1.utils import fix_enums
 from pyDE1.utils_public import rgetattr, rsetattr
 
 from pyDE1.dispatcher.resource import Resource
-from pyDE1.dispatcher.mapping import MAPPING, IsAt
+from pyDE1.dispatcher.mapping import MAPPING
 
 from pyDE1.de1 import DE1
 from pyDE1.scale import Scale
 from pyDE1.scale.processor import ScaleProcessor
 from pyDE1.flow_sequencer import FlowSequencer
-from pyDE1.de1.c_api import PackedAttr, ShotSettings, SetTime, \
-    Versions, FWVersion, MMR0x80LowAddr, WaterLevels, WriteToMMR, \
-    pack_one_mmr0x80_write, ReadFromMMR
-from pyDE1.de1.exceptions import DE1APITypeError, DE1APIValueError, \
+from pyDE1.de1.c_api import PackedAttr, MMR0x80LowAddr, pack_one_mmr0x80_write
+from pyDE1.exceptions import DE1APITypeError, DE1APIValueError, \
     DE1APIAttributeError, DE1APIKeyError
 from pyDE1.dispatcher.mapping import IsAt
 

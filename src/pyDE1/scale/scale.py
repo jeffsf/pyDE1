@@ -7,28 +7,20 @@ SPDX-License-Identifier: GPL-3.0-only
 """
 
 import asyncio
-import atexit
-import enum
 import logging
-import re
 import time
-import traceback
 
-from typing import Optional, Callable, Coroutine, Any, Union
+from typing import Optional, Callable, Coroutine, Union
 
-from bleak import BleakScanner, BleakClient, BleakError
-from bleak import BleakError, BleakClient, BleakScanner
 from bleak.backends.device import BLEDevice
 from bleak.backends.scanner import AdvertisementData
 
-import pyDE1.default_logger
 from pyDE1.bleak_client_wrapper import BleakClientWrapped
-from pyDE1.de1.exceptions import DE1APIValueError
+from pyDE1.exceptions import DE1APIValueError
 from pyDE1.dispatcher.resource import ConnectivityEnum
-from pyDE1.event_manager import EventPayload, SubscribedEvent
+from pyDE1.event_manager import SubscribedEvent
 from pyDE1.event_manager.events import ConnectivityState, ConnectivityChange
-from pyDE1.scale.events import ScaleWeightUpdate, ScaleButtonPress, \
-    ScaleTareSeen
+from pyDE1.scale.events import ScaleWeightUpdate, ScaleTareSeen
 
 logger = logging.getLogger('Scale')
 

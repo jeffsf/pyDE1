@@ -16,9 +16,9 @@ import traceback
 
 from typing import Union, Optional
 
-from pyDE1.de1.exceptions import DE1APITypeError, DE1APIValueError, \
+from pyDE1.exceptions import DE1APITypeError, DE1APIValueError, \
     DE1APITooManyFramesError, MMRTypeError, MMRValueError, MMRDataTooLongError
-from pyDE1.default_logger import data_as_hex
+from pyDE1.utils import data_as_hex
 from pyDE1.de1.ble import CUUID
 
 logger = logging.getLogger('c_api')

@@ -11,14 +11,10 @@ These should be pickle-able so can be passed between processes
 """
 
 import enum
-import json
 
-from typing import Optional, Union
+from typing import Optional
 
 from pyDE1.dispatcher.resource import Resource
-
-from pyDE1.de1.exceptions import DE1ValueError
-from pyDE1.utils import fix_enums
 
 
 class HTTPMethod (enum.Enum):

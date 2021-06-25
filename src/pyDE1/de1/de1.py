@@ -21,9 +21,7 @@ from bleak.backends.scanner import AdvertisementData
 
 from pyDE1.bleak_client_wrapper import BleakClientWrapped
 
-import pyDE1.default_logger
-
-from pyDE1.de1.exceptions import *
+from pyDE1.exceptions import *
 from pyDE1.de1.ble import UnsupportedBLEActionError
 
 # general utilities

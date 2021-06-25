@@ -7,7 +7,7 @@ as they need to be "forward declared"
 import logging
 from typing import Optional
 
-from pyDE1.de1.exceptions import DE1APIError, DE1APITypeError, DE1APIValueError
+from pyDE1.exceptions import DE1APIError, DE1APITypeError, DE1APIValueError
 
 logger = logging.getLogger('FlowSequencer')
 

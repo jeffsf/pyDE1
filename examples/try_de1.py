@@ -10,19 +10,30 @@ import asyncio
 import atexit
 import multiprocessing, multiprocessing.connection
 
-# from pyDE1.api.outbound.null import run_api_outbound
+import time
+
 from pyDE1.api.outbound.mqtt import run_api_outbound
 from pyDE1.api.inbound.http import run_api_inbound
+
+import pyDE1.default_logger
+
+pyDE1.default_logger.initialize_default_logger()
+pyDE1.default_logger.set_some_logging_levels()
 
 
 async def run(request_pipe: multiprocessing.connection.Connection,
               response_pipe: multiprocessing.connection.Connection,
               outbound_queue: multiprocessing.Queue):
 
+    _shutting_down = False
+
     import logging
     logger = logging.getLogger(multiprocessing.current_process().name)
 
-    import pprint
+    import signal
+
+    from pyDE1.de1.c_api import MMR0x80LowAddr, API_MachineStates
+    from pyDE1.utils import cancel_tasks_by_name
 
     from pyDE1.de1 import DE1
     from pyDE1.event_manager import SubscribedEvent
@@ -40,14 +51,91 @@ async def run(request_pipe: multiprocessing.connection.Connection,
     from pyDE1.dispatcher.dispatcher import register_read_pipe_to_queue, \
         start_request_queue_processor, start_response_queue_processor
 
-    from pyDE1.de1.exceptions import DE1NotConnectedError
+    from pyDE1.exceptions import DE1NotConnectedError
+
+    # Create these early to prevent AttributeError if killed early
+
+    de1 = DE1()
+    skale = AtomaxSkaleII()
+
+    async def signal_handler(signal: signal.Signals,
+                             loop: asyncio.AbstractEventLoop):
+        logger.info(f"{str(signal)} {multiprocessing.active_children()}")
+
+    signals = (
+        signal.SIGCHLD,
+    )
+
+    for sig in signals:
+        loop.add_signal_handler(
+            sig,
+            lambda sig=sig: asyncio.create_task(signal_handler(sig, loop),
+                                                name=str(sig)))
+
+    async def shutdown_signal_handler(signal: signal.Signals,
+                             loop: asyncio.AbstractEventLoop):
+        nonlocal _shutting_down
+        _shutting_down = True
+        logger.info(f"{str(signal)} SHUTDOWN INITIATED "
+                    f"{multiprocessing.active_children()}")
+        logger.info("Terminate API processes")
+        t0 = time.time()
+        inbound_api_process.terminate()
+        outbound_api_process.terminate()
+        # logger.info("Shutting down other tasks")
+        # cancel_tasks_by_name('', starts_with=True)
+        if de1.is_connected and de1.current_state not in (
+            API_MachineStates.Sleep,
+            API_MachineStates.GoingToSleep,
+            API_MachineStates.NoRequest,
+        ):
+            logger.info("Sleep DE1")
+            await de1.sleep()
+        logger.info("Disconnect DE1 and Skale")
+        await asyncio.gather(
+            # TODO: Handle de1 or skale None, as well as connection underway
+            #       that then connects after this section
+            de1.disconnect(),
+            skale.disconnect()
+        )
+        logger.info("Waiting for processes to terminate")
+        again = True
+        while again:
+            t1 = time.time()
+            alive_in = inbound_api_process.is_alive()
+            alive_out = outbound_api_process.is_alive()
+            logger.info(f"in: {alive_in}, out: {alive_out}")
+            await asyncio.sleep(0.1)
+            again = (alive_in or alive_out) and (t1 - t0 < 5)
+            if not again:
+                logger.info(f"Elapsed: {t1 - t0:0.3f} sec")
+                if (t1 - t0 >= 5):
+                    for p in (inbound_api_process, outbound_api_process):
+                        try:
+                            p.kill()
+                        except AttributeError:
+                            pass
+
+
+    signals = (
+        signal.SIGHUP,
+        signal.SIGINT,
+        signal.SIGQUIT,
+        signal.SIGABRT,
+        signal.SIGTERM,
+    )
+
+    for sig in signals:
+        loop.add_signal_handler(
+            sig,
+            lambda sig=sig: asyncio.create_task(
+                shutdown_signal_handler(sig, loop),
+                name=str(sig)))
 
     logging.getLogger('EventManager').setLevel(logging.INFO)
     logging.getLogger(
         f"{CUUID.StateInfo.__str__()}.Notify").setLevel(logging.DEBUG)
 
-    pp = pprint.PrettyPrinter()
-    ppp = pp.pprint
 
     # ppp(MAPPING)  # Pretty messy, needs to be custom mapped
 
@@ -72,8 +160,8 @@ async def run(request_pipe: multiprocessing.connection.Connection,
     de1_device = await find_first_de1()
     skale_device = await find_first_skale()
 
-    if de1_device is None or skale_device is None:
-        raise DE1NotConnectedError
+    if de1_device is None or skale_device is None and not _shutting_down:
+        await shutdown_signal_handler(signal.SIGTERM, loop)
 
     # There's a bug in creating from device on bleak 0.11.0 on macOS
 
@@ -82,10 +170,8 @@ async def run(request_pipe: multiprocessing.connection.Connection,
     #       _request_queue_processor
     #       de1 = DE1(de1_device)
 
-    de1 = DE1()
-    de1.address = de1_device
 
-    skale = AtomaxSkaleII()
+    de1.address = de1_device
     skale.address = skale_device
 
     sp = ScaleProcessor()
@@ -116,7 +202,10 @@ async def run(request_pipe: multiprocessing.connection.Connection,
         skale.standard_initialization(),
     )
 
-    await de1.read_standard_mmr_registers()
+    await asyncio.gather(
+        de1.read_standard_mmr_registers(),
+        de1.read_cuuid(CUUID.StateInfo),
+    )
 
     # await de1.idle()
 
@@ -158,24 +247,26 @@ async def run(request_pipe: multiprocessing.connection.Connection,
     #     print(f"====> {res}")
     #     ppp(d)
 
-    snooze = 300
+
+    snooze = 30
     print(f"==== sleeping {snooze} ====")
     await asyncio.sleep(snooze)
 
+    # print("===== Killing terminating =====")
+    # inbound_api_process.terminate()
+    # outbound_api_process.terminate()
 
-    snooze = 300
+
+    snooze = 0
     print(f"==== sleeping {snooze} ====")
     await asyncio.sleep(snooze)
     print("==== shutting down ====")
-    await de1.sleep()
-    await asyncio.gather(
-        de1.disconnect(),
-        skale.disconnect()
-    )
-    await asyncio.sleep(1)  # TO see if DISCONNECTED messages come through
-    # TODO: Need to be able to gracefully shutdown other threads
-    inbound_api_process.terminate()
-    outbound_api_process.terminate()
+    # multiprocessing.current_process()
+    # <_MainProcess name='MainProcess' parent=None started>
+    # AttributeError: 'NoneType' object has no attribute 'terminate'
+    # multiprocessing.current_process().terminate()
+    await shutdown_signal_handler(signal.SIGTERM, loop)
+
 
 
 if __name__ == "__main__":
@@ -191,17 +282,20 @@ if __name__ == "__main__":
     outbound_api_process = multiprocessing.Process(
         target=run_api_outbound,
         args=(outbound_api_queue,),
-        name='OutboundAPI')
+        name='OutboundAPI',
+        daemon=False)
     outbound_api_process.start()
 
     @atexit.register
     def kill_outbound():
         outbound_api_process.terminate()
 
+
     inbound_api_process = multiprocessing.Process(
         target=run_api_inbound,
         args=(inbound_pipe_server,),
-        name='InboundAPI')
+        name='InboundAPI',
+        daemon=False)
     inbound_api_process.start()
 
     @atexit.register

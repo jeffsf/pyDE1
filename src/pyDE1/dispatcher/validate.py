@@ -15,7 +15,7 @@ For PUT (if implemented)
   * All entries in MAPPING[resource] are present in the supplied data
 """
 
-from typing import Optional, Union, Set, get_args  # get_origin, get_type_hints
+from typing import Union, get_args  # get_origin, get_type_hints
 
 # t = Union[int, float]
 # isinstance(2, t)
@@ -27,7 +27,7 @@ from typing import Optional, Union, Set, get_args  # get_origin, get_type_hints
 # isinstance(2, get_args(t))
 #   True
 
-from pyDE1.de1.exceptions import DE1APIAttributeError, DE1APITypeError, \
+from pyDE1.exceptions import DE1APIAttributeError, DE1APITypeError, \
     DE1APIValueError
 from pyDE1.dispatcher.resource import Resource
 from pyDE1.dispatcher.mapping import MAPPING, IsAt

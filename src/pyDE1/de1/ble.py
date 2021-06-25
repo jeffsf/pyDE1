@@ -135,7 +135,7 @@ class CUUID (enum.Enum):
         return self.is_read_once or self is self.Calibration
 
 
-from pyDE1.de1.exceptions import DE1APIError
+from pyDE1.exceptions import DE1APIError
 
 
 class UnsupportedBLEActionError(DE1APIError):

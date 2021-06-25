@@ -7,13 +7,11 @@ SPDX-License-Identifier: GPL-3.0-only
 """
 import asyncio
 import logging
-import multiprocessing, multiprocessing.connection
+import multiprocessing.connection
 import time
 
 from pyDE1.de1 import DE1
-from pyDE1.de1.profile import ProfileByFrames
-from pyDE1.de1.exceptions import DE1NotConnectedError
-from pyDE1.scale import Scale, AtomaxSkaleII
+from pyDE1.exceptions import DE1NotConnectedError
 from pyDE1.flow_sequencer import FlowSequencer
 
 from pyDE1.dispatcher.resource import Resource

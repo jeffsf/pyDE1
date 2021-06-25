@@ -15,7 +15,6 @@ import logging
 from statistics import median
 from typing import Tuple, List
 
-import pyDE1.default_logger
 from pyDE1.scale.processor import ScaleProcessor, ScaleProcessorError
 
 logger = logging.getLogger('Estimator')

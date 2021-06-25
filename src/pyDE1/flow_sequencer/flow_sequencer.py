@@ -21,8 +21,8 @@ from typing import Optional, Callable, Coroutine, List
 from pyDE1.de1 import DE1
 from pyDE1.de1.events import ShotSampleUpdate, StateUpdate, \
     ShotSampleWithVolumesUpdate
-from pyDE1.de1.c_api import API_MachineStates, API_Substates, CUUID
-from pyDE1.de1.exceptions import DE1APIError, DE1APITypeError, DE1APIValueError, \
+from pyDE1.de1.c_api import API_MachineStates, API_Substates
+from pyDE1.exceptions import DE1APIValueError, \
     DE1APIAttributeError
 
 from pyDE1.i_target_setter import I_TargetSetter

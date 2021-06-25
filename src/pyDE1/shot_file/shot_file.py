@@ -14,8 +14,6 @@ import time
 
 from typing import Optional, Coroutine
 
-import pyDE1.default_logger
-
 from pyDE1.de1.c_api import API_MachineStates
 from pyDE1.event_manager import SubscribedEvent
 from pyDE1.de1.events import ShotSampleUpdate, ShotSampleWithVolumesUpdate

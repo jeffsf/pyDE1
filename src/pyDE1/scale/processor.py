@@ -14,7 +14,6 @@ import logging
 from typing import Optional, List, Tuple, Coroutine, Callable
 from uuid import UUID
 
-import pyDE1.default_logger
 from pyDE1.scale import Scale, ScaleError
 from pyDE1.event_manager import SubscribedEvent
 from pyDE1.scale.events import ScaleWeightUpdate, ScaleTareSeen, \

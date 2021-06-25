@@ -11,7 +11,6 @@ import enum
 import logging
 import re
 
-import pyDE1.default_logger
 logger_cancel_tasks = logging.getLogger('CancelTasks')
 
 
@@ -76,3 +75,75 @@ def fix_enums(val):
         return val.hex()
     else:
         return val
+
+
+def data_as_hex(data):
+    hex_data = data.hex()
+    return ' '.join(b0 + b1 for b0, b1
+                    in zip(hex_data[0::2], hex_data[1::2]))
+
+
+re_data_is_ascii_readable = re.compile('^[\x20-\x7e]*$')
+re_data_is_ascii_readable_with_subs = re.compile('^[\r\n\t\x20-\x7e]*$')
+tt_rnt_glyphs = str.maketrans("\r\n\t", "\u240d\u240a\u2409")
+tt_space_glpyh = str.maketrans(" ", "\u2423")
+
+
+def data_as_readable(data, replace_rnt=True, replace_space=False):
+    """
+    Convert a string, bytes, or bytearray object to a "readable" string
+    if able to do so, return '' if not readable.
+
+    "readable" is only containing the ASCII characters [space] through ~ (tilde)
+    potentially with substitution of glyphs for \r \n \t and/or [space]
+
+    Ref: http://www.unicode.org/charts/PDF/U2400.pdf
+
+    :param data:            str, bytes, or bytearray to be converted
+    :param replace_rnt:     Allow \r \n \t and substitute ␍ ␊ ␉
+                            (considered not readable otherwise)
+    :param replace_space:   Substitute ␣ for [space]
+    :return:                str: converted to readable, or ''
+    """
+    if isinstance(data, (bytes, bytearray)):
+        data = data.decode('ascii')  # enforce one character per byte
+    if not isinstance(data, str):
+        raise TypeError("Expected str, bytes, or bytearray")
+    out = ""
+    if replace_rnt:
+        if re_data_is_ascii_readable_with_subs.match(data):
+            out = data.translate(tt_rnt_glyphs)
+    else:
+        if re_data_is_ascii_readable.match(data):
+            out = data
+    if replace_space:
+        out = out.translate(tt_space_glpyh)
+    return out
+
+
+def data_as_readable_or_hex(data, replace_rnt=True, replace_space=False):
+    """
+    Convert a string, bytes, or bytearray object to a "readable" string
+    if able to do so, return data_as_hex(data) if not readable.
+
+    "readable" is only containing the ASCII characters [space] through ~ (tilde)
+    potentially with substitution of glyphs for \r \n \t and/or [space]
+
+    Ref: http://www.unicode.org/charts/PDF/U2400.pdf
+
+    :param data:            str, bytes, or bytearray to be converted
+    :param replace_rnt:     Allow \r \n \t and substitute ␍ ␊ ␉
+                            (considered not readable otherwise)
+    :param replace_space:   Substitute ␣ for [space]
+    :return:                str: converted to readable, else data_as_hex(data)
+    """
+    if len(data) == 0:
+        return ''
+    out = data_as_readable(data, replace_rnt, replace_space)
+    if len(out) == 0:
+        if not isinstance(data, (bytes, bytearray)):
+            # Try to be helpful and assume it is byte-by-byte
+            # data_as_readable() has already confirmed str, bytes, bytearray
+            data = data.encode('ascii')
+        out = data_as_hex(data)
+    return out

@@ -14,7 +14,7 @@ Provide "mock" classes for use in inbound API process
 NB: Must be imported AFTER any imports of DE1, Scale, FlowSequencer, ...
 """
 import logging
-import multiprocessing, multiprocessing.connection
+import multiprocessing.connection
 import sys
 from typing import Optional, Union, NamedTuple
 
@@ -30,21 +30,18 @@ pname = f"into {multiprocessing.current_process().name} process"
 if 'pyDE1.de1' in sys.modules:
     from pyDE1.de1 import DE1
 else:
-    print("Importing stub for DE1", pname)
     logger.info("Importing stub for DE1")
     from pyDE1.dispatcher.stubs import DE1
 
 if 'pyDE1.scale' in sys.modules:
     from pyDE1.scale import Scale
 else:
-    print("Importing stub for Scale", pname)
     logger.info("Importing stub for Scale")
     from pyDE1.dispatcher.stubs import Scale
 
 if 'pyDE1.flow_sequencer' in sys.modules:
     from pyDE1.flow_sequencer import FlowSequencer
 else:
-    print("Importing stub for FlowSequencer", pname)
     logger.info("Importing stub for FlowSequencer")
     from pyDE1.dispatcher.stubs import FlowSequencer
 
@@ -60,7 +57,7 @@ else:
 from pyDE1.de1.c_api import PackedAttr, MMR0x80LowAddr, get_cuuid, \
     ShotSettings, SetTime, Versions, WaterLevels
 
-from pyDE1.de1.exceptions import DE1APIValueError
+from pyDE1.exceptions import DE1APIValueError
 
 MAPPING_VERSION = "2.1.0"
 

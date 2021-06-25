@@ -16,7 +16,6 @@ from typing import Callable
 from bleak.backends.device import BLEDevice
 from bleak.backends.scanner import AdvertisementData
 
-import pyDE1.default_logger
 from pyDE1.scale import Scale
 from pyDE1.scale.events import ScaleWeightUpdate, ScaleButtonPress
 
