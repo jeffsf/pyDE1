@@ -61,7 +61,7 @@ from pyDE1.de1.c_api import PackedAttr, MMR0x80LowAddr, get_cuuid, \
 
 from pyDE1.de1.exceptions import DE1APIValueError
 
-MAPPING_VERSION = "1.0.0"
+MAPPING_VERSION = "1.1.0"
 
 
 class IsAt (NamedTuple):
@@ -346,6 +346,10 @@ MAPPING[Resource.DE1_CALIBRATION_FLOW_MULTIPLIER] = {
                        attr_path='', v_type=float),
 }
 
+MAPPING[Resource.DE1_CALIBRATION_LINE_FREQUENCY] = {
+    'hz': IsAt(target=DE1, attr_path='line_frequency', v_type=int)
+}
+
 MAPPING[Resource.SCALE_ID] = {
     'name': IsAt(target=Scale, attr_path='name', v_type=str,
                  read_only=True),
@@ -389,6 +393,7 @@ MAPPING[Resource.DE1_SETTING] = {
 
 MAPPING[Resource.DE1_CALIBRATION] = {
     'flow_multiplier': MAPPING[Resource.DE1_CALIBRATION_FLOW_MULTIPLIER],
+    'line_frequency': MAPPING[Resource.DE1_CALIBRATION_LINE_FREQUENCY],
     # 'internal': Mapping[Resource.DE1_CALIBRATION_INTERNAL],
 }
 

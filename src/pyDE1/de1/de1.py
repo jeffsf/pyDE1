@@ -796,7 +796,8 @@ class DE1 (Singleton):
     @line_frequency.setter
     def line_frequency(self, value):
         if value not in [50, 60]:
-            raise DE1ValueError(f"Line frequency must be 50 or 60 ({value})")
+            raise DE1APIValueError(f"Line frequency must be 50 or 60 ({value})")
+        self._line_frequency = value
 
     # Perhaps one day volume dispensed will be tracked by the firmware
 

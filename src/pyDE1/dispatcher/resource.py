@@ -10,7 +10,7 @@ Enum that defines the recognized resources that the Dispatcher can access
 
 import enum
 
-RESOURCE_VERSION = '1.0.0'
+RESOURCE_VERSION = '1.1.0'
 
 class Resource (enum.Enum):
 
@@ -50,6 +50,7 @@ class Resource (enum.Enum):
     DE1_SETTING_TIME = 'de1/setting/time'
 
     DE1_CALIBRATION = 'de1/calibration'
+    DE1_CALIBRATION_LINE_FREQUENCY = 'de1/calibration/line_frequency'
     DE1_CALIBRATION_FLOW_MULTIPLIER = 'de1/calibration/flow_multiplier'
     DE1_CALIBRATION_INTERNAL = 'de1/calibration/internal'
 
