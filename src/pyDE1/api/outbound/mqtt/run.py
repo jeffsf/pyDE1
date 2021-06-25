@@ -54,7 +54,7 @@ def run_api_outbound(api_outbound_queue: multiprocessing.Queue):
 
     MQTT_CLIENT_ID = f"pyDE1@{gethostname()}[{os.getpid()}]"
 
-    MQTT_BROKER_HOSTNAME = '::'
+    MQTT_BROKER_HOSTNAME = '127.0.0.1'
     MQTT_BROKER_PORT = 1883
 
     MQTT_TRANSPORT = 'tcp'

@@ -227,6 +227,6 @@ def run_api_inbound(api_pipe: multiprocessing.connection.Connection):
             )
             return
 
-    server = http.server.HTTPServer(('localhost', 1234),
+    server = http.server.HTTPServer(('0.0.0.0', 1234),
                                     RequestHandler)
     server.serve_forever()
