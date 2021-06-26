@@ -10,6 +10,7 @@ SPDX-License-Identifier: GPL-3.0-only
 
 import asyncio
 import atexit
+import json
 import logging
 import time
 
@@ -338,6 +339,8 @@ class DE1 (Singleton):
         # coro_list = map(lambda pa: self.start_notifying(pa.cuuid), cuuid_list)
         # await asyncio.gather(*coro_list)
 
+    # TODO: Remember to read CUUID.StateInfo on connect/reconnect
+
     async def start_standard_periodic_notifiers(self):
         """
         Enable the return of read requests from MMR
@@ -380,8 +383,13 @@ class DE1 (Singleton):
             except ValueError:
                 # Not a known addr, so not readable
                 wait_for = None
-        elif cuuid.can_read:  # Presently excludes CUUID.WriteToMMR
-            wait_for =  self.read_cuuid(cuuid)
+
+        elif cuuid.can_read and cuuid not in (
+                CUUID.WriteToMMR,   # Decode not implemented
+                CUUID.HeaderWrite,  # Decode not implemented
+                CUUID.FrameWrite):  # Decode not implemented
+            wait_for = self.read_cuuid(cuuid)
+
         else:
             wait_for = None
 
@@ -508,6 +516,25 @@ class DE1 (Singleton):
     # Upload a shot profile
     #
 
+    # API version
+
+    async def upload_json_v2_profile(self, profile: Union[bytes,
+                                                          bytearray,
+                                                          str]):
+        if isinstance(profile, (bytes, bytearray)):
+            profile = profile.decode('utf-8')
+        elif isinstance(profile, str):
+            pass
+        else:
+            raise DE1APITypeError(
+                "Profile should be bytes, bytearray, or str, "
+                f"not {type(profile)}")
+        pj = json.loads(profile)
+        pbf = ProfileByFrames().from_json(pj)
+        await self.upload_profile(pbf)
+
+    # "Internal" version
+
     async def upload_profile(self, profile: ProfileByFrames,
                              force=True):
         try:
@@ -518,16 +545,16 @@ class DE1 (Singleton):
                 API_MachineStates.Espresso
             )
         except AttributeError:
-            logger.error(
+            raise DE1APIAttributeError(
                 "Profile upload called without a FlowSequencer. Not uploading")
-            return
 
         if task_name_exists('upload_profile'):
             if force:
                 logger.warning('Profile upload in progress being canceled')
                 await self.cancel_profile_upload()
             else:
-                raise DE1OperationInProgressError
+                raise DE1OperationInProgressError(
+                    'There is already a profile upload in progress')
         profile_upload_stopped = asyncio.Event()
         await asyncio.create_task(self._upload_profile(
             profile=profile,

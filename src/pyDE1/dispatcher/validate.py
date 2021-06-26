@@ -33,16 +33,36 @@ from pyDE1.dispatcher.resource import Resource
 from pyDE1.dispatcher.mapping import MAPPING, IsAt
 
 
-def validate_patch_return_targets(resource: Resource, patch: dict) -> dict:
+def validate_patch_return_targets(resource: Resource,
+                                  patch: Union[dict,
+                                               bytes, bytearray]) -> dict:
+    mapping = MAPPING[resource]
+
+    # Valid: dict with dict
+    #        IsAt with byte, bytearray (profile or firmware)
+    if isinstance(mapping, dict) and isinstance(patch, dict):
+        pass
+    elif isinstance(mapping, IsAt) \
+        and isinstance(patch, (bytes, bytearray)):
+        # coerce into "standard form"
+        patch = { None: patch }
+    else:
+        raise DE1APITypeError(
+            "Mapping and patch inconsistent, "
+            "dict with dict, IsAt with raw value "
+            f"not {type(mapping)} with {type(patch)}"
+        )
+
     results = {
         'DE1': False,
         'Scale': False
     }
     _validate_patch_inner(patch=patch,
-                          mapping=MAPPING[resource],
+                          mapping=mapping,
                           path='',
                           targets=results)
     return results
+
 
 def _validate_patch_inner(patch: dict, mapping: dict, path: str, targets: dict):
 
@@ -54,7 +74,10 @@ def _validate_patch_inner(patch: dict, mapping: dict, path: str, targets: dict):
             this_path = key
 
         try:
-            mapping_value = mapping[key]
+            if key is not None:
+                mapping_value = mapping[key]
+            else:
+                mapping_value = mapping
         except KeyError:
             raise DE1APIAttributeError(f"No mapping found for {this_path}")
 

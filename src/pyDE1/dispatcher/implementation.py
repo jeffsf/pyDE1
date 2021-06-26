@@ -155,6 +155,10 @@ async def _get_mapping_to_dict(partial_dict: dict) -> dict:
       * Recursively calls itself if a dict
       * Passes any other values unmodified
     """
+
+    if isinstance(partial_dict, IsAt):
+        partial_dict = { None: partial_dict }
+
     if not isinstance(partial_dict, dict):
         raise DE1APITypeError(f"Expected a dict, not {type(partial_dict)}")
 
@@ -192,6 +196,13 @@ def _get_target_sets_inner(partial_dict: dict,
     'PacketAttr' and 'MMR0x80LowAddr', each with a set of targets.
     The dict_of_sets is modified in-place.
     """
+
+    # See also validate.py
+    # Valid: dict with dict
+    #        IsAt with byte, bytearray (profile or firmware)
+    if isinstance(partial_dict, IsAt):
+        partial_dict = { None: partial_dict }
+
     if not isinstance(partial_dict, dict):
         raise DE1APITypeError(f"Expected a dict, not {type(partial_dict)}")
 
@@ -292,7 +303,13 @@ async def patch_resource_from_dict(resource: Resource, values_dict: dict):
     # TODO: PackedAttr "getter" that will wait on a pending update, if one is
     #       in flight, as well as unify the retrieval if not present
 
-    target_sets = get_target_sets(values_dict, include_can_write=True)
+    # target_sets = get_target_sets(values_dict, include_can_write=True)
+
+    # TODO: Fix this -- this needs a mapping, the way it is written now
+    #       It really should only return those that are being changed
+    #       in the case of a PATCH
+
+    target_sets = get_target_sets(mapping, include_can_write=True)
 
     # Lock here
     de1 = DE1()
@@ -319,6 +336,24 @@ async def patch_resource_from_dict(resource: Resource, values_dict: dict):
         # pending_packed_attrs[pa] = last_value
 
     pending_packed_attrs = {}
+
+    # Valid: dict with dict
+    #        IsAt with byte, bytearray (profile or firmware)
+    if isinstance(mapping, dict) \
+            and isinstance(values_dict, dict):
+        pass
+    elif isinstance(mapping, IsAt) \
+        and isinstance(values_dict, (bytes, bytearray)):
+        # coerce into "standard form"
+        mapping = { None: mapping }
+        values_dict = { None: values_dict }
+    else:
+        raise DE1APITypeError(
+            "Mapping and patch inconsistent, "
+            "dict with dict, IsAt with raw value "
+            f"not {type(mapping)} with {type(values_dict)}"
+        )
+
     await _patch_dict_to_mapping_inner(values_dict, mapping,
                                        pending_packed_attrs)
 
@@ -329,7 +364,6 @@ async def patch_resource_from_dict(resource: Resource, values_dict: dict):
         await de1.write_packed_attr(pa)
 
     # release locks
-
 
     return
 

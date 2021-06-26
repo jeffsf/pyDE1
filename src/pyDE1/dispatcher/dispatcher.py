@@ -11,11 +11,12 @@ import multiprocessing, multiprocessing.connection
 import time
 
 from pyDE1.de1 import DE1
+from pyDE1.de1.profile import ProfileByFrames
 from pyDE1.de1.exceptions import DE1NotConnectedError
 from pyDE1.scale import Scale, AtomaxSkaleII
 from pyDE1.flow_sequencer import FlowSequencer
 
-from pyDE1.dispatcher.mapping import MAPPING
+from pyDE1.dispatcher.resource import Resource
 from pyDE1.dispatcher.payloads import APIRequest, APIResponse, HTTPMethod
 from pyDE1.dispatcher.implementation import get_resource_to_dict, \
     patch_resource_from_dict
@@ -109,7 +110,9 @@ async def _request_queue_processor(request_queue: asyncio.Queue,
                 payload = resource_dict,
                 exception=exception,
             )
+
         elif got.method is HTTPMethod.PATCH:
+            resource_dict = None
             try:
                 # TODO: Should be "ready" and not just "connected"
                 if not de1.is_connected \
@@ -118,8 +121,8 @@ async def _request_queue_processor(request_queue: asyncio.Queue,
                 if not scale_processor.scale.is_connected \
                     and got.connectivity_required['Scale']:
                     raise DE1NotConnectedError("Scale not connected")
-                resource_dict = await patch_resource_from_dict(got.resource,
-                                                               got.payload)
+                await patch_resource_from_dict(got.resource,
+                                               got.payload)
             except Exception as e:
                 exception = e
                 logger.error(
@@ -134,6 +137,35 @@ async def _request_queue_processor(request_queue: asyncio.Queue,
                 payload = resource_dict,
                 exception=exception,
             )
+
+        elif got.method is HTTPMethod.PUT \
+                and got.resource is Resource.DE1_PROFILE:
+            try:
+                # TODO: Should be "ready" and not just "connected"
+                if not de1.is_connected \
+                        and got.connectivity_required['DE1']:
+                    raise DE1NotConnectedError("DE1 not connected")
+                if not scale_processor.scale.is_connected \
+                    and got.connectivity_required['Scale']:
+                    raise DE1NotConnectedError("Scale not connected")
+
+                # TODO: Implement PUT properly (check for completeness)
+                await patch_resource_from_dict(got.resource,
+                                               got.payload)
+            except Exception as e:
+                exception = e
+                logger.error(
+                    f"Exception in processing {got.method} {got.resource}"
+                    f" {repr(exception)}")
+
+            response = APIResponse(
+                original_timestamp=got.timestamp,
+                timestamp=time.time(),
+                payload = None,
+                exception=exception,
+            )
+
+
         else:
             response = APIResponse(
                 original_timestamp=got.timestamp,

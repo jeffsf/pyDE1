@@ -62,7 +62,7 @@ from pyDE1.de1.c_api import PackedAttr, MMR0x80LowAddr, get_cuuid, \
 
 from pyDE1.de1.exceptions import DE1APIValueError
 
-MAPPING_VERSION = "2.0.0"
+MAPPING_VERSION = "2.1.0"
 
 
 class IsAt (NamedTuple):
@@ -188,6 +188,12 @@ MAPPING[Resource.VERSION] = {
     'module_versions': module_versions()
 }
 
+# "Specials" -- content-only
+
+MAPPING[Resource.DE1_PROFILE] = IsAt(target=DE1, attr_path=None,
+                                     setter_path='upload_json_v2_profile',
+                                     v_type=Union[bytes, bytearray])
+
 # Work from leaves back, so can be "included" by reference
 
 # For now, these are not writable
@@ -206,7 +212,7 @@ MAPPING[Resource.DE1_MODE] = {
 }
 # TODO: de1.mode()
 
-# DE1_PROFILE = 'de1/profile'
+DE1_PROFILE = 'de1/profile'
 # DE1_PROFILES = 'de1/profiles'
 # DE1_PROFILE_UPLOAD = 'de1/profile/{id}/upload'
 
