@@ -18,7 +18,6 @@ from typing import Optional, Callable, Coroutine, Any, Union
 
 from bleak import BleakScanner, BleakClient, BleakError
 from bleak import BleakError, BleakClient, BleakScanner
-from bleak.backends.bluezdbus.client import BleakClientBlueZDBus
 from bleak.backends.device import BLEDevice
 from bleak.backends.scanner import AdvertisementData
 
@@ -125,10 +124,11 @@ class Scale:
                 "Changing the scale address is not yet supported")
         # If using BLEDevice directly
         # AttributeError: 'BleakClientBlueZDBus' object has no attribute 'lower'
-        if isinstance(address, BleakClientBlueZDBus):
-            self._address = address.address
-        else:
-            self._address = address
+        try:
+            address = address.address
+        except AttributeError:
+            pass
+        self._address = address
 
     @property
     def name(self):
