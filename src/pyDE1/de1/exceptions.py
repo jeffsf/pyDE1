@@ -5,117 +5,121 @@ License for this software, part of the pyDE1 package, is granted under
 GNU General Public License v3.0 only
 SPDX-License-Identifier: GPL-3.0-only
 """
-from http import HTTPStatus
 
 
 class DE1Error (RuntimeError):
-    def __init__(self, *args, **kwargs):
-        super(DE1Error, self).__init__(args, kwargs)
+    pass
 
 
 class DE1ValueError (DE1Error, ValueError):
-    def __init__(self, *args, **kwargs):
-        super(DE1ValueError, self).__init__(args, kwargs)
+    pass
 
 
 class DE1TypeError (DE1Error, TypeError):
-    def __init__(self, *args, **kwargs):
-        super(DE1TypeError, self).__init__(args, kwargs)
+    pass
 
 
 class DE1AttributeError(DE1Error, AttributeError):
-    def __init__(self, *args, **kwargs):
-        super(DE1AttributeError, self).__init__(args, kwargs)
+    pass
 
 
 class DE1NoAddressError (DE1Error):
-    def __init__(self, *args, **kwargs):
-        super(DE1NoAddressError, self).__init__(args, kwargs)
+    pass
 
 
 class DE1NotConnectedError (DE1Error):
-    def __init__(self, *args, **kwargs):
-        super(DE1NotConnectedError, self).__init__(args, kwargs)
+    pass
 
 
 class DE1NoHandlerError(DE1Error):
-    def __init__(self, *args, **kwargs):
-        super(DE1NoHandlerError, self).__init__(args, kwargs)
+    pass
 
 
 class DE1ErrorStateReported(DE1Error):
-    def __init__(self, *args, **kwargs):
-        super(DE1ErrorStateReported, self).__init__(args, kwargs)
+    pass
 
 
 class DE1OperationInProgressError(DE1Error):
-    def __init__(self, *args, **kwargs):
-        super(DE1OperationInProgressError, self).__init__(args, kwargs)
+    pass
 
 
 class DE1APIError (DE1Error):
-    def __init__(self, *args, **kwargs):
-        super(DE1APIError, self).__init__(*args, **kwargs)
+    pass
 
 
-class DE1APITypeError (TypeError, DE1APIError):
-    def __init__(self, *args, **kwargs):
-        super(DE1APITypeError, self).__init__(*args, **kwargs)
+class DE1APITypeError (DE1APIError, TypeError):
+    pass
 
 
-class DE1APIValueError (ValueError, DE1APIError):
+class DE1APIValueError (DE1APIError, ValueError):
     def __init__(self, *args, **kwargs):
         super(DE1APIValueError, self).__init__(*args, **kwargs)
 
 
+class DE1APIUnsupportedFeatureError (DE1APIValueError):
+    pass
+
+
+# Pickle of custom exceptions discussed at
+# https://stackoverflow.com/questions/16244923/how-to-make-a-custom-exception-class-with-multiple-init-args-pickleable
+
 class DE1APIUnsupportedStateTransitionError (DE1APIValueError):
-    def __init__(self, target_state, current_state, *args, **kwargs):
-        message = "I'm afraid I can't do that Dave." \
-                  f" Can't move to {target_state} from {current_state}"
+    def __init__(self, target_mode, current_state, current_substate,
+                 *args, **kwargs):
+        # Formatting the message for the super call still fails un-pickle
+        try:
+            current_state = current_state.name
+        except AttributeError:
+            pass
+        try:
+            current_substate = current_substate.name
+        except AttributeError:
+            pass
+        self.target_mode = target_mode
+        self.current_state = current_state
+        self.current_substate = current_substate
         super(DE1APIUnsupportedStateTransitionError, self).__init__(
-            message, *args, **kwargs)
+            "I'm afraid I can't do that Dave. Can't move to "
+            f"{target_mode} from {current_state}, {current_substate}",
+            *args, **kwargs)
+
+    def __reduce__(self):
+        return (DE1APIUnsupportedStateTransitionError, (self.target_mode,
+                                                        self.current_state,
+                                                        self.current_substate))
 
 
-class DE1APIAttributeError (AttributeError, DE1APIError):
-    def __init__(self, *args, **kwargs):
-        super(DE1APIAttributeError, self).__init__(*args, **kwargs)
+class DE1APIAttributeError (DE1APIError, AttributeError):
+    pass
 
 
-class DE1APIKeyError(AttributeError, DE1APIError):
-    def __init__(self, *args, **kwargs):
-        super(DE1APIKeyError, self).__init__(*args, **kwargs)
+class DE1APIKeyError(DE1APIError, KeyError):
+    pass
 
 
 class DE1APITooManyFramesError (DE1APIValueError):
-    def __init__(self, *args, **kwargs):
-        super(DE1APITooManyFramesError, self).__init__(*args, **kwargs)
+    pass
 
 
 class MMRTypeError (DE1APITypeError):
-    def __init__(self, *args, **kwargs):
-        super(MMRTypeError, self).__init__(*args, **kwargs)
+    pass
 
 
 class MMRValueError (DE1APIValueError):
-    def __init__(self, *args, **kwargs):
-        super(MMRValueError, self).__init__(*args, **kwargs)
+    pass
 
 
 class MMRDataTooLongError (MMRValueError):
-    def __init__(self, *args, **kwargs):
-        super(MMRDataTooLongError, self).__init__(*args, **kwargs)
+    pass
 
 
 class MMRAddressError (MMRValueError):
-    def __init__(self, *args, **kwargs):
-        super(MMRAddressError, self).__init__(*args, **kwargs)
+    pass
 
 
 class MMRAddressRangeError (MMRAddressError):
-    def __init__(self, *args, **kwargs):
-        super(MMRAddressRangeError, self).__init__(*args, **kwargs)
+    pass
 
 
 class MMRAddressOffsetError (MMRAddressError):
-    def __init__(self, *args, **kwargs):
-        super(MMRAddressOffsetError, self).__init__(*args, **kwargs)
+    pass

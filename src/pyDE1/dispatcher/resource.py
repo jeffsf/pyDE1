@@ -10,7 +10,7 @@ Enum that defines the recognized resources that the Dispatcher can access
 
 import enum
 
-RESOURCE_VERSION = '1.1.0'
+RESOURCE_VERSION = '1.2.0'
 
 class Resource (enum.Enum):
 
@@ -76,6 +76,7 @@ class Resource (enum.Enum):
     @property
     def can_get(self):
         retval = True
+        # False if in
         if self in (
             self.DE1_PROFILE,
             self.DE1_FIRMWARE,
@@ -89,6 +90,7 @@ class Resource (enum.Enum):
     @property
     def can_put(self):
         retval = True
+        # False if in
         if self in (
                 self.DE1_READ_ONCE,
                 self.VERSION,
@@ -100,6 +102,7 @@ class Resource (enum.Enum):
     def can_patch(self):
         retval = self.can_put
         # Can't PATCH firmware or profiles, have to PUT
+        # False if in
         if self in (
                 self.DE1_FIRMWARE,
                 self.DE1_PROFILE,
@@ -110,11 +113,13 @@ class Resource (enum.Enum):
     @property
     def can_post(self):
         retval = False
-        if self in (
-                self.DE1_FIRMWARE,
-                self.DE1_PROFILE,
-        ):
-            retval = True
+        # No POST implemented
+        # # TRUE if in
+        # if self in (
+        #         self.DE1_FIRMWARE,
+        #         self.DE1_PROFILE,
+        # ):
+        #     retval = True
         return retval
 
     @property
@@ -142,8 +147,7 @@ class DE1ModeEnum (enum.Enum):
     SKIP_TO_NEXT = 'SkipToNext'
 
     # Only valid for non-GHC machines
-    # TODO: Non-GHC implementation, including DE1.features object
-    # ESPRESSO = 'Espresso'
-    # STEAM = 'Steam'
-    # HOT_WATER = 'HotWater'
-    # HOT_WATER_RINSE = 'HotWaterRinse'
+    ESPRESSO = 'Espresso'
+    STEAM = 'Steam'
+    HOT_WATER = 'HotWater'
+    HOT_WATER_RINSE = 'HotWaterRinse'

@@ -46,6 +46,10 @@ def run_api_inbound(api_pipe: multiprocessing.connection.Connection):
 
     from http import HTTPStatus
 
+    # This one is needed as it has specific fields that need to be unpickled
+    from pyDE1.de1.exceptions import DE1APIUnsupportedStateTransitionError, \
+        DE1APIUnsupportedFeatureError
+
     from pyDE1.dispatcher.resource import Resource
     from pyDE1.dispatcher.payloads import APIRequest, APIResponse, HTTPMethod
     from pyDE1.dispatcher.validate import validate_patch_return_targets
@@ -231,6 +235,10 @@ def run_api_inbound(api_pipe: multiprocessing.connection.Connection):
 
                 if isinstance(resp.exception,
                               DE1APIUnsupportedStateTransitionError):
+                    http_status = HTTPStatus.CONFLICT
+
+                elif isinstance(resp.exception,
+                                DE1APIUnsupportedFeatureError):
                     http_status = HTTPStatus.IM_A_TEAPOT
 
                 elif isinstance(resp.exception, DE1APIError):
@@ -347,6 +355,10 @@ def run_api_inbound(api_pipe: multiprocessing.connection.Connection):
 
                 if isinstance(resp.exception,
                               DE1APIUnsupportedStateTransitionError):
+                    http_status = HTTPStatus.CONFLICT
+
+                elif isinstance(resp.exception,
+                                DE1APIUnsupportedFeatureError):
                     http_status = HTTPStatus.IM_A_TEAPOT
 
                 elif isinstance(resp.exception, DE1APIError):

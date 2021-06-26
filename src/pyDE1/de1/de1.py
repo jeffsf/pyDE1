@@ -9,7 +9,6 @@ SPDX-License-Identifier: GPL-3.0-only
 # TODO: Notifying locks on profile and firmware upload
 
 import asyncio
-import atexit
 import json
 import logging
 import time
@@ -17,7 +16,6 @@ import time
 from copy import copy
 from typing import Union, Dict, Coroutine, Optional, List, Callable
 
-from bleak import BleakClient
 from bleak.backends.device import BLEDevice
 from bleak.backends.scanner import AdvertisementData
 
@@ -34,7 +32,7 @@ from pyDE1.de1.c_api import \
     PackedAttr, RequestedState, ReadFromMMR, WriteToMMR, StateInfo, \
     FWMapRequest, FWErrorMapRequest, FWErrorMapResponse, \
     API_MachineStates, API_Substates, MAX_FRAMES, get_cuuid, MMR0x80LowAddr, \
-    packed_attr_from_cuuid, pack_one_mmr0x80_write
+    packed_attr_from_cuuid, pack_one_mmr0x80_write, MMRGHCInfoBitMask
 
 from pyDE1.de1.ble import CUUID
 from pyDE1.de1.notifications import NotificationState, MMR0x80Data
@@ -201,6 +199,14 @@ class DE1 (Singleton):
     @property
     def event_shot_sample_with_volumes_update(self):
         return self._event_shot_sample_with_volumes_update
+
+    @property
+    def allow_flow_start_commands(self):
+        ghc_info = self._mmr_dict[MMR0x80LowAddr.GHC_INFO].data_decoded
+        if ghc_info is None or ghc_info & MMRGHCInfoBitMask.GHC_ACTIVE:
+            return False
+        else:
+            return True
 
     # NB: Linux apparently "needs" a scan when connecting by address
     #     It may be the case that this disconnects other devices
@@ -1002,17 +1008,43 @@ class DE1 (Singleton):
     def auto_off_time(self):
         return None
 
+    # Non-GHC only -- no checking for GHC presence at this level
+
+    async def _flow_start_espresso(self):
+        await self.write_packed_attr(RequestedState(
+            State=API_MachineStates.Espresso))
+
+    async def _flow_start_hot_water_rinse(self):
+        await self.write_packed_attr(RequestedState(
+            State=API_MachineStates.HotWaterRinse))
+
+    async def _flow_start_steam(self):
+        await self.write_packed_attr(RequestedState(
+            State=API_MachineStates.Steam))
+
+    async def _flow_start_hot_water(self):
+        await self.write_packed_attr(RequestedState(
+            State=API_MachineStates.HotWater))
+
+    # General mode activation -- check is here for GHC or not
+
     async def mode_setter(self, mode: DE1ModeEnum):
         assert isinstance(mode, DE1ModeEnum), \
             f"mode of {mode} not a DE1ModeEnum in DE1.mode_setter()"
+
+        # Ensure GHC data has been read
+        if self._mmr_dict[MMR0x80LowAddr.GHC_INFO].data_decoded is None:
+            logger.info("GHC_INFO not present, reading now.")
+            await self.read_one_mmr0x80_and_wait(MMR0x80LowAddr.GHC_INFO)
+
         cs = self.current_state
         if cs is API_MachineStates.NoRequest:
             logger.warning(f"Refreshing current state as is NoRequest")
             await self.read_cuuid(CUUID.StateInfo)
             cs = self.current_state
+        css = self.current_substate
         logger.debug(f"Request to change mode to {mode} "
                      f"while in {API_MachineStates(cs).name}")
-
 
         if mode is DE1ModeEnum.SLEEP:
             if cs is API_MachineStates.Idle:
@@ -1022,7 +1054,7 @@ class DE1 (Singleton):
                                       API_MachineStates.GoingToSleep):
                 pass
             else:
-                raise DE1APIUnsupportedStateTransitionError (mode, cs)
+                raise DE1APIUnsupportedStateTransitionError(mode, cs, css)
 
         elif mode is DE1ModeEnum.WAKE:
             logger.debug(f"In WAKE, cs: {API_MachineStates(cs).name}")
@@ -1048,22 +1080,53 @@ class DE1 (Singleton):
                         API_MachineStates.SkipToNext,
                         API_MachineStates.Refill,
                         API_MachineStates.InBootLoader):
-                raise DE1APIUnsupportedStateTransitionError(mode, cs)
+                raise DE1APIUnsupportedStateTransitionError(mode, cs, css)
             else:
                 logger.debug("API triggered idle()")
                 await self.idle()
 
         elif mode is DE1ModeEnum.SKIP_TO_NEXT:
 
-            if cs in (API_MachineStates.Espresso) \
+            if cs is API_MachineStates.Espresso \
                 and self.current_substate in (API_Substates.PreInfuse,
                                               API_Substates.Pour):
                 logger.debug("API triggered skip_to_next()")
                 await self.skip_to_next()
             else:
-                raise DE1APIUnsupportedStateTransitionError(
-                    mode, f"{cs}, {self.current_substate}")
+                raise DE1APIUnsupportedStateTransitionError(mode, cs, css)
 
+        elif mode in (DE1ModeEnum.ESPRESSO,
+                      DE1ModeEnum.HOT_WATER_RINSE,
+                      DE1ModeEnum.STEAM,
+                      DE1ModeEnum.HOT_WATER,
+                      ):
+
+            if not self.allow_flow_start_commands:
+                raise DE1APIUnsupportedFeatureError(
+                    f"DE1 does not permit {mode} unless GHC is not installed."
+                )
+
+            if cs is not API_MachineStates.Idle:
+                raise DE1APIUnsupportedStateTransitionError(mode, cs, css)
+
+            if mode is DE1ModeEnum.ESPRESSO:
+                logger.debug("API triggered _flow_start_espresso()")
+                await self._flow_start_espresso()
+
+            elif mode is DE1ModeEnum.HOT_WATER_RINSE:
+                logger.debug("API triggered _flow_start_hot_water_rinse()")
+                await self._flow_start_hot_water_rinse()
+
+            elif mode is DE1ModeEnum.STEAM:
+                logger.debug("API triggered _flow_start_steam()")
+                await self._flow_start_steam()
+
+            elif mode is DE1ModeEnum.HOT_WATER:
+                logger.debug("API triggered _flow_start_hot_water()")
+                await self._flow_start_hot_water()
+
+        else:
+            raise DE1APIUnsupportedStateTransitionError(mode, cs, css)
 
 
 
