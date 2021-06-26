@@ -15,23 +15,103 @@ SPDX-License-Identifier: GPL-3.0-only
 
 This represents work-in-progress to an API-first implementation of core software for a controller for the DE1.
 
-The API is not stable at this time and is subject to change without notice.
+The extent of functionality should be sufficient to upload profiles and pull shots, flush the group, steam, and draw hot water through the API, with stop-at-time, --volume, and -mass. Continuous updates of flow parameters, and state transitions are provided over MQTT. Firmware upload is supported, though not yet revealed in the API.
 
-This repo may have non-fast-forward commits.
+The APIs are under semantic versioning. The REST-like, HTTP-transport versions can be retrieved from `version` at the document root, and also include the Python and package versions installed. Each of the JSON-formatted, MQTT packets contains a `version` key:value for that payload.
 
-Consumers can expect that there will be stable "inbound" (commands to the controller) and "outbound" (notification) APIs. At this time, the outbound payloads are JSON with a form similar to that being produced by the `.as_json()` method of the various subclasses of `EventPayload` and delivered over MQTT 5. 
-
-Ideally, the consumers of these APIs will only need to understand high-level actions, such as "Here is a profile blob, please load it." The operations and choice of connectivity to the devices are planned on being "hidden" behind the APIs.
+Consumers of these APIs should only need to understand high-level actions, such as "Here is a profile blob, please load it." The operations and choice of connectivity to the devices is "hidden" behind the APIs.
 
 ## Revision History
 
+* 2021-06-26 - Content and organizational updates for release 0.3.0
 * 2021-06-22 - Updated for release 0.2.0
 * 2021-06-11 – Updated for release 0.1.0
 * 2021-06-08 – Initial release
 
-## Status
+## Support and Discussion
 
-This code is work in progress and is neither feature-complete nor fully tested. Although most features are working, as described in Section 15 and elsewhere of the GPLv3.0 `LICENSE`:
+Support and discussion is active at DecentForum.com, on Discord in the Decent Espresso server and, to some extent, on the Espresso Aficianados server in the Manufacturers: decent channel. Support is, unfortunately, ***not*** available through Decent Diaspora on Basecamp.
+
+Thanks to all that have been trying this out and providing valuable feedback!
+
+See also [https://github.com/jeffsf/pyDE1](https://github.com/jeffsf/pyDE1) where the *alpha* branch is current. 
+
+## What's New
+
+**Please see CHANGELOG.md for more details**
+
+### 0.3.0
+
+Upload of profile (JSON v2 format) available with PUT at de1/profile
+
+>  curl -D - -X PUT --data @examples/jmk_eb5.json  http://localhost:1234/de1/profile
+
+Line frequency GET/PATCH at de1/calibration/line_frequency implemented. Valid values are 50 or 60. This does not impact the DE1, only if 1/100 or 1/120 is used to calculate volume dispensed.
+
+#### Mapping Version 2.1.0 
+
+* Adds `IsAt.internal_type` to help validate the string values for `DE1ModeEnum` and `ConnectivityEnum`. JSON producers and consumers should sill expect and provide `IsAt.v_type`
+* Enables `de1/profile` for PUT
+
+#### Resource Version 1.1.0
+
+* Adds `DE1_CALIBRATION_LINE_FREQUENCY = 'de1/calibration/line_frequency'`
+
+
+## Requirements
+
+Python 3.8 or later.
+
+Available through `pip`:
+
+* `bleak`
+* `aiologger`
+* `asyncio-mqtt`
+
+An MQTT broker compatible with MQTT 5 clients, such as `mosquitto 2.0` (see [below](#installing-mosquitto))
+
+The Raspberry Pi version of Debian *Buster* ships with Python 3.7, which does not support named `asyncio.Task()` The "walrus operator" is also used.
+
+Python 3.9 is expected to be part of Debian "next". Until that time, https://github.com/pyenv/pyenv can be used to install a version of your choice. On a RPi 3B, a complete build too under 15 minutes.
+
+Development work is being done on *Buster* with Python 3.9.5 on a RPI 3B at this time.
+
+The `bleak` library is supported on macOS, Linux, and Windows. Some development has also been done under macOS.
+
+## Work In Progress
+
+* Provide graceful shutdown of all processes.
+* Daemonize with supervision of Tasks and secondary processes.
+* Bring in [find-first-matching functionality](https://github.com/hbldh/bleak/pull/565) when available from release `bleak`.
+* Clean up the imports with likely a combination of pulling events and exceptions out, along with interface definitions.
+* Documentation, including more doc strings, and typing
+
+## Known Gaps
+
+* Multiprocess logging needs to be unified
+* Manage unexpected disconnects and reconnects
+* Abort long-running actions, such as uploading a profile
+* Timeouts on certain locks and await actions
+* Adding, removing, or replacing the DE1 or scale
+* Potentially move to `aiologger` to reduce logging delays
+* Single-command read of the DE1 debug register
+* Clean, descale, transport
+* Support for non-GHC machines in the API
+* Catalog of discovered BLE devices for the API
+* Quick-start guide
+
+## Other Work
+
+* Onboard, unattended sleep timeout with override (GUI or HA can provide complex "scheduler")
+* Background firmware update
+* MQTT will and MQTT 5 message expiry time
+
+
+## Status — Alpha
+
+This code is work in progress and is neither feature-complete nor fully tested. 
+
+Although most features are working, as described in Section 15 and elsewhere of the GPLv3.0 `LICENSE`:
 
 > THERE IS NO WARRANTY FOR THE PROGRAM, TO THE EXTENT PERMITTED BY
 APPLICABLE LAW.  EXCEPT WHEN OTHERWISE STATED IN WRITING THE COPYRIGHT
@@ -42,13 +122,17 @@ PURPOSE.  THE ENTIRE RISK AS TO THE QUALITY AND PERFORMANCE OF THE PROGRAM
 IS WITH YOU.  SHOULD THE PROGRAM PROVE DEFECTIVE, YOU ASSUME THE COST OF
 ALL NECESSARY SERVICING, REPAIR OR CORRECTION. 
 
-## What's New
+
+
+## What's (Not So) New
+
+_**Please see CHANGELOG.md for more newer details**_
 
 ### 0.2.0
 
 #### Inbound Control and Query API
 
-An inbound API has been provided using a REST-like interface over HTTP. The API should be reasonably complete in its payload and method definitions and comments are welcomed on its sufficency and completeness.
+An inbound API has been provided using a REST-like interface over HTTP. The API should be reasonably complete in its payload and method definitions and comments are welcomed on its sufficiency and completeness.
 
 Both the inbound and outbound APIs run in separate *processes* to reduce the load on the controller itself.
 
@@ -85,7 +169,7 @@ With either the present HTTP implementation or a future uWSGI one, use of a webs
 * To be able to keep cached values of DE1 variables current, a read-back is requested on each write. 
 * `NoneSet` and `NONE_SET` added to some `enum.IntFlag` to provide clearer representations
 * Although `is_read_once` and `is_stable` have been roughed in, optimizations using them have not been done
-* Disabled reads of `CUUID.ReadFromMMR` as it returns the request itself (which is not easily distinguashable from the data read. These two interpret their `Length` field differently, making it difficult to determine if `5` is an unexpected value or if it was just that 6 words were requested to be read.
+* Disabled reads of `CUUID.ReadFromMMR` as it returns the request itself (which is not easily distinguishable from the data read. These two interpret their `Length` field differently, making it difficult to determine if `5` is an unexpected value or if it was just that 6 words were requested to be read.
 * Scaling on `MMR0x80LowAddr.TANK_WATER_THRESHOLD` was corrected.
 
 
@@ -135,25 +219,6 @@ Though "WET" and needing to be "DRY", the first-found DE1 and Skale will be used
 Refactoring of this is pending the formal release of `BleakScanner.find_device_by_filter(filterfunc)` from [bleak PR #565](https://github.com/hbldh/bleak/pull/565)
 
 
-## Requirements
-
-Python 3.8 or later.
-
-Available through `pip`:
-* `bleak`
-* `aiologger`
-* `asyncio-mqtt`
-
-An MQTT broker compatible with MQTT 5 clients, such as `mosquitto 2.0` (see [below](#installing-mosquitto))
-
-The Raspberry Pi version of Debian *Buster* ships with Python 3.7, which does not support named `asyncio.Task()` The "walrus operator" is also used.
-
-Python 3.9 is expected to be part of Debian "next". Until that time, https://github.com/pyenv/pyenv can be used to install a version of your choice. On a RPi 3B, a complete build too under 15 minutes.
-
-Development work is being done on *Buster* with Python 3.9.5 on a RPI 3B at this time.
-
-The `bleak` library is supported on macOS, Linux, and Windows. Some development has also been done under macOS.
-
 ## What Seems To Be Working – High Level Functionality
 
 * Connect by address to DE1
@@ -176,33 +241,6 @@ The `bleak` library is supported on macOS, Linux, and Windows. Some development 
 
 The main process runs under Python's native `asyncio` framework. There are many tutorials out there that make asynchronous programming *look* easy. "Hello world!" is always easy. For a better understanding, I found Lynn Root's *[asyncio: We Did It Wrong](https://www.roguelynn.com/words/asyncio-we-did-it-wrong/)* to be very insightful.
 
-## Work In Progress
-
-* Convert `DE1`, `FlowSequencer` and probably `ScaleProcessor` to singletons. 
-* Retain the possiblity of a "bare" scale (though the API does not yet support a second, independent scale).
-* Provide graceful shutdown of all processes.
-* Daemonize with supervision of Tasks and secondary processes.
-* Bring in [find-first-matching functionality](https://github.com/hbldh/bleak/pull/565) when available from release `bleak`.
-* Clean up the imports with likely a combination of pulling events and exceptions out, along with interface definitions.
-* Documentation, including more doc strings, and typing
-
-## Known Gaps
-
-* Multiprocess logging needs to be unified
-* Manage unexpected disconnects and reconnects
-* Abort long-running actions, such as uploading a profile
-* Timeouts on certain locks and await actions
-* Adding, removing, or replacing the DE1 or scale with the `FlowSequencer`
-* Potentially move to `aiologger` to reduce logging delays
-* Single-command read of the DE1 debug register
-* Clean, descale, transport
-* Support for non-GHC machines
-
-## Other Work
-
-* Onboard, unattended sleep timeout with override (GUI or HA can provide complex "scheduler")
-* Background firmware update
-* MQTT will and MQTT 5 message expiry time
 
 <a name="installing-mosquitto"></a>
 ## Installing Mosquitto 2.0
