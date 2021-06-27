@@ -59,7 +59,7 @@ from pyDE1.de1.c_api import PackedAttr, MMR0x80LowAddr, get_cuuid, \
 
 from pyDE1.exceptions import DE1APIValueError
 
-MAPPING_VERSION = "2.1.0"
+MAPPING_VERSION = "2.1.1"
 
 
 class IsAt (NamedTuple):
@@ -164,7 +164,10 @@ import importlib.metadata  # Used for module-version lookup only
 def module_versions():
     retval = {}
     for module in MODULES_FOR_VERSIONS:
-        retval[module] = importlib.metadata.version(module)
+        try:
+            retval[module] = importlib.metadata.version(module)
+        except importlib.metadata.PackageNotFoundError:
+            retval[module] = None
     return retval
 
 
