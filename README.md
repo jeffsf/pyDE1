@@ -15,7 +15,7 @@ SPDX-License-Identifier: GPL-3.0-only
 
 This represents work-in-progress to an API-first implementation of core software for a controller for the DE1.
 
-The extent of functionality should be sufficient to upload profiles and pull shots, flush the group, steam, and draw hot water through the API, with stop-at-time, --volume, and -mass. Continuous updates of flow parameters, and state transitions are provided over MQTT. Firmware upload is supported, though not yet revealed in the API.
+The extent of functionality should be sufficient to upload profiles and pull shots, flush the group, steam, and draw hot water through the API, with stop-at-time, -volume, and -mass. Continuous updates of flow parameters, and state transitions are provided over MQTT. Firmware upload is supported, though not yet revealed in the API.
 
 The APIs are under semantic versioning. The REST-like, HTTP-transport versions can be retrieved from `version` at the document root, and also include the Python and package versions installed. Each of the JSON-formatted, MQTT packets contains a `version` key:value for that payload.
 

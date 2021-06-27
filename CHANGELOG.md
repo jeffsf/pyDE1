@@ -1,5 +1,60 @@
 # Changelog
 
+## Pending
+
+### New
+
+Support for non-GHC machines to be able to start flow through the API
+
+More graceful shutdown
+
+
+### Fixed
+
+Pickling errors related to a custom exception now allow it to be reported by the HTTP server.
+
+Changed BleakClient initialization to avoid
+`AttributeError: 'BleakClientBlueZDBus' object has no attribute 'lower'` and similar for `'BleakClientCoreBluetooth'`
+
+### Changed
+
+Exceptions moved into `pyDE1.exceptions` for cleaner imports into child processes
+
+String-generation utilities moved from `pyDE1.default_logger` into `pyDE1.utils`
+
+* `data_as_hex()`
+* `data_as_readable()`
+* `data_as_readable_or_hex()`
+
+Remove inclusion of `pyDE1.default_logger` and replace with explicit calls to `initialize_default_logger()` and `set_some_logging_levels()`
+
+Change from `asyncio-mqtt` to "bare" `paho-mqtt`. The `asyncio-mqtt` module is still a requirement as it is used in `examples/monitor_delay.py`
+
+#### Mapping Version 2.1.1
+
+* Handle missing modules in "version" request by returning `None` (`null`)
+
+#### Resource Version 1.2.0
+
+* Adds to `DE1ModeEnum` Espresso, HotWaterRinse, Steam, HotWater for use by non-GHC machines
+* `.can_post` now returns False, reflecting that POST is and was not supported
+
+#### Response Codes
+
+* 409 — When the current state of the device does not permit the action
+  * `DE1APIUnsupportedStateTransitionError`
+
+* 418 — When the device is incapable of or blocked from taking the action
+  * `DE1APIUnsupportedFeatureError`
+
+
+### Deprecated
+
+
+### Removed
+
+
+
 ## 0.3.0 — 2021-06-26
 
 ### New
