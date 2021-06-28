@@ -30,6 +30,12 @@ def run_api_inbound(api_pipe: multiprocessing.connection.Connection):
 
     logger = logging.getLogger(multiprocessing.current_process().name)
 
+    from pyDE1.default_logger import initialize_default_logger, \
+        set_some_logging_levels
+
+    initialize_default_logger()
+    set_some_logging_levels()
+
     from pyDE1.dispatcher.mapping import MAPPING, mapping_requires
 
     # cpn = multiprocessing.current_process().name
@@ -74,8 +80,8 @@ def run_api_inbound(api_pipe: multiprocessing.connection.Connection):
 
     async def signal_handler(signal: signal.Signals,
                              loop: asyncio.AbstractEventLoop):
-        process = multiprocessing.current_process()
-        logger.info(signal)
+        logger = logging.getLogger('HTTPShutdown')
+        logger.info(f"{str(signal)} SHUTDOWN INITIATED")
         graceful_shutdown()
 
     for sig in signals:

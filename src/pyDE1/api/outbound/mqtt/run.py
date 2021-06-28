@@ -30,6 +30,12 @@ def run_api_outbound(api_outbound_queue: multiprocessing.Queue):
 
     logger = logging.getLogger(multiprocessing.current_process().name)
 
+    from pyDE1.default_logger import initialize_default_logger, \
+        set_some_logging_levels
+
+    initialize_default_logger()
+    set_some_logging_levels()
+
     client_logger = logging.getLogger('MQTTClient')
     client_logger.level = logging.INFO
 
@@ -93,7 +99,8 @@ def run_api_outbound(api_outbound_queue: multiprocessing.Queue):
     async def signal_handler(signal: signal.Signals,
                              loop: asyncio.AbstractEventLoop):
         process = multiprocessing.current_process()
-        logger.info(signal)
+        logger = logging.getLogger('MQTTShutdown')
+        logger.info(f"{str(signal)} SHUTDOWN INITIATED")
         graceful_shutdown()
 
     for sig in signals:
