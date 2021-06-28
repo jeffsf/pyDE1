@@ -67,6 +67,7 @@ Available through `pip`:
 * `bleak`
 * `aiologger`
 * `asyncio-mqtt`
+* `paho-mqtt`
 
 An MQTT broker compatible with MQTT 5 clients, such as `mosquitto 2.0` (see [below](#installing-mosquitto))
 
@@ -89,8 +90,9 @@ The `bleak` library is supported on macOS, Linux, and Windows. Some development 
 ## Known Gaps
 
 * Multiprocess logging needs to be unified
+* Access logs through API
 * Manage unexpected disconnects and reconnects
-* Abort long-running actions, such as uploading a profile
+* Abort long-running actions, such as uploading a profile or firmware
 * Timeouts on certain locks and await actions
 * Adding, removing, or replacing the DE1 or scale
 * Potentially move to `aiologger` to reduce logging delays
