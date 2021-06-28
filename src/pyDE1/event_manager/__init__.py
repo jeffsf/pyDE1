@@ -7,4 +7,4 @@ SPDX-License-Identifier: GPL-3.0-only
 """
 
 from .event_manager import SubscribedEvent, EventPayload, \
-    EventWithNotify, EventNotificationName, send_to_outbound_queue
+    EventWithNotify, EventNotificationName, send_to_outbound_pipe

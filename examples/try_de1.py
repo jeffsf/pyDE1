@@ -95,12 +95,17 @@ if __name__ == "__main__":
     outbound_api_queue = multiprocessing.Queue()
     inbound_api_queue = multiprocessing.Queue()
 
-    inbound_pipe_controller, inbound_pipe_server = multiprocessing.Pipe()
-    # read, write, for simplex
+    inbound_pipe_controller, inbound_pipe_server \
+        = multiprocessing.Pipe()
 
+    # read, write, for simplex
+    outbound_pipe_server, outbound_pipe_controller \
+        = multiprocessing.Pipe(duplex=False)
+
+    # MQTT API
     outbound_api_process = multiprocessing.Process(
         target=run_api_outbound,
-        args=(outbound_api_queue,),
+        args=(outbound_pipe_server,),
         name='OutboundAPI',
         daemon=False)
     outbound_api_process.start()
@@ -109,7 +114,7 @@ if __name__ == "__main__":
     def terminate_outbound():
         outbound_api_process.terminate()
 
-
+    # HTTP API
     inbound_api_process = multiprocessing.Process(
         target=run_api_inbound,
         args=(inbound_pipe_server,),
@@ -121,12 +126,13 @@ if __name__ == "__main__":
     def terminate_inbound():
         inbound_api_process.terminate()
 
+    # Core logic
     controller_process = multiprocessing.Process(
         target = run_controller,
         args=(
             inbound_pipe_controller,
             inbound_pipe_controller,
-            outbound_api_queue,
+            outbound_pipe_controller,
         ),
         name="Controller",
         daemon=False

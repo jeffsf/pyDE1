@@ -31,7 +31,7 @@ from pyDE1.scale.processor import ScaleProcessor
 from pyDE1.scale.events import WeightAndFlowUpdate
 
 from pyDE1.event_manager import EventWithNotify, EventNotificationName, \
-    EventPayload, send_to_outbound_queue
+    EventPayload, send_to_outbound_pipe
 from pyDE1.singleton import Singleton
 
 from pyDE1.utils import cancel_tasks_by_name
@@ -485,27 +485,27 @@ class FlowSequencer (Singleton, I_TargetSetter):
         if self.active_state not in self.autotare_states:
             scale.hold_at_tare = False
             logger.debug(f"Scale: release - {self.active_state.name}")
-            await send_to_outbound_queue(AutoTareNotification(
+            await send_to_outbound_pipe(AutoTareNotification(
                 AutoTareNotificationAction.DISABLED))
             return
         try:
             await self._gate_sequence_start.wait()
             scale.hold_at_tare = True
             logger.debug("Scale: hold at tare")
-            await send_to_outbound_queue(AutoTareNotification(
+            await send_to_outbound_pipe(AutoTareNotification(
                 AutoTareNotificationAction.ENABLED))
 
             await self._gate_expect_drops.wait()
             scale.hold_at_tare = False
             logger.debug("Scale: release")
-            await send_to_outbound_queue(AutoTareNotification(
+            await send_to_outbound_pipe(AutoTareNotification(
                 AutoTareNotificationAction.DISABLED))
 
         except asyncio.CancelledError:
             scale = self._scale_processor.scale
             scale.hold_at_tare = False
             logger.info("Scale: release - on cancel")
-            await send_to_outbound_queue(AutoTareNotification(
+            await send_to_outbound_pipe(AutoTareNotification(
                 AutoTareNotificationAction.DISABLED))
             raise
 
@@ -730,7 +730,7 @@ class FlowSequencer (Singleton, I_TargetSetter):
             target = self.active_control.stop_at_weight
         else:
             target = None
-        await send_to_outbound_queue(StopAtNotification(
+        await send_to_outbound_pipe(StopAtNotification(
             stop_at=stop_at,
             action=action,
             target_value=target,

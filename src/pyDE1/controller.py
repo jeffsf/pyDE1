@@ -12,8 +12,7 @@ import time
 
 def run_controller(request_pipe: multiprocessing.connection.Connection,
                    response_pipe: multiprocessing.connection.Connection,
-                   outbound_queue: multiprocessing.Queue,
-                   ):
+                   outbound_pipe: multiprocessing.connection.Connection,):
 
     loop = asyncio.get_event_loop()
     loop.set_debug(True)
@@ -21,16 +20,17 @@ def run_controller(request_pipe: multiprocessing.connection.Connection,
     loop.create_task(controller(
         request_pipe=request_pipe,
         response_pipe=response_pipe,
-        outbound_queue=outbound_queue
+        outbound_pipe=outbound_pipe,
     ))
 
     loop.run_forever()
 
 
-async def controller(request_pipe: multiprocessing.connection.Connection,
-                     response_pipe: multiprocessing.connection.Connection,
-                     outbound_queue: multiprocessing.Queue,
-                     ):
+async def controller(
+        request_pipe: multiprocessing.connection.Connection,
+        response_pipe: multiprocessing.connection.Connection,
+        outbound_pipe: multiprocessing.connection.Connection,
+):
 
     _shutting_down = False
 
@@ -139,7 +139,7 @@ async def controller(request_pipe: multiprocessing.connection.Connection,
         response_pipe=response_pipe
     )
 
-    SubscribedEvent.outbound_queue = outbound_queue
+    SubscribedEvent.outbound_pipe = outbound_pipe
 
     de1_device = await find_first_de1()
     skale_device = await find_first_skale()

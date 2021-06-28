@@ -51,7 +51,6 @@ import enum
 import json
 import logging
 import multiprocessing, multiprocessing.connection
-import queue
 import time
 import uuid
 
@@ -203,7 +202,7 @@ class EventWithNotify (asyncio.Event):
             name=self._event_name,
             action=EventNotificationAction.SET
         )
-        asyncio.create_task(send_to_outbound_queue(en))
+        asyncio.create_task(send_to_outbound_pipe(en))
 
     def clear(self):
         super(EventWithNotify, self).clear()
@@ -213,31 +212,19 @@ class EventWithNotify (asyncio.Event):
             name=self._event_name,
             action=EventNotificationAction.CLEAR
         )
-        asyncio.create_task(send_to_outbound_queue(en))
+        asyncio.create_task(send_to_outbound_pipe(en))
 
 
-# TODO: This needs to be unified with SubscribedEvent
-async def send_to_outbound_queue(payload: EventPayload):
+async def send_to_outbound_pipe(payload: EventPayload):
 
     # multiprocessing.queue() can block at least on "full"
     # macOS doesn't support qsize()
 
-    if SubscribedEvent.outbound_queue is not None:
+    if SubscribedEvent.outbound_pipe is not None:
         payload._event_time = time.time()
-        try:
-            q_payload = payload.as_json()
-            SubscribedEvent.outbound_queue.put_nowait(q_payload)
-        except queue.Full as e:
-            now = time.time()
-            if now - SubscribedEvent._last_logged_queue_full_time \
-                    > SubscribedEvent._logged_queue_full_interval:
-                logger.error(
-                    "Queue full, payload skipped {} for {}".format(
-                        SubscribedEvent.outbound_queue,
-                        type(payload)
-                    )
-                )
-                SubscribedEvent._last_logged_queue_full_time = now
+        q_payload = payload.as_json()
+        SubscribedEvent.outbound_pipe.send(q_payload)
+
 
 
 class SubscribedEvent:
@@ -247,17 +234,16 @@ class SubscribedEvent:
     This is intended to be a singleton for each event type
     and with a single publisher.
 
-    If outbound_queue: Optional[multiprocessing.Queue] is not None
+    If outbound_pipe: is not None
     and EventPayload._internal_only is False (default)
     the EventPayload.as_json() will be delivered to that queue.
 
-    SubscribedEvent.outbound_queue and EventPayload._internal_only
+    SubscribedEvent.outbound_pipe and EventPayload._internal_only
     are class properties at this time.
 
     """
 
-    outbound_queue: Optional[multiprocessing.Queue] = None
-    _logged_queue_full_interval = 5  # Don't log queue-full faster than secs
+    outbound_pipe: Optional[multiprocessing.connection.Connection] = None
 
     def __init__(self, sender):
         self._sender = sender
@@ -265,7 +251,6 @@ class SubscribedEvent:
         # perhaps don't need a lock on the list as not threaded
         self._subscriber_list_lock = asyncio.Lock()
         self._last_create_time = 0
-        self._last_logged_queue_full_time = 0
 
     async def subscribe(self,
                         callback: Coroutine[
@@ -357,7 +342,7 @@ class SubscribedEvent:
         # multiprocessing.queue() can block at least on "full"
         # macOS doesn't support qsize()
         if not payload._internal_only:
-            await send_to_outbound_queue(payload)
+            await send_to_outbound_pipe(payload)
 
         delivery_done = time.time()
 

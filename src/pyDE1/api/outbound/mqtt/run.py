@@ -12,21 +12,22 @@ logging every update_period seconds (and resetting the count)
 
 
 # Only import the minimal here, as it potentially ends up in all processes.
-import multiprocessing
+import multiprocessing.connection
 
 # TODO: look into how loggers here relate to the root logger from "main"
 
 # TODO: Look into or resolve processes' loggers writing over each other
-from queue import Empty
 
 
-def run_api_outbound(api_outbound_queue: multiprocessing.Queue):
+def run_api_outbound(outbound_pipe: multiprocessing.connection.Connection):
 
     import logging
     import os
     import time
 
     from socket import gethostname
+
+    from collections import Callable
 
     logger = logging.getLogger(multiprocessing.current_process().name)
 
@@ -82,9 +83,6 @@ def run_api_outbound(api_outbound_queue: multiprocessing.Queue):
 
     # MQTT_PROTOCOL_VERSION = asyncio_mqtt.client.ProtocolVersion.V5
 
-    _shutdown = False
-    QUEUE_GET_TIMEOUT = 0.5  # at 10-20 pps, this seems conservatively long
-
     loop = asyncio.get_event_loop()
     loop.set_debug(True)
 
@@ -110,9 +108,6 @@ def run_api_outbound(api_outbound_queue: multiprocessing.Queue):
                                                 name=str(sig)))
 
     def graceful_shutdown():
-        nonlocal _shutdown
-        # nonlocal api_outbound_queue
-        _shutdown = True
         logger.info("Shutting down MQTT client")
         mqtt_client.loop_stop()
         mqtt_client.disconnect()
@@ -120,11 +115,6 @@ def run_api_outbound(api_outbound_queue: multiprocessing.Queue):
         cancel_tasks_by_name('', starts_with=True)
         logger.info("Stopping loop")
         loop.stop()
-        # Queue.close() probably needs to be called by the writer
-        # https://docs.python.org/3/library/multiprocessing.html#multiprocessing.Queue.close
-        # logger.info("Closing queue")
-        # api_outbound_queue.close()
-        # api_outbound_queue = None
         logger.info("Loop stopped, closing this process")
         # AttributeError: 'NoneType' object has no attribute 'kill'
         # multiprocessing.current_process().kill()
@@ -186,40 +176,31 @@ def run_api_outbound(api_outbound_queue: multiprocessing.Queue):
 
     mqtt_client.enable_logger(client_logger)
 
-    def pick_and_send(mp_queue: multiprocessing.Queue,
-                      client: mqtt.Client):
+    mqtt_client.connect(host=MQTT_BROKER_HOSTNAME,
+                   port=MQTT_BROKER_PORT,
+                   keepalive=MQTT_KEEPALIVE,
+                   bind_address="",
+                   bind_port=0,
+                   clean_start=MQTT_CLEAN_START_FIRST_ONLY,
+                   properties=None)
 
-        client.connect(host=MQTT_BROKER_HOSTNAME,
-                       port=MQTT_BROKER_PORT,
-                       keepalive=MQTT_KEEPALIVE,
-                       bind_address="",
-                       bind_port=0,
-                       clean_start=MQTT_CLEAN_START_FIRST_ONLY,
-                       properties=None)
+    mqtt_client.loop_start()
 
-        client.loop_start()
+    last_update = time.time()
+    update_period = 10  # in seconds
+    counts = {}
 
-        last_update = time.time()
-        update_period = 10  # in seconds
-        counts = {}
+    def create_pipe_reader() -> Callable:
 
-        while True:
-            try:
-                item_json = mp_queue.get(block=True,
-                                         timeout=QUEUE_GET_TIMEOUT)
-            except Empty:
-                if _shutdown:
-                    logger.info("Shutdown of MQTT loop requested")
-                    return
-                else:
-                    continue
-            except ValueError:
-                # queue has been closed
-                return
+        def outbound_pipe_reader():
 
+            nonlocal last_update, update_period, counts
+            nonlocal outbound_pipe, mqtt_client
+
+            item_json = outbound_pipe.recv()
             item_as_dict = json.loads(item_json)
             topic = f"{MQTT_TOPIC_ROOT}/{item_as_dict['class']}"
-            client.publish(
+            mqtt_client.publish(
                 topic=topic,
                 payload=item_json,
                 qos=0,
@@ -237,6 +218,10 @@ def run_api_outbound(api_outbound_queue: multiprocessing.Queue):
                 counts = {}
                 last_update = now
 
-    loop.run_in_executor(None, pick_and_send, api_outbound_queue, mqtt_client)
+        return outbound_pipe_reader
+
+    loop.add_reader(outbound_pipe.fileno(), create_pipe_reader())
+
+    # loop.run_in_executor(None, pick_and_send, outbound_pipe, mqtt_client)
 
     loop.run_forever()
