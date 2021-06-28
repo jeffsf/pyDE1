@@ -22,7 +22,8 @@ def set_some_logging_levels():
 
 def initialize_default_logger():
 
-    format_string = "%(asctime)s %(levelname)s %(name)s: %(message)s"
+    format_string = "%(asctime)s %(levelname)s [%(processName)s] " \
+                    "%(name)s: %(message)s"
     logfile_directory = '_logs'
 
     logging.basicConfig(level=logging.DEBUG,
