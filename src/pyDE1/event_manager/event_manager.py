@@ -50,7 +50,8 @@ import asyncio
 import enum
 import json
 import logging
-import multiprocessing, multiprocessing.connection
+import multiprocessing
+import multiprocessing.connection as mpc
 import time
 import uuid
 
@@ -243,7 +244,7 @@ class SubscribedEvent:
 
     """
 
-    outbound_pipe: Optional[multiprocessing.connection.Connection] = None
+    outbound_pipe: Optional[mpc.Connection] = None
 
     def __init__(self, sender):
         self._sender = sender

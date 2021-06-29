@@ -14,7 +14,7 @@ Provide "mock" classes for use in inbound API process
 NB: Must be imported AFTER any imports of DE1, Scale, FlowSequencer, ...
 """
 import logging
-import multiprocessing.connection
+import multiprocessing
 import sys
 from typing import Optional, Union, NamedTuple
 

@@ -6,13 +6,14 @@ GNU General Public License v3.0 only
 SPDX-License-Identifier: GPL-3.0-only
 """
 import asyncio
-import multiprocessing, multiprocessing.connection
+import multiprocessing
+import multiprocessing.connection as mpc
 import time
 
 
-def run_controller(request_pipe: multiprocessing.connection.Connection,
-                   response_pipe: multiprocessing.connection.Connection,
-                   outbound_pipe: multiprocessing.connection.Connection,):
+def run_controller(request_pipe: mpc.Connection,
+                   response_pipe: mpc.Connection,
+                   outbound_pipe: mpc.Connection,):
 
     loop = asyncio.get_event_loop()
     loop.set_debug(True)
@@ -27,9 +28,9 @@ def run_controller(request_pipe: multiprocessing.connection.Connection,
 
 
 async def controller(
-        request_pipe: multiprocessing.connection.Connection,
-        response_pipe: multiprocessing.connection.Connection,
-        outbound_pipe: multiprocessing.connection.Connection,
+        request_pipe: mpc.Connection,
+        response_pipe: mpc.Connection,
+        outbound_pipe: mpc.Connection,
 ):
 
     _shutting_down = False

@@ -12,7 +12,8 @@ logging every update_period seconds (and resetting the count)
 
 # Only import the minimal here, as it potentially ends up in all processes.\
 
-import multiprocessing, multiprocessing.connection
+import multiprocessing
+import multiprocessing.connection as mpc
 import logging
 
 # TODO: look into how loggers here relate to the root logger from "main"

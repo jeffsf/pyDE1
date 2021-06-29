@@ -9,7 +9,8 @@ SPDX-License-Identifier: GPL-3.0-only
 import asyncio
 import atexit
 import logging
-import multiprocessing, multiprocessing.connection
+import multiprocessing
+import multiprocessing.connection as mpc
 import signal
 import time
 

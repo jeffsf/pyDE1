@@ -12,16 +12,17 @@ logging every update_period seconds (and resetting the count)
 
 
 # Only import the minimal here, as it potentially ends up in all processes.
-import multiprocessing.connection
+import multiprocessing.connection as mpc
 
 # TODO: look into how loggers here relate to the root logger from "main"
 
 # TODO: Look into or resolve processes' loggers writing over each other
 
 
-def run_api_outbound(outbound_pipe: multiprocessing.connection.Connection):
+def run_api_outbound(outbound_pipe: mpc.Connection):
 
     import logging
+    import multiprocessing
     import os
     import time
 

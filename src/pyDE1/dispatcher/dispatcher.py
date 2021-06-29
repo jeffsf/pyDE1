@@ -7,7 +7,7 @@ SPDX-License-Identifier: GPL-3.0-only
 """
 import asyncio
 import logging
-import multiprocessing.connection
+import multiprocessing.connection as mpc
 import time
 
 from pyDE1.de1 import DE1
@@ -30,14 +30,14 @@ logger = logging.getLogger('Dispatcher')
 # Interface from multiprocessing (sync) to asyncio.Queue() for async processing
 
 def register_read_pipe_to_queue(
-        pipe_to_read: multiprocessing.connection.Connection,
+        pipe_to_read: mpc.Connection,
         queue_to_put: asyncio.Queue):
     asyncio.get_event_loop().add_reader(
         pipe_to_read.fileno(),
         _read_pipe_to_queue, pipe_to_read, queue_to_put)
 
 
-def _read_pipe_to_queue(pipe_to_read: multiprocessing.connection.Connection,
+def _read_pipe_to_queue(pipe_to_read: mpc.Connection,
                         queue_to_put: asyncio.Queue):
     data = pipe_to_read.recv()
     queue_to_put.put_nowait(data)
@@ -48,7 +48,7 @@ def _read_pipe_to_queue(pipe_to_read: multiprocessing.connection.Connection,
 
 def start_response_queue_processor(
         response_queue: asyncio.Queue,
-        response_pipe: multiprocessing.connection.Connection):
+        response_pipe: mpc.Connection):
     asyncio.create_task(_response_queue_processor(
         response_queue=response_queue,
         response_pipe=response_pipe),
@@ -56,7 +56,7 @@ def start_response_queue_processor(
 
 
 async def _response_queue_processor(response_queue: asyncio.Queue,
-        response_pipe: multiprocessing.connection.Connection):
+        response_pipe: mpc.Connection):
 
     while True:
         response = await response_queue.get()

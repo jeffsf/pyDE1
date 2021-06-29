@@ -5,7 +5,7 @@ License for this software, part of the pyDE1 package, is granted under
 GNU General Public License v3.0 only
 SPDX-License-Identifier: GPL-3.0-only
 """
-import multiprocessing.connection
+import multiprocessing.connection as mpc
 import time
 
 from email.utils import formatdate  # RFC2822 dates
@@ -18,7 +18,7 @@ from pyDE1.exceptions import *
 # might be a way to provide a timeout and prevent permanent blocking.
 
 
-def run_api_inbound(api_pipe: multiprocessing.connection.Connection):
+def run_api_inbound(api_pipe: mpc.Connection):
 
     SERVER_HOST = ''
     SERVER_PORT = 1234
