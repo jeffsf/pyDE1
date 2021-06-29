@@ -241,7 +241,8 @@ class DE1 (Singleton):
     async def disconnect(self):
         logger.info(f"Disconnecting from DE1")
         if self._bleak_client is None:
-            logger.info(f"Disconnecting from DE1; no client")
+            logger.info(f"Disconnecting from DE1, no client")
+            return
         await asyncio.gather(
             self._bleak_client.disconnect(),
             self._event_connectivity.publish(

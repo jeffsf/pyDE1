@@ -182,7 +182,8 @@ class Scale:
         class_name = type(self).__name__
         logger.info(f"Disconnecting from {class_name}")
         if self._bleak_client is None:
-            logger.info(f"Disconnecting from {class_name}; no client")
+            logger.info(f"Disconnecting from {class_name}, no client")
+            return
         await asyncio.gather(
             self._bleak_client.disconnect(),
             self._event_connectivity.publish(
