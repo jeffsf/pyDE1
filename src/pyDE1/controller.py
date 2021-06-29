@@ -11,27 +11,23 @@ import multiprocessing.connection as mpc
 import time
 
 
-def run_controller(request_pipe: mpc.Connection,
-                   response_pipe: mpc.Connection,
-                   outbound_pipe: mpc.Connection,):
+def run_controller(log_queue: multiprocessing.Queue,
+                   inbound_pipe: mpc.Connection,
+                   outbound_pipe: mpc.Connection):
 
     loop = asyncio.get_event_loop()
     loop.set_debug(True)
 
-    loop.create_task(controller(
-        request_pipe=request_pipe,
-        response_pipe=response_pipe,
-        outbound_pipe=outbound_pipe,
-    ))
+    loop.create_task(controller(log_queue=log_queue,
+                                inbound_pipe=inbound_pipe,
+                                outbound_pipe=outbound_pipe))
 
     loop.run_forever()
 
 
-async def controller(
-        request_pipe: mpc.Connection,
-        response_pipe: mpc.Connection,
-        outbound_pipe: mpc.Connection,
-):
+async def controller(log_queue: multiprocessing.Queue,
+                     inbound_pipe: mpc.Connection,
+                     outbound_pipe: mpc.Connection):
 
     _shutting_down = False
 
@@ -43,7 +39,7 @@ async def controller(
     from pyDE1.default_logger import initialize_default_logger, \
         set_some_logging_levels
 
-    initialize_default_logger()
+    initialize_default_logger(log_queue)
     set_some_logging_levels()
 
     import signal
@@ -103,12 +99,14 @@ async def controller(
         loop.stop()
 
     signals = (
-        signal.SIGHUP,
+        # signal.SIGHUP,
         signal.SIGINT,
         signal.SIGQUIT,
         signal.SIGABRT,
         signal.SIGTERM,
     )
+
+    signal.signal(signal.SIGHUP, signal.SIG_IGN)
 
     for sig in signals:
         loop.add_signal_handler(
@@ -128,18 +126,21 @@ async def controller(
     response_queue = asyncio.Queue()
 
     register_read_pipe_to_queue(
-        pipe_to_read=request_pipe,
+        pipe_to_read=inbound_pipe,
         queue_to_put=request_queue,
     )
 
+    # In dispatcher, "does the work"
     start_request_queue_processor(request_queue=request_queue,
                                   response_queue=response_queue)
 
+    # In dispatcher, moves response from queue to pipe
     start_response_queue_processor(
         response_queue=response_queue,
-        response_pipe=response_pipe
+        response_pipe=inbound_pipe
     )
 
+    # Sets up the destination for events to be sent to outbound (MQTT) API
     SubscribedEvent.outbound_pipe = outbound_pipe
 
     de1_device = await find_first_de1()

@@ -12,6 +12,7 @@ logging every update_period seconds (and resetting the count)
 
 
 # Only import the minimal here, as it potentially ends up in all processes.
+import multiprocessing
 import multiprocessing.connection as mpc
 
 # TODO: look into how loggers here relate to the root logger from "main"
@@ -19,7 +20,8 @@ import multiprocessing.connection as mpc
 # TODO: Look into or resolve processes' loggers writing over each other
 
 
-def run_api_outbound(outbound_pipe: mpc.Connection):
+def run_api_outbound(log_queue: multiprocessing.Queue,
+                     outbound_pipe: mpc.Connection):
 
     import logging
     import multiprocessing
@@ -35,7 +37,7 @@ def run_api_outbound(outbound_pipe: mpc.Connection):
     from pyDE1.default_logger import initialize_default_logger, \
         set_some_logging_levels
 
-    initialize_default_logger()
+    initialize_default_logger(log_queue)
     set_some_logging_levels()
 
     client_logger = logging.getLogger('MQTTClient')
@@ -88,12 +90,14 @@ def run_api_outbound(outbound_pipe: mpc.Connection):
     loop.set_debug(True)
 
     signals = (
-        signal.SIGHUP,
+        # signal.SIGHUP,
         signal.SIGINT,
         signal.SIGQUIT,
         signal.SIGABRT,
         signal.SIGTERM,
     )
+
+    signal.signal(signal.SIGHUP, signal.SIG_IGN)
 
     async def signal_handler(signal: signal.Signals,
                              loop: asyncio.AbstractEventLoop):

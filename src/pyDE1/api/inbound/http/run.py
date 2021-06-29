@@ -5,6 +5,7 @@ License for this software, part of the pyDE1 package, is granted under
 GNU General Public License v3.0 only
 SPDX-License-Identifier: GPL-3.0-only
 """
+import multiprocessing
 import multiprocessing.connection as mpc
 import time
 
@@ -18,7 +19,8 @@ from pyDE1.exceptions import *
 # might be a way to provide a timeout and prevent permanent blocking.
 
 
-def run_api_inbound(api_pipe: mpc.Connection):
+def run_api_inbound(log_queue: multiprocessing.Queue,
+                    api_pipe: mpc.Connection):
 
     SERVER_HOST = ''
     SERVER_PORT = 1234
@@ -33,7 +35,7 @@ def run_api_inbound(api_pipe: mpc.Connection):
     from pyDE1.default_logger import initialize_default_logger, \
         set_some_logging_levels
 
-    initialize_default_logger()
+    initialize_default_logger(log_queue)
     set_some_logging_levels()
 
     from pyDE1.dispatcher.mapping import MAPPING, mapping_requires
@@ -71,12 +73,14 @@ def run_api_inbound(api_pipe: mpc.Connection):
     loop.set_debug(True)
 
     signals = (
-        signal.SIGHUP,
+        # signal.SIGHUP,
         signal.SIGINT,
         signal.SIGQUIT,
         signal.SIGABRT,
         signal.SIGTERM,
     )
+
+    signal.signal(signal.SIGHUP, signal.SIG_IGN)
 
     async def signal_handler(signal: signal.Signals,
                              loop: asyncio.AbstractEventLoop):
