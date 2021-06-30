@@ -6,19 +6,27 @@
 
 Support for non-GHC machines to be able to start flow through the API
 
-More graceful shutdown
+More graceful shutdown on SIGINT, SIGQUIT, SIGABRT, and SIGTERM
+
+Logging to a single file, `/tmp/log/pyDE1/combined.log` by default. If changed to, for example, `/var/log/pyDE1/`, the process needs write permission for the directory. 
+
+> NB: Keeping the logs in a dedicated directory is suggested, as the plan is to provide an API where a directory list will be used to generate the `logs` collection. `/tmp/` is used for ease of development and is not guaranteed to survive a reboot. 
+
+Log file is closed and reopened on SIGHUP.
 
 
 ### Fixed
 
-Pickling errors related to a custom exception now allow it to be reported by the HTTP server.
+Resolved pickling errors related to a custom exception. It now is properly reported to and by the HTTP server.
 
 Changed BleakClient initialization to avoid
 `AttributeError: 'BleakClientBlueZDBus' object has no attribute 'lower'` and similar for `'BleakClientCoreBluetooth'`
 
+Exiting prior to device connection no longer results in `AttributeError: 'NoneType' object has no attribute 'disconnect'`
+
 ### Changed
 
-Exceptions moved into `pyDE1.exceptions` for cleaner imports into child processes
+Exceptions moved into `pyDE1.exceptions` for cleaner imports into child processes.
 
 String-generation utilities moved from `pyDE1.default_logger` into `pyDE1.utils`
 
@@ -29,6 +37,14 @@ String-generation utilities moved from `pyDE1.default_logger` into `pyDE1.utils`
 Remove inclusion of `pyDE1.default_logger` and replace with explicit calls to `initialize_default_logger()` and `set_some_logging_levels()`
 
 Change from `asyncio-mqtt` to "bare" `paho-mqtt`. The `asyncio-mqtt` module is still a requirement as it is used in `examples/monitor_delay.py`
+
+Controller now runs in its own process. Much of what was in `try_de1.py` is now in `controller.py`
+
+Log entries now include the process name.
+
+IPC between the controller and outbound (MQTT) API now uses a pipe and `loop.add_reader()` to improve robustness and ease graceful shutdown.
+
+Several internal method signatures changed to accomodate changes in IPC. These are considered "internal" and do not impact the two, public APIs.
 
 #### Mapping Version 2.1.1
 
@@ -53,6 +69,7 @@ Change from `asyncio-mqtt` to "bare" `paho-mqtt`. The `asyncio-mqtt` module is s
 
 ### Removed
 
+**"null" outbound API implementation** — Removed as not refactored for new IPC. If there is a need, the MQTT implementation can be modified to only consume from the pipe and not create or use an MQTT client.
 
 
 ## 0.3.0 — 2021-06-26
