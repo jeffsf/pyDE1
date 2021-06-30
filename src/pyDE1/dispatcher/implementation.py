@@ -19,7 +19,7 @@ import time
 
 from typing import Union, Dict, Set
 
-from pyDE1.de1.notifications import NotificationState
+from pyDE1.de1.notifications import NotificationState, MMR0x80Data
 from pyDE1.utils import fix_enums
 from pyDE1.utils_public import rgetattr, rsetattr
 
@@ -460,7 +460,7 @@ async def _patch_dict_to_mapping_inner(partial_value_dict: dict,
 
                 # TODO: Should this wait on ready.wait() ??
                 #       Or is there a way to collect them all for later?
-                ns: NotificationState = de1._mmr_dict[target]
+                ns: MMR0x80Data = de1._mmr_dict[target]
                 await ns.ready_event.wait()
 
             elif inspect.isclass(target) and issubclass(target, PackedAttr):

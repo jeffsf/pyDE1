@@ -131,8 +131,10 @@ class Scale:
         return self._sensor_lag
 
     async def connect(self, timeout=5.0):
+
         class_name = type(self).__name__
         logger.info(f"Connecting to {class_name} at {self.address}")
+
         if self._bleak_client is None:
             if self.address is None:
                 raise ScaleNoAddressError
@@ -140,11 +142,13 @@ class Scale:
         self._bleak_client.set_disconnected_callback(
             self._create_disconnect_callback()
         )
+
         await asyncio.gather(self._event_connectivity.publish(
             ConnectivityChange(arrival_time=time.time(),
                                state=ConnectivityState.CONNECTING)),
             self._bleak_client.connect(timeout=timeout),
         )
+
         if self.is_connected:
             self._address = self._bleak_client.address
             if self.name is None:
@@ -153,6 +157,12 @@ class Scale:
             await self._event_connectivity.publish(
                 ConnectivityChange(arrival_time=time.time(),
                                    state=ConnectivityState.CONNECTED))
+            # This can take some time, potentially delaying DE1 connection
+            # At least BlueZ doesn't like concurrent connection requests
+            asyncio.create_task(self.standard_initialization())
+
+            # TODO: Does the ScaleProcessor get properly reset?
+
         else:
             logger.error(
                 f"Connection failed to {class_name} at {self.address}")
@@ -161,6 +171,10 @@ class Scale:
                                    state=ConnectivityState.DISCONNECTED))
 
     async def standard_initialization(self, hold_notification=False):
+        """
+        :param hold_notification: Since subclass may need to do more
+        """
+        logger.info("Scale.standard_initialization()")
         await self.display_on()
         await self.start_sending_weight_updates()
         if self.supports_button_press:
@@ -172,6 +186,7 @@ class Scale:
         await self._event_connectivity.publish(
             ConnectivityChange(arrival_time=time.time(),
                                state=ConnectivityState.READY))
+        logger.info("Ready")
 
     async def _notify_not_ready(self):
         await self._event_connectivity.publish(

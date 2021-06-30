@@ -6,6 +6,10 @@ GNU General Public License v3.0 only
 SPDX-License-Identifier: GPL-3.0-only
 """
 
+# Supervise:
+#   Task: log_queue_reader_blocks
+#   Processes: Controller, OutboundAPI, InboundAPI
+
 import asyncio
 import atexit
 import concurrent.futures
@@ -15,7 +19,7 @@ import multiprocessing.connection as mpc
 import signal
 import threading
 import time
-from typing import Callable
+from typing import Callable, Optional
 
 from pyDE1.api.outbound.mqtt import run_api_outbound
 from pyDE1.api.inbound.http import run_api_inbound
@@ -23,6 +27,9 @@ from pyDE1.api.inbound.http import run_api_inbound
 import pyDE1.default_logger
 
 from pyDE1.controller import run_controller
+
+from pyDE1.supervise import SupervisedTask, SupervisedExecutor, \
+    SupervisedProcess
 
 if __name__ == "__main__":
 
@@ -57,8 +64,13 @@ if __name__ == "__main__":
             lambda sig=sig: asyncio.create_task(signal_handler(sig, loop),
                                                 name=str(sig)))
 
-    async def bye_bye(signal: signal.Signals,
-                      loop: asyncio.AbstractEventLoop):
+    async def graceful_shutdown(signal: signal.Signals,
+                                loop: asyncio.AbstractEventLoop):
+
+        supervised_inbound_api_process.do_not_restart = True
+        supervised_outbound_api_process.do_not_restart = True
+        supervised_controller_process.do_not_restart = True
+
         t0 = time.time()
         logger = logging.getLogger('Shutdown')
         logger.info(f"{str(signal)} SHUTDOWN INITIATED "
@@ -71,8 +83,8 @@ if __name__ == "__main__":
         again = True
         while again:
             t1 = time.time()
-            alive_in = inbound_api_process.is_alive()
-            alive_out = outbound_api_process.is_alive()
+            alive_in = supervised_inbound_api_process.process.is_alive()
+            alive_out = supervised_outbound_api_process.process.is_alive()
             # logger.info(ac := multiprocessing.active_children())
             ac = multiprocessing.active_children()
             await asyncio.sleep(0.1)
@@ -106,7 +118,7 @@ if __name__ == "__main__":
         loop.add_signal_handler(
             sig,
             lambda sig=sig: asyncio.create_task(
-                bye_bye(sig, loop),
+                graceful_shutdown(sig, loop),
                 name=str(sig)))
 
     # These assume that the executor is threading
@@ -135,33 +147,41 @@ if __name__ == "__main__":
         print("buh-bye!")
 
     # MQTT API
-    outbound_api_process = multiprocessing.Process(
+    supervised_outbound_api_process = SupervisedProcess(
         target=run_api_outbound,
-        args=(log_queue, outbound_pipe_read),
+        kwargs={
+            'log_queue': log_queue,
+            'outbound_pipe': outbound_pipe_read,
+        },
         name='OutboundAPI',
         daemon=False)
-    outbound_api_process.start()
+    supervised_outbound_api_process.start()
 
     # HTTP API
-    inbound_api_process = multiprocessing.Process(
+    supervised_inbound_api_process = SupervisedProcess(
         target=run_api_inbound,
-        args=(log_queue, inbound_pipe_server),
+        kwargs={
+            'log_queue': log_queue,
+            'api_pipe': inbound_pipe_server,
+        },
         name='InboundAPI',
         daemon=False)
-    inbound_api_process.start()
+    supervised_inbound_api_process.start()
 
     # Core logic
-    controller_process = multiprocessing.Process(
-        target = run_controller,
-        args=(
-            log_queue,
-            inbound_pipe_controller,
-            outbound_pipe_write,
-        ),
+    # TODO: Not clear how this should restart
+    #       As the DE1 will need to be reinitialized
+    supervised_controller_process = SupervisedProcess(
+        target=run_controller,
+        kwargs={
+            'log_queue': log_queue,
+            'inbound_pipe': inbound_pipe_controller,
+            'outbound_pipe': outbound_pipe_write,
+        },
         name="Controller",
         daemon=False
     )
-    controller_process.start()
+    supervised_controller_process.start()
 
     #
     # Now that the other processes are running, define the log handler
@@ -172,7 +192,6 @@ if __name__ == "__main__":
 
     LOG_DIRECTORY = '/tmp/log/pyDE1/'
     LOG_FILENAME = 'combined.log'
-
 
     def log_queue_reader_blocks(log_queue: multiprocessing.Queue,
                                 terminate_logging_event: threading.Event,
@@ -209,15 +228,18 @@ if __name__ == "__main__":
                         rotate_log_event.clear()
                         break
 
-    logging_tpe = concurrent.futures.ThreadPoolExecutor(
-        max_workers=1,
-        thread_name_prefix='LogQueueReader')
+    # from pyDE1.watchdog import watchdog
+    # SupervisedTask(watchdog)
 
-    loop.run_in_executor(logging_tpe,
-                         log_queue_reader_blocks,
-                         log_queue, _terminate_logging, _rotate_logfile)
+    supervisor_lqr = SupervisedExecutor(None,
+                                        log_queue_reader_blocks,
+                                        log_queue,
+                                        _terminate_logging,
+                                        _rotate_logfile
+                                        )
 
     loop.run_forever()
+
     print("after loop.run_forever()")
     # explicit TPE shutdown hangs
     # print("shutdown TPE")
@@ -225,7 +247,9 @@ if __name__ == "__main__":
     # print("after shutdown TPE")
     print(f"active_children: {multiprocessing.active_children()}")
     print("loop.close()")
-    # loop.close() seems to be the source of a kill-related exit code
+
     loop.close()
+
+    # loop.close() seems to be the source of a kill-related exit code
     print("after loop.close()")
 

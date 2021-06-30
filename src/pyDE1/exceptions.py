@@ -31,6 +31,13 @@ class DE1NotConnectedError (DE1Error):
     pass
 
 
+class DE1IsConnectedError (DE1Error):
+    """
+    Such as trying to wipe state while connected
+    """
+    pass
+
+
 class DE1NoHandlerError(DE1Error):
     pass
 

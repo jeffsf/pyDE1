@@ -4,8 +4,12 @@ Copyright © 2021 Jeff Kletsky. All Rights Reserved.
 License for this software, part of the pyDE1 package, is granted under
 GNU General Public License v3.0 only
 SPDX-License-Identifier: GPL-3.0-only
+
+See `manual_setup()` for some still-needed setup on process start
 """
+
 import asyncio
+import logging
 import multiprocessing
 import multiprocessing.connection as mpc
 import time
@@ -15,26 +19,19 @@ def run_controller(log_queue: multiprocessing.Queue,
                    inbound_pipe: mpc.Connection,
                    outbound_pipe: mpc.Connection):
 
-    loop = asyncio.get_event_loop()
-    loop.set_debug(True)
+    import signal
 
-    loop.create_task(controller(log_queue=log_queue,
-                                inbound_pipe=inbound_pipe,
-                                outbound_pipe=outbound_pipe))
+    from pyDE1.de1.c_api import API_MachineStates
 
-    loop.run_forever()
+    from pyDE1.de1 import DE1
+    from pyDE1.de1.ble import CUUID
 
+    from pyDE1.dispatcher.dispatcher import register_read_pipe_to_queue, \
+        start_request_queue_processor, start_response_queue_processor
 
-async def controller(log_queue: multiprocessing.Queue,
-                     inbound_pipe: mpc.Connection,
-                     outbound_pipe: mpc.Connection):
+    from pyDE1.supervise import SupervisedTask
 
-    _shutting_down = False
-
-    loop = asyncio.get_running_loop()
-
-    import logging
-    logger = logging.getLogger(multiprocessing.current_process().name)
+    from pyDE1.event_manager import SubscribedEvent
 
     from pyDE1.default_logger import initialize_default_logger, \
         set_some_logging_levels
@@ -42,33 +39,16 @@ async def controller(log_queue: multiprocessing.Queue,
     initialize_default_logger(log_queue)
     set_some_logging_levels()
 
-    import signal
+    logger = logging.getLogger(multiprocessing.current_process().name)
 
-    from pyDE1.de1.c_api import MMR0x80LowAddr, API_MachineStates
-    from pyDE1.utils import cancel_tasks_by_name
+    logging.getLogger(
+        f"{CUUID.StateInfo.__str__()}.Notify").setLevel(logging.DEBUG)
 
-    from pyDE1.de1 import DE1
-    from pyDE1.event_manager import SubscribedEvent
+    loop = asyncio.get_event_loop()
+    loop.set_debug(True)
 
-    from pyDE1.de1.ble import CUUID
-
-    from pyDE1.shot_file import CombinedShotLogger
-
-    from pyDE1.scale import AtomaxSkaleII
-    from pyDE1.scale.processor import ScaleProcessor
-    from pyDE1.flow_sequencer import FlowSequencer
-
-    from pyDE1.find_first import find_first_de1, find_first_skale
-
-    from pyDE1.dispatcher.dispatcher import register_read_pipe_to_queue, \
-        start_request_queue_processor, start_response_queue_processor
-
-    from pyDE1.exceptions import DE1NotConnectedError
-
-    # Create these early to prevent AttributeError if killed early
-
-    de1 = DE1()
-    skale = AtomaxSkaleII()
+    _shutting_down = False
+    _disconnect_set = set()
 
     async def shutdown_signal_handler(signal: signal.Signals,
                              loop: asyncio.AbstractEventLoop):
@@ -78,6 +58,8 @@ async def controller(log_queue: multiprocessing.Queue,
         logger.info(f"{str(signal)} SHUTDOWN INITIATED")
         logger.info("Terminate API processes")
         t0 = time.time()
+        de1 = DE1()
+
         if de1.is_connected and de1.current_state not in (
             API_MachineStates.Sleep,
             API_MachineStates.GoingToSleep,
@@ -85,13 +67,9 @@ async def controller(log_queue: multiprocessing.Queue,
         ):
             logger.info("Sleep DE1")
             await de1.sleep()
-        logger.info("Disconnect DE1 and Skale")
-        await asyncio.gather(
-            # TODO: Handle de1 or skale None, as well as connection underway
-            #       that then connects after this section
-            de1.disconnect(),
-            skale.disconnect()
-        )
+        logger.info(f"Disconnecting {_disconnect_set}")
+        for device in _disconnect_set:
+            await device.disconnect()
         t1 = time.time()
         logger.info(f"Controller elapsed: {t1 - t0:0.3f} sec")
 
@@ -115,13 +93,6 @@ async def controller(log_queue: multiprocessing.Queue,
                 shutdown_signal_handler(sig, loop),
                 name=str(sig)))
 
-    logging.getLogger('EventManager').setLevel(logging.INFO)
-    logging.getLogger(
-        f"{CUUID.StateInfo.__str__()}.Notify").setLevel(logging.DEBUG)
-
-
-    # ppp(MAPPING)  # Pretty messy, needs to be custom mapped
-
     request_queue = asyncio.Queue()
     response_queue = asyncio.Queue()
 
@@ -143,33 +114,55 @@ async def controller(log_queue: multiprocessing.Queue,
     # Sets up the destination for events to be sent to outbound (MQTT) API
     SubscribedEvent.outbound_pipe = outbound_pipe
 
+    # This needs to be scheduled as the loop isn't running yet
+    SupervisedTask(manual_setup, disconnect_set=_disconnect_set)
+
+    loop.run_forever()
+
+
+async def manual_setup(disconnect_set: set):
+
+    import signal
+
+    from pyDE1.de1 import DE1
+    from pyDE1.flow_sequencer import FlowSequencer
+    from pyDE1.scale.processor import ScaleProcessor
+
+    from pyDE1.scale import AtomaxSkaleII
+
+    from pyDE1.find_first import find_first_de1, find_first_skale
+
+    from pyDE1.shot_file import CombinedShotLogger
+
+    logger = logging.getLogger('manual_setup')
+
+    # TODO: Externalize
     de1_device = await find_first_de1()
     skale_device = await find_first_skale()
 
-    if de1_device is None or skale_device is None and not _shutting_down:
-        logger.error("No DE1 or no Skale, exiting")
-        await shutdown_signal_handler(signal.SIGTERM, loop)
+    # TODO: Externalize
+    if de1_device is None:
+        logger.error("No DE1, exiting")
+        signal.raise_signal(signal.SIGTERM)
 
-    # There's a bug in creating from device on bleak 0.11.0 on macOS
+    # There's a bug in creating from device on at least bleak 0.11.0 on macOS
 
-    # TODO: Note that this initialization is order-sensitive
-    #       It is failing here as DE1() has been called by
-    #       _request_queue_processor
-    #       de1 = DE1(de1_device)
-
-
+    # TODO: Externalize
+    de1 = DE1()
     de1.address = de1_device
+
+    skale = AtomaxSkaleII()
     skale.address = skale_device
 
     sp = ScaleProcessor()
+
+    # TODO: Externalize
     await sp.set_scale(skale)
 
-    # TODO: Clean up the init/add/remove/change of FlowSequencer
-    fs = FlowSequencer()
-    await fs.set_de1(de1)
-    await fs.set_scale_processor(sp)
+    # TODO: DEBUG related
     shot_logger = CombinedShotLogger()
 
+    # TODO: DEBUG related
     await asyncio.gather(
         de1.event_shot_sample_with_volumes_update.subscribe(
             shot_logger.sswvu_subscriber),
@@ -177,38 +170,16 @@ async def controller(log_queue: multiprocessing.Queue,
             shot_logger.wafu_subscriber)
     )
 
+    # This will fail with asyncio.exceptions.TimeoutError
+    # await asyncio.gather(
+    #     de1.connect(),
+    #     skale.connect(),
+    # )
+
+    # TODO: Externalize
+    disconnect_set.add(de1)
     await de1.connect()
-    await skale.connect()
-
-    logger.info("Connected")
-
-    await asyncio.sleep(1)
-    await asyncio.gather(
-        de1.start_standard_read_write_notifiers(),
-        de1.start_standard_periodic_notifiers(),
-        skale.standard_initialization(),
-    )
-
-    await asyncio.gather(
-        de1.read_standard_mmr_registers(),
-        de1.read_cuuid(CUUID.StateInfo),
-    )
-
-    # await de1.idle()
-
-    # all_de1 = json.dumps(await get_resource_to_dict(Resource.DE1, fs))
-    # print("DE1 length", len(all_de1))  # -> 1748
-
-
-    # TODO: This needs to get taken into DE1 class directly
-    #       or at least be a non-private method of sending
-    logger.info("Waiting for notify ready")
-    # TODO: Should this confirm all the notifiers are running?
-    #       What about the ones that don't notify?
-    await de1._notify_ready()
-    logger.info("Notify ready seen")
-    logger.info("Kill main process when done, as this is now a child")
-
-
-
+    if skale.address is not None:
+        disconnect_set.add(skale)
+        await skale.connect()
 

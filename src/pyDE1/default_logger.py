@@ -44,4 +44,4 @@ def initialize_default_logger(
         lq.setFormatter(logging.Formatter(format_string))
         lq.setLevel(logging.DEBUG)
         logging.getLogger('').addHandler(lq)
-        logger.info(f"Enabled {lq}")
+        logger.info(f"Enabled logging handler {lq}")

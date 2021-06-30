@@ -5,6 +5,11 @@ License for this software, part of the pyDE1 package, is granted under
 GNU General Public License v3.0 only
 SPDX-License-Identifier: GPL-3.0-only
 """
+
+# Supervise:
+#   Task: ResponseQueueProcessor
+#   Task: RequestQueueProcessor
+
 import asyncio
 import logging
 import multiprocessing.connection as mpc
@@ -19,6 +24,7 @@ from pyDE1.dispatcher.payloads import APIRequest, APIResponse, HTTPMethod
 from pyDE1.dispatcher.implementation import get_resource_to_dict, \
     patch_resource_from_dict
 from pyDE1.scale.processor import ScaleProcessor
+from pyDE1.supervise import SupervisedTask
 
 READ_BACK_ON_PATCH = False
 
@@ -46,13 +52,13 @@ def _read_pipe_to_queue(pipe_to_read: mpc.Connection,
             f"Request queue exceeded QUEUE_TOO_DEEP, {qd} > {QUEUE_TOO_DEEP}")
 
 
-def start_response_queue_processor(
-        response_queue: asyncio.Queue,
-        response_pipe: mpc.Connection):
-    asyncio.create_task(_response_queue_processor(
+def start_response_queue_processor(response_queue: asyncio.Queue,
+                                   response_pipe: mpc.Connection):
+    supervisor = SupervisedTask(
+        _response_queue_processor,
         response_queue=response_queue,
-        response_pipe=response_pipe),
-    name='ResponseQueueProcessor')
+        response_pipe=response_pipe)
+    return supervisor
 
 
 async def _response_queue_processor(response_queue: asyncio.Queue,
@@ -63,15 +69,17 @@ async def _response_queue_processor(response_queue: asyncio.Queue,
         response_pipe.send(response)
 
 
-# Process received APIRequests from the inbound queue,
+# Process received APIRequests from the request queue,
 # write to the outbound queue.
 # TODO: Move the outbound to an asyncio.Queue() later
 
 def start_request_queue_processor(request_queue: asyncio.Queue,
                                   response_queue: asyncio.Queue):
-    asyncio.create_task(_request_queue_processor(request_queue=request_queue,
-                                                 response_queue=response_queue),
-                        name='InboundQueueProcessor')
+    supervisor = SupervisedTask(
+        _request_queue_processor,
+        request_queue=request_queue,
+        response_queue=response_queue)
+    return supervisor
 
 
 async def _request_queue_processor(request_queue: asyncio.Queue,
@@ -84,17 +92,18 @@ async def _request_queue_processor(request_queue: asyncio.Queue,
 
     while True:
         got: APIRequest = await request_queue.get()
-        print(f"{type(got)}: {got.method} {got.resource} {got.connectivity_required}")
+        print(f"{type(got)}: {got.method} "
+              f"Requires: {got.resource} {got.connectivity_required}")
         resource_dict = {}
         exception = None
         if got.method is HTTPMethod.GET:
             try:
                 # TODO: Should be "ready" and not just "connected"
-                if not de1.is_connected \
-                        and got.connectivity_required['DE1']:
+                if (got.connectivity_required['DE1'] and not de1.is_connected):
                     raise DE1NotConnectedError("DE1 not connected")
-                if not scale_processor.scale.is_connected \
-                    and got.connectivity_required['Scale']:
+                if (got.connectivity_required[ 'Scale']
+                        and scale_processor.scale is not None
+                        and not scale_processor.scale.is_connected):
                     raise DE1NotConnectedError("Scale not connected")
                 resource_dict = await get_resource_to_dict(got.resource)
             except Exception as e:
@@ -113,11 +122,11 @@ async def _request_queue_processor(request_queue: asyncio.Queue,
             resource_dict = None
             try:
                 # TODO: Should be "ready" and not just "connected"
-                if not de1.is_connected \
-                        and got.connectivity_required['DE1']:
+                if (got.connectivity_required['DE1'] and not de1.is_connected):
                     raise DE1NotConnectedError("DE1 not connected")
-                if not scale_processor.scale.is_connected \
-                    and got.connectivity_required['Scale']:
+                if (got.connectivity_required[ 'Scale']
+                        and scale_processor.scale is not None
+                        and not scale_processor.scale.is_connected):
                     raise DE1NotConnectedError("Scale not connected")
                 await patch_resource_from_dict(got.resource,
                                                got.payload)
@@ -140,11 +149,11 @@ async def _request_queue_processor(request_queue: asyncio.Queue,
                 and got.resource is Resource.DE1_PROFILE:
             try:
                 # TODO: Should be "ready" and not just "connected"
-                if not de1.is_connected \
-                        and got.connectivity_required['DE1']:
+                if (got.connectivity_required['DE1'] and not de1.is_connected):
                     raise DE1NotConnectedError("DE1 not connected")
-                if not scale_processor.scale.is_connected \
-                    and got.connectivity_required['Scale']:
+                if (got.connectivity_required[ 'Scale']
+                        and scale_processor.scale is not None
+                        and not scale_processor.scale.is_connected):
                     raise DE1NotConnectedError("Scale not connected")
 
                 # TODO: Implement PUT properly (check for completeness)

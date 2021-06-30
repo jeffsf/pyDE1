@@ -5,6 +5,11 @@ License for this software, part of the pyDE1 package, is granted under
 GNU General Public License v3.0 only
 SPDX-License-Identifier: GPL-3.0-only
 """
+
+# Supervise:
+#   Task: loop.run_in_executor(None, server.serve_forever)
+
+
 import multiprocessing
 import multiprocessing.connection as mpc
 import time
@@ -17,6 +22,7 @@ from pyDE1.exceptions import *
 # one request pending at a time, this shouldn't be a big problem.
 # Going to async for the "second half" of waiting for the response
 # might be a way to provide a timeout and prevent permanent blocking.
+from pyDE1.supervise import SupervisedTask, SupervisedExecutor
 
 
 def run_api_inbound(log_queue: multiprocessing.Queue,
@@ -99,7 +105,7 @@ def run_api_inbound(log_queue: multiprocessing.Queue,
             await asyncio.sleep(10)
             logger.info("===== BOOP =====")
 
-    loop.create_task(heartbeat(), name='Heartbeat')
+    SupervisedTask(heartbeat)
 
     try:
         str.removeprefix  # Python 3.9 and later
@@ -166,6 +172,9 @@ def run_api_inbound(log_queue: multiprocessing.Queue,
                 self.wfile.write(resp_bytes)
 
             elif isinstance(resp.exception, DE1NotConnectedError):
+                #
+                # TODO: Include the stack trace and all
+                #
                 body = repr(resp.exception).encode('utf-8')
                 self.send_response(HTTPStatus.SERVICE_UNAVAILABLE)
                 self.send_header("Content-type", "text/plain")
@@ -443,8 +452,12 @@ def run_api_inbound(log_queue: multiprocessing.Queue,
         multiprocessing.current_process().close()
         logger.info("Process closed")
 
+    # from pyDE1.watchdog import watchdog
+    # SupervisedTask(watchdog)
 
-    # loop.call_soon(server.serve_forever)
-    loop.run_in_executor(None, server.serve_forever)
+    # loop.run_in_executor(None, server.serve_forever)
+
+    supervisor_server = SupervisedExecutor(None, server.serve_forever)
+
     loop.run_forever()
 

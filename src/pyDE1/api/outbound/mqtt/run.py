@@ -10,6 +10,8 @@ counting the various messages by type,
 logging every update_period seconds (and resetting the count)
 """
 
+# Supervise:
+#   nothing: loop.add_reader()
 
 # Only import the minimal here, as it potentially ends up in all processes.
 import multiprocessing
@@ -18,6 +20,7 @@ import multiprocessing.connection as mpc
 # TODO: look into how loggers here relate to the root logger from "main"
 
 # TODO: Look into or resolve processes' loggers writing over each other
+from pyDE1.supervise import SupervisedTask
 
 
 def run_api_outbound(log_queue: multiprocessing.Queue,
@@ -127,11 +130,18 @@ def run_api_outbound(log_queue: multiprocessing.Queue,
         logger.info("Process closed")
 
     async def heartbeat():
+        import random
         while True:
             await asyncio.sleep(10)
-            logger.info("===== BEEP =====")
+            if random.choice((True, False)):
+                logger.info("===== BEEP =====")
+            else:
+                logger.info("===== BEEP =====")
+                # logger.info("XXXXX BYE XXXXX")
+                # raise RuntimeError("Roll of the dice")
 
-    loop.create_task(heartbeat(), name='Heartbeat')
+    SupervisedTask(heartbeat)
+
 
     def on_log_callback(client: mqtt.Client, userdata, level, buf):
         client_logger.info(f"CB: Log: level: {level} '{buf}' ({type(buf)})")
@@ -226,7 +236,5 @@ def run_api_outbound(log_queue: multiprocessing.Queue,
         return outbound_pipe_reader
 
     loop.add_reader(outbound_pipe.fileno(), create_pipe_reader())
-
-    # loop.run_in_executor(None, pick_and_send, outbound_pipe, mqtt_client)
 
     loop.run_forever()

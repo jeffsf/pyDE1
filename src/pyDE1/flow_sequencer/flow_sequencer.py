@@ -111,11 +111,13 @@ class FlowSequencer (Singleton, I_TargetSetter):
     #     pass
 
     def _singleton_init(self):
-        self._de1: Optional[DE1] = None
-        self._scale_processor: Optional[ScaleProcessor] = None
 
-        self._event_de1_present = asyncio.Event()
-        self._event_scale_processor_present = asyncio.Event()
+        # Singletons now
+        self._de1 = DE1()
+        self._scale_processor = ScaleProcessor()
+
+        # self._event_de1_present = asyncio.Event()
+        # self._event_scale_processor_present = asyncio.Event()
 
         self._active_state: Optional[API_MachineStates] = None
         self._sequence_start_time: float = 0
@@ -193,15 +195,17 @@ class FlowSequencer (Singleton, I_TargetSetter):
         self._stop_at_volume_active = False
         self._stop_at_time_active = False
 
+        asyncio.create_task(self.set_up_subscribers())
+
     @property
     def de1(self):
         return self._de1
 
-    async def set_de1(self, value: DE1):
-        # Needs to unsubscribe the old
-        self._de1 = value
+    async def set_up_subscribers(self):
+        # DE1 only knows that its _flow_sequencer is an I_TargetSetter
+        # because of circular imports, so it can't reference FlowSequencer
         self._de1._flow_sequencer = self
-        self._event_de1_present.set()
+
         await asyncio.gather(
             self.de1.event_state_update.subscribe(
                 self._create_state_update_callback()),
@@ -212,36 +216,15 @@ class FlowSequencer (Singleton, I_TargetSetter):
             self.de1.event_shot_sample_with_volumes_update.subscribe(
                 self._create_stop_at_volume_subscriber()),
 
-            # This will fail if the scale_processor hasn't been connected yet
-            # self.scale_processor.event_weight_and_flow_update.subscribe(
-            #     _create_stop_at_weight_subscriber(self.de1)),
+            self.scale_processor.event_weight_and_flow_update.subscribe(
+                self._create_stop_at_weight_subscriber()),
         )
-        asyncio.create_task(self._set_stop_at_weight_subscriber_when_possible())
+        logger.info("FlowSequencer subscriptions done")
         return self
-
-    #
-    # TODO: THIS NEEDS A LOT OF HELP FOR CHANGING EITHER
-    #
-    async def _set_stop_at_weight_subscriber_when_possible(self):
-        await asyncio.gather(
-            self._event_scale_processor_present.wait(),
-            self._event_de1_present.wait(),
-        )
-        await self.scale_processor.event_weight_and_flow_update.subscribe(
-            self._create_stop_at_weight_subscriber()
-        )
 
     @property
     def scale_processor(self):
         return self._scale_processor
-
-    async def set_scale_processor(self, value: ScaleProcessor):
-        # Needs to unsubscribe the old
-        self._scale_processor = value
-        self._event_scale_processor_present.set()
-        await self._scale_processor.event_weight_and_flow_update.subscribe(
-                self._create_weight_and_flow_update_callback())
-        return self
 
     @property
     def active_state(self):

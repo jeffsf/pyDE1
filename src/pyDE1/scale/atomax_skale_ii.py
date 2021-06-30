@@ -21,6 +21,7 @@ from pyDE1.scale.events import ScaleWeightUpdate, ScaleButtonPress
 
 from pyDE1.event_manager.events import ConnectivityState, ConnectivityChange
 
+from pyDE1.supervise import SupervisedTask
 
 logger = logging.getLogger('Scale.AtomaxIIScale')
 
@@ -37,7 +38,8 @@ class AtomaxSkaleII(Scale):
 
         # Enable tare on button 1, hold UUID if need to unsubscribe
         self._button_1_tare_subscriber_id = None
-        asyncio.get_event_loop().create_task(self._subscribe_button_press())
+        self._supervisor_button = asyncio.create_task(
+            self._subscribe_button_press())
 
         # Linux, at least on an RPi 3B, needs response=True for write_gatt_char
         self._write_gatt_char_response = sys.platform == 'linux'
@@ -109,12 +111,7 @@ class AtomaxSkaleII(Scale):
             hold_notification=True)
         await self.set_grams()
         if not hold_notification:
-            await self._event_connectivity.publish(
-                ConnectivityChange(
-                    arrival_time=time.time(),
-                    state=ConnectivityState.READY
-                )
-            )
+            await self._notify_ready()
 
     async def update_self_from_device(self):
         self._model_number = await self._bleak_client.read_gatt_char(

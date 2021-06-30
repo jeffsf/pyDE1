@@ -83,6 +83,8 @@ class DE1 (Singleton):
     # def __init__(self):
     #     pass
 
+    MAX_WAIT_FOR_READY_EVENTS = 5.0  # seconds, 1.5-2.5 seconds seems typical
+
     def _singleton_init(self):
         self._address = None
         self._name = None
@@ -95,26 +97,15 @@ class DE1 (Singleton):
         # TODO: Should the handlers be able to be changed on the fly?
         self._handlers = pyDE1.de1.handlers.default_handler_map(self)
 
-        # The _cuuid_dict and _mmr_dict dictionaries contain the last update
         # TODO: Where is "last heard from"?
         self._cuuid_dict: Dict[CUUID, NotificationState] = dict()
         self._mmr_dict: Dict[Union[MMR0x80LowAddr, int], MMR0x80Data] = dict()
-        for cuuid in CUUID:
-            self._cuuid_dict[cuuid] = NotificationState(cuuid)
-        for mmr in MMR0x80LowAddr:
-            self._mmr_dict[mmr] = MMR0x80Data(mmr)
 
         self._event_connectivity = SubscribedEvent(self)
         self._event_state_update = SubscribedEvent(self)
         self._event_shot_sample = SubscribedEvent(self)
         self._event_water_levels = SubscribedEvent(self)
         self._event_shot_sample_with_volumes_update = SubscribedEvent(self)
-
-        # These have to be valid, as may be tested before first update
-        self._cuuid_dict[CUUID.StateInfo]._last_value = StateInfo(
-            State=API_MachineStates.NoRequest,
-            SubState=API_Substates.NoState
-        )
 
         # Used to restrict multiple access to writing the active profile
         self._profile_lock = asyncio.Lock()
@@ -139,11 +130,112 @@ class DE1 (Singleton):
         asyncio.create_task(self._event_shot_sample.subscribe(
             self._create_self_callback_ssu()))
 
+        self.prepare_for_connection(wipe_address=True)
+
+    #
+    # High-level initialization and re-initialization
+    #
+
+    def prepare_for_connection(self, wipe_address=True):
+        """
+        Basically wipe all cached state
+        """
+        if self.is_connected:
+            raise DE1IsConnectedError(
+                "Can't prepare_for_connection() while connected.")
+
+        logger.info(
+            f"prepare_for_connection(wipe_address={wipe_address})")
+
+        loop = asyncio.get_running_loop()
+        if loop is not None and loop.is_running():
+            asyncio.create_task(self._notify_not_ready())
+        else:
+            logger.debug(f"No running loop to _notify_not_ready(): {loop}")
+
+        if wipe_address:
+            self._address = None
+            self._bleak_client = None  # Constructor requires an address
+
+        self._cuuid_dict: Dict[CUUID, NotificationState] = dict()
+        self._mmr_dict: Dict[Union[MMR0x80LowAddr, int], MMR0x80Data] = dict()
+        for cuuid in CUUID:
+            self._cuuid_dict[cuuid] = NotificationState(cuuid)
+        for mmr in MMR0x80LowAddr:
+            self._mmr_dict[mmr] = MMR0x80Data(mmr)
+
+        self._cuuid_dict[CUUID.StateInfo]._last_value = StateInfo(
+            State=API_MachineStates.NoRequest,
+            SubState=API_Substates.NoState
+        )
+
+        self._tracking_volume_dispensed = False
+        self._volume_dispensed_total = 0
+        self._volume_dispensed_preinfuse = 0
+        self._volume_dispensed_pour = 0
+        self._volume_dispensed_by_frame = []
+        # TODO: Convince Ray to return substate and state
+        #       in ShotSample so this isn't needed for volume tracking
+        self._number_of_preinfuse_frames: int = 0
+
+        self._last_stop_requested = 0
+
+        # Internal flag
+        self._recorder_active = False
+
+    async def initialize_after_connection(self):
+
+        logger.info("initialize_after_connection()")
+
+        await asyncio.gather(
+            self.start_standard_read_write_notifiers(),
+            self.start_standard_periodic_notifiers(),
+        )
+
+        t0 = time.time()
+        (event_list, ignore) = await asyncio.gather(
+            self.read_standard_mmr_registers(),
+            self.read_cuuid(CUUID.StateInfo),
+        )
+
+        event_list.append(self._cuuid_dict[CUUID.StateInfo].ready_event)
+
+        # TODO: How to detect all the info has come back
+        #       and what to do if it doesn't?
+
+        gather_list = [event.wait() for event in event_list]
+
+        # TODO: Timeout!!
+        logger.info(f"Waiting for {len(event_list)} responses")
+        try:
+            results = await asyncio.wait_for(asyncio.gather(*gather_list),
+                             self.MAX_WAIT_FOR_READY_EVENTS)
+            t1 = time.time()
+            logger.info(
+                f"{len(event_list)} responses received in "
+                f"{t1 - t0:.3f} seconds")
+        except asyncio.TimeoutError:
+            logger.warning("Timeout waiting for responses.")
+            count = 0
+            for event in event_list:
+                event: asyncio.Event
+                if not event.is_set():
+                    logger.warning(
+                        f"No response from #{count} of {len(event_list)}")
+                count += 1
+            logger.error("Stupidly continuing anyway")
+
+        # NB: This gets sent if all there or not
+        await self._notify_ready()
+
+        return
+
     # TODO: Rework initialization
     async def _notify_ready(self):
         await self._event_connectivity.publish(
             ConnectivityChange(arrival_time=time.time(),
                                state=ConnectivityState.READY))
+        logger.info("Ready")
 
     async def _notify_not_ready(self):
         await self._event_connectivity.publish(
@@ -211,7 +303,9 @@ class DE1 (Singleton):
     #     See: https://github.com/hbldh/bleak/issues/361
 
     async def connect(self, timeout=5.0):
+
         logger.info(f"Connecting to DE1 at {self.address}")
+
         if self._bleak_client is None:
             if self.address is None:
                 raise DE1NoAddressError
@@ -219,11 +313,13 @@ class DE1 (Singleton):
         self._bleak_client.set_disconnected_callback(
             self._create_disconnect_callback()
         )
+
         await asyncio.gather(self._event_connectivity.publish(
             ConnectivityChange(arrival_time=time.time(),
                                state=ConnectivityState.CONNECTING)),
             self._bleak_client.connect(timeout=timeout),
         )
+
         if self.is_connected:
             self._address = self._bleak_client.address
             if self.name is None:
@@ -232,6 +328,10 @@ class DE1 (Singleton):
             await self._event_connectivity.publish(
                 ConnectivityChange(arrival_time=time.time(),
                                    state=ConnectivityState.CONNECTED))
+            # This can take some time, potentially delaying scale connection
+            # At least BlueZ doesn't like concurrent connection requests
+            asyncio.create_task(self.initialize_after_connection())
+
         else:
             logger.error(f"Connection failed to DE1 at {self.address}")
             await self._event_connectivity.publish(
@@ -260,7 +360,6 @@ class DE1 (Singleton):
                 ConnectivityChange(arrival_time=time.time(),
                                    state=ConnectivityState.DISCONNECTED))
 
-
     # TODO: Decide how to handle  self._disconnected_callback
     #   disconnected_callback (callable): Callback that will be scheduled in the
     #   event loop when the client is disconnected. The callable must take one
@@ -283,6 +382,8 @@ class DE1 (Singleton):
             asyncio.create_task(de1._event_connectivity.publish(
                 ConnectivityChange(arrival_time=time.time(),
                                    state=ConnectivityState.DISCONNECTED)))
+            # if not shutdown underway:
+            de1.prepare_for_connection(wipe_address=client.willful_disconnect)
 
         return disconnect_callback
 
@@ -485,7 +586,7 @@ class DE1 (Singleton):
 # MMR-based properties
 #
 
-    async def read_standard_mmr_registers(self):
+    async def read_standard_mmr_registers(self) -> List[asyncio.Event]:
         """
         Request a read of the readable MMR registers, in bulk
         :return:
@@ -513,9 +614,12 @@ class DE1 (Singleton):
         #     self.read_mmr(words_block_3 - 1, 0x80, start_block_3),
         # )
 
-        await self.read_mmr(words_block_1, 0x80, start_block_1)
-        await self.read_mmr(words_block_2, 0x80, start_block_2)
-        await self.read_mmr(words_block_3, 0x80, start_block_3)
+        retval = await self.read_mmr(words_block_1, 0x80, start_block_1)
+        retval.extend(await self.read_mmr(words_block_2, 0x80, start_block_2))
+        retval.extend(await self.read_mmr(words_block_3, 0x80, start_block_3))
+
+        return retval
+
 
     #
     # Upload a shot profile
@@ -1126,12 +1230,3 @@ class DE1 (Singleton):
 
         else:
             raise DE1APIUnsupportedStateTransitionError(mode, cs, css)
-
-
-
-
-
-
-
-# from pyDE1.dispatcher.mapping import MAPPING
-# from pyDE1.dispatcher.implementation import get_target_sets
