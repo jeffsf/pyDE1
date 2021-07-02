@@ -14,6 +14,8 @@ Logging to a single file, `/tmp/log/pyDE1/combined.log` by default. If changed t
 
 Log file is closed and reopened on SIGHUP.
 
+Long-running processes, tasks, and futures are supervised, with automatic restart should they unexpectedly terminate.
+
 
 ### Fixed
 
@@ -71,6 +73,15 @@ Several internal method signatures changed to accomodate changes in IPC. These a
 
 **"null" outbound API implementation** — Removed as not refactored for new IPC. If there is a need, the MQTT implementation can be modified to only consume from the pipe and not create or use an MQTT client.
 
+### Known Issues
+
+Exceptions on a non-supervised task or callback are "swallowed" by the default handler. They are reported in the log, but do not terminate the caller.
+
+Restarting of a supervised process, task, or future that then fails again is not managed. A "permanent" failure results in continual restarts.
+
+The API for enabling and disabling auto-tare and stop-at can only do so within the limits of the FlowSequencer's list of applicable states. See further `autotare_states`, `stop_at_*_states`, and `last_drops_states`
+
+The main process can return a non-zero code even when the shutdown appeared to be due to a shutdown signal, rather than an exception.
 
 ## 0.3.0 — 2021-06-26
 
