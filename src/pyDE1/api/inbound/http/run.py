@@ -73,32 +73,32 @@ def run_api_inbound(log_queue: multiprocessing.Queue,
 
     from pyDE1.utils import cancel_tasks_by_name
 
+    from pyDE1.signal_handlers import add_handler_shutdown_signals
+
     logger = logging.getLogger(multiprocessing.current_process().name)
 
     loop = asyncio.get_event_loop()
     loop.set_debug(True)
 
-    signals = (
-        # signal.SIGHUP,
-        signal.SIGINT,
-        signal.SIGQUIT,
-        signal.SIGABRT,
-        signal.SIGTERM,
-    )
-
     signal.signal(signal.SIGHUP, signal.SIG_IGN)
 
-    async def signal_handler(signal: signal.Signals,
+    async def shutdown_signal_handler(signal: signal.Signals,
                              loop: asyncio.AbstractEventLoop):
         logger = logging.getLogger('HTTPShutdown')
         logger.info(f"{str(signal)} SHUTDOWN INITIATED")
-        graceful_shutdown()
+        logger.info("Shutting down HTTP server")
+        server.shutdown()
+        logger.info("Shutting down other tasks")
+        cancel_tasks_by_name('', starts_with=True)
+        logger.info("Stopping loop")
+        loop.stop()
+        logger.info("Loop stopped, closing this process")
+        # AttributeError: 'NoneType' object has no attribute 'kill'
+        # multiprocessing.current_process().kill()
+        multiprocessing.current_process().close()
+        logger.info("Process closed")
 
-    for sig in signals:
-        loop.add_signal_handler(
-            sig,
-            lambda sig=sig: asyncio.create_task(signal_handler(sig, loop),
-                                                name=str(sig)))
+    add_handler_shutdown_signals(shutdown_signal_handler)
 
     async def heartbeat():
         while True:
@@ -438,24 +438,6 @@ def run_api_inbound(log_queue: multiprocessing.Queue,
 
     server = http.server.HTTPServer((SERVER_HOST, SERVER_PORT),
                                     RequestHandler)
-
-    def graceful_shutdown():
-        logger.info("Shutting down HTTP server")
-        server.shutdown()
-        logger.info("Shutting down other tasks")
-        cancel_tasks_by_name('', starts_with=True)
-        logger.info("Stopping loop")
-        loop.stop()
-        logger.info("Loop stopped, closing this process")
-        # AttributeError: 'NoneType' object has no attribute 'kill'
-        # multiprocessing.current_process().kill()
-        multiprocessing.current_process().close()
-        logger.info("Process closed")
-
-    # from pyDE1.watchdog import watchdog
-    # SupervisedTask(watchdog)
-
-    # loop.run_in_executor(None, server.serve_forever)
 
     supervisor_server = SupervisedExecutor(None, server.serve_forever)
 

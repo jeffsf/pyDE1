@@ -30,43 +30,30 @@ def run_api_outbound(log_queue: multiprocessing.Queue,
     import multiprocessing
     import os
     import time
+    import asyncio
+    import json
+    import signal
 
     from socket import gethostname
 
     from collections import Callable
 
-    logger = logging.getLogger(multiprocessing.current_process().name)
+    import paho.mqtt.client as mqtt
+    from paho.mqtt.client import MQTTv5, MQTT_CLEAN_START_FIRST_ONLY
+
+    from pyDE1.utils import cancel_tasks_by_name
+    from pyDE1.signal_handlers import add_handler_shutdown_signals
 
     from pyDE1.default_logger import initialize_default_logger, \
         set_some_logging_levels
+
+    logger = logging.getLogger(multiprocessing.current_process().name)
 
     initialize_default_logger(log_queue)
     set_some_logging_levels()
 
     client_logger = logging.getLogger('MQTTClient')
     client_logger.level = logging.INFO
-
-    import asyncio
-    import json
-    import sys
-    import signal
-
-    # cpn = multiprocessing.current_process().name
-    # for k in sys.modules.keys():
-    #     if (k.startswith('pyDE1')
-    #             or k.startswith('bleak')
-    #             or k.startswith('asyncio-mqtt')):
-    #         print(
-    #             f"{cpn}: {k}"
-    #         )
-
-    # import asyncio_mqtt
-    # import asyncio_mqtt.client
-
-    import paho.mqtt.client as mqtt
-    from paho.mqtt.client import MQTTv5, MQTT_CLEAN_START_FIRST_ONLY
-
-    from pyDE1.utils import cancel_tasks_by_name
 
     # https://github.com/eclipse/paho.mqtt.c/issues/864
     # Add support for Unix-domain sockets #864 (open issue)
@@ -92,30 +79,13 @@ def run_api_outbound(log_queue: multiprocessing.Queue,
     loop = asyncio.get_event_loop()
     loop.set_debug(True)
 
-    signals = (
-        # signal.SIGHUP,
-        signal.SIGINT,
-        signal.SIGQUIT,
-        signal.SIGABRT,
-        signal.SIGTERM,
-    )
-
     signal.signal(signal.SIGHUP, signal.SIG_IGN)
 
-    async def signal_handler(signal: signal.Signals,
+    async def shutdown_signal_handler(signal: signal.Signals,
                              loop: asyncio.AbstractEventLoop):
         process = multiprocessing.current_process()
         logger = logging.getLogger('MQTTShutdown')
         logger.info(f"{str(signal)} SHUTDOWN INITIATED")
-        graceful_shutdown()
-
-    for sig in signals:
-        loop.add_signal_handler(
-            sig,
-            lambda sig=sig: asyncio.create_task(signal_handler(sig, loop),
-                                                name=str(sig)))
-
-    def graceful_shutdown():
         logger.info("Shutting down MQTT client")
         mqtt_client.loop_stop()
         mqtt_client.disconnect()
@@ -128,6 +98,8 @@ def run_api_outbound(log_queue: multiprocessing.Queue,
         # multiprocessing.current_process().kill()
         multiprocessing.current_process().close()
         logger.info("Process closed")
+
+    add_handler_shutdown_signals(shutdown_signal_handler)
 
     async def heartbeat():
         import random

@@ -31,6 +31,10 @@ from pyDE1.controller import run_controller
 from pyDE1.supervise import SupervisedTask, SupervisedExecutor, \
     SupervisedProcess
 
+from pyDE1.signal_handlers import add_handler_sigchld_show_processes, \
+    add_handler_shutdown_signals
+
+
 if __name__ == "__main__":
 
     multiprocessing.set_start_method('spawn')
@@ -50,19 +54,7 @@ if __name__ == "__main__":
     pyDE1.default_logger.initialize_default_logger(log_queue)
     pyDE1.default_logger.set_some_logging_levels()
 
-    async def signal_handler(signal: signal.Signals,
-                             loop: asyncio.AbstractEventLoop):
-        logger.info(f"{str(signal)} {multiprocessing.active_children()}")
-
-    signals = (
-        signal.SIGCHLD,
-    )
-
-    for sig in signals:
-        loop.add_signal_handler(
-            sig,
-            lambda sig=sig: asyncio.create_task(signal_handler(sig, loop),
-                                                name=str(sig)))
+    add_handler_sigchld_show_processes()
 
     async def graceful_shutdown(signal: signal.Signals,
                                 loop: asyncio.AbstractEventLoop):
@@ -106,20 +98,16 @@ if __name__ == "__main__":
         # print("loop.close()")
         # loop.close()
 
-    signals = (
-        # signal.SIGHUP,
-        signal.SIGINT,
-        signal.SIGQUIT,
-        signal.SIGABRT,
-        signal.SIGTERM,
-    )
+    add_handler_shutdown_signals(graceful_shutdown)
 
-    for sig in signals:
-        loop.add_signal_handler(
-            sig,
-            lambda sig=sig: asyncio.create_task(
-                graceful_shutdown(sig, loop),
-                name=str(sig)))
+    @atexit.register
+    def kill_stragglers():
+        print("kill_stragglers()")
+        procs = multiprocessing.active_children()
+        for p in procs:
+            print(f"Killing {p}")
+            p.kill()
+        print("buh-bye!")
 
     # These assume that the executor is threading
     _rotate_logfile = threading.Event()
@@ -136,15 +124,6 @@ if __name__ == "__main__":
     # read, write, for simplex
     outbound_pipe_read, outbound_pipe_write = multiprocessing.Pipe(
         duplex=False)
-
-    @atexit.register
-    def kill_stragglers():
-        print("kill_stragglers()")
-        procs = multiprocessing.active_children()
-        for p in procs:
-            print(f"Killing {p}")
-            p.kill()
-        print("buh-bye!")
 
     # MQTT API
     supervised_outbound_api_process = SupervisedProcess(

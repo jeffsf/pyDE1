@@ -36,6 +36,8 @@ def run_controller(log_queue: multiprocessing.Queue,
     from pyDE1.default_logger import initialize_default_logger, \
         set_some_logging_levels
 
+    from pyDE1.signal_handlers import add_handler_shutdown_signals
+
     initialize_default_logger(log_queue)
     set_some_logging_levels()
 
@@ -49,6 +51,8 @@ def run_controller(log_queue: multiprocessing.Queue,
 
     _shutting_down = False
     _disconnect_set = set()
+
+    signal.signal(signal.SIGHUP, signal.SIG_IGN)
 
     async def shutdown_signal_handler(signal: signal.Signals,
                              loop: asyncio.AbstractEventLoop):
@@ -76,22 +80,7 @@ def run_controller(log_queue: multiprocessing.Queue,
         # NB:
         loop.stop()
 
-    signals = (
-        # signal.SIGHUP,
-        signal.SIGINT,
-        signal.SIGQUIT,
-        signal.SIGABRT,
-        signal.SIGTERM,
-    )
-
-    signal.signal(signal.SIGHUP, signal.SIG_IGN)
-
-    for sig in signals:
-        loop.add_signal_handler(
-            sig,
-            lambda sig=sig: asyncio.create_task(
-                shutdown_signal_handler(sig, loop),
-                name=str(sig)))
+    add_handler_shutdown_signals(shutdown_signal_handler)
 
     request_queue = asyncio.Queue()
     response_queue = asyncio.Queue()
