@@ -42,6 +42,8 @@ class SupervisedWork:
         self._logger = logging.getLogger(
             f"{self.__class__.__name__}.{self._name}")
         self._work = None
+        self._restart_count = 0
+        self._restart_count_limit = 2
 
     # Subclasses should self-start to be consistent with unsupervised calls
     def _start(self, task: Optional[T_Work] = None):
@@ -56,7 +58,12 @@ class SupervisedWork:
                 self._logger.info(f"Exiting as cancelled {exc}")
                 return
             else:
-                self._logger.exception(f"Task failed with exception:", exc_info=exc)
+                self._logger.exception(f"Task failed with exception:",
+                                       exc_info=exc)
+                self._restart_count += 1
+                if self._restart_count > self._restart_count_limit:
+                    self._logger.critical("Too many restarts, abandoning")
+                    return
                 self._logger.info(f"Restarting")
 
         self._work = self._create_work()
@@ -151,6 +158,9 @@ class SupervisedProcess:
         self._do_not_restart = do_not_restart
         self._logger = logging.getLogger(f"SupervisedProcess.{self._name}")
         self._process: Optional[multiprocessing.Process] = None
+        self._restart_count = 0
+        self._restart_count_limit = 2
+
 
     def _create_process(self):
         self._process = multiprocessing.Process(
@@ -181,7 +191,13 @@ class SupervisedProcess:
         if self._process is None:
             self._logger.info(f"Starting")
         else:
-            self._logger.info(f"Restarting")
+            self._restart_count += 1
+            if self._restart_count > self._restart_count_limit:
+                self._logger.critical("Too many restarts, abandoning")
+                self.do_not_restart = True
+                return
+            else:
+                self._logger.info(f"Restarting")
 
         self._create_process()
         self._process.start()
