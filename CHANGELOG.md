@@ -1,6 +1,6 @@
 # Changelog
 
-## Pending
+## 0.4.0 – 2021-07-03
 
 ### New
 
@@ -14,7 +14,7 @@ Logging to a single file, `/tmp/log/pyDE1/combined.log` by default. If changed t
 
 Log file is closed and reopened on SIGHUP.
 
-Long-running processes, tasks, and futures are supervised, with automatic restart should they unexpectedly terminate.
+Long-running processes, tasks, and futures are supervised, with automatic restart should they unexpectedly terminate. A limit of two restarts is in place to prevent "thrashing" on non-transient errors.
 
 
 ### Fixed
@@ -48,6 +48,8 @@ IPC between the controller and outbound (MQTT) API now uses a pipe and `loop.add
 
 Several internal method signatures changed to accomodate changes in IPC. These are considered "internal" and do not impact the two, public APIs.
 
+Significant refactoring to move setup and run code out of `try_de1.py` and into more appropriate locations. The remaining "manual" setup steps are now in `ugly_bits.py`. See also `run.py`
+
 #### Mapping Version 2.1.1
 
 * Handle missing modules in "version" request by returning `None` (`null`)
@@ -72,17 +74,17 @@ Several internal method signatures changed to accomodate changes in IPC. These a
 
 ### Removed
 
-**"null" outbound API implementation** — Removed as not refactored for new IPC. If there is a need, the MQTT implementation can be modified to only consume from the pipe and not create or use an MQTT client.
+"null" outbound API implementation — Removed as not refactored for new IPC. If there is a need, the MQTT implementation can be modified to only consume from the pipe and not create or use an MQTT client.
 
 ### Known Issues
 
 Exceptions on a non-supervised task or callback are "swallowed" by the default handler. They are reported in the log, but do not terminate the caller.
 
-Restarting of a supervised process, task, or future that then fails again is not managed. A "permanent" failure results in continual restarts.
-
 The API for enabling and disabling auto-tare and stop-at can only do so within the limits of the FlowSequencer's list of applicable states. See further `autotare_states`, `stop_at_*_states`, and `last_drops_states`
 
 The main process can return a non-zero code even when the shutdown appeared to be due to a shutdown signal, rather than an exception.
+
+The hard limit of two restarts should be changed to a time-based limit.
 
 ## 0.3.0 — 2021-06-26
 

@@ -23,8 +23,9 @@ Consumers of these APIs should only need to understand high-level actions, such 
 
 ## Revision History
 
-* 2021-06-26 - Content and organizational updates for release 0.3.0
-* 2021-06-22 - Updated for release 0.2.0
+* 2021-07-03 – Updated for release 0.4.0, see also CHANGELOG.md
+* 2021-06-26 – Content and organizational updates for release 0.3.0
+* 2021-06-22 – Updated for release 0.2.0
 * 2021-06-11 – Updated for release 0.1.0
 * 2021-06-08 – Initial release
 
@@ -38,24 +39,60 @@ See also [https://github.com/jeffsf/pyDE1](https://github.com/jeffsf/pyDE1) wher
 
 ## What's New
 
-**Please see CHANGELOG.md for more details**
+_**Please see CHANGELOG.md for more details**_
 
-### 0.3.0
+### 0.4.0
 
-Upload of profile (JSON v2 format) available with PUT at de1/profile
+This release focuses primarily on structural changes needed to get to a "it's just running" configuration, suitable for non-experts to use. The goal is to be able to run as a service, not requiring anything to be "launched" manually.
 
->  curl -D - -X PUT --data @examples/jmk_eb5.json  http://localhost:1234/de1/profile
+#### New
 
-Line frequency GET/PATCH at de1/calibration/line_frequency implemented. Valid values are 50 or 60. This does not impact the DE1, only if 1/100 or 1/120 is used to calculate volume dispensed.
+Support for non-GHC machines to be able to start flow through the API
 
-#### Mapping Version 2.1.0 
+More graceful shutdown on SIGINT, SIGQUIT, SIGABRT, and SIGTERM (SIGHUP is reserved for log rotation)
 
-* Adds `IsAt.internal_type` to help validate the string values for `DE1ModeEnum` and `ConnectivityEnum`. JSON producers and consumers should sill expect and provide `IsAt.v_type`
-* Enables `de1/profile` for PUT
+Logging to a single file, `/tmp/log/pyDE1/combined.log` by default. If changed to, for example, `/var/log/pyDE1/`, the process needs write permission for the directory. 
 
-#### Resource Version 1.1.0
+> NB: Keeping the logs in a dedicated directory is suggested, as the plan is to provide an API where a directory list will be used to generate the `logs` collection. `/tmp/` is used for ease of development and is not guaranteed to survive a reboot. 
 
-* Adds `DE1_CALIBRATION_LINE_FREQUENCY = 'de1/calibration/line_frequency'`
+Log file is closed and reopened on SIGHUP.
+
+Long-running processes, tasks, and futures are supervised, with automatic restart should they unexpectedly terminate. A limit of two restarts is in place to prevent "thrashing" on non-transient errors.
+
+#### Major Changes
+
+Change from `asyncio-mqtt` to "bare" `paho-mqtt`. The `asyncio-mqtt` module is still a requirement as it is used in `examples/monitor_delay.py`
+
+Controller now runs in its own process. Much of what was in `try_de1.py` is now in `controller.py`, `run.py`, or `ugly_bits.py` 
+
+Log entries now include the process name.
+
+##### Mapping Version 2.1.1
+
+* Handle missing modules in "version" request by returning `None` (`null`)
+
+##### Resource Version 1.2.0
+
+* Adds to `DE1ModeEnum` Espresso, HotWaterRinse, Steam, HotWater for use by non-GHC machines
+* `.can_post` now returns False, reflecting that POST is and was not supported
+
+##### Response Codes
+
+* 409 — When the current state of the device does not permit the action
+  * `DE1APIUnsupportedStateTransitionError`
+
+* 418 — When the device is incapable of or blocked from taking the action
+  * `DE1APIUnsupportedFeatureError`
+
+
+#### Deprecated
+
+`try_de1.py` is deprecated in favor of `run.py` or similar three-liners.
+
+#### Removed
+
+"null" outbound API implementation — Removed as not refactored for new IPC. If there is a need, the MQTT implementation can be modified to only consume from the pipe and not create or use an MQTT client.
+
 
 
 ## Requirements
@@ -75,31 +112,28 @@ The Raspberry Pi version of Debian *Buster* ships with Python 3.7, which does no
 
 Python 3.9 is expected to be part of Debian "next". Until that time, https://github.com/pyenv/pyenv can be used to install a version of your choice. On a RPi 3B, a complete build too under 15 minutes.
 
-Development work is being done on *Buster* with Python 3.9.5 on a RPI 3B at this time.
+Development work is being done on *Buster* with Python 3.9.5 on a RPi 3B at this time.
 
 The `bleak` library is supported on macOS, Linux, and Windows. Some development has also been done under macOS.
 
-## Work In Progress
+## Short-Term Priorities
 
-* Provide graceful shutdown of all processes.
-* Daemonize with supervision of Tasks and secondary processes.
+* Provide Bluetooth discovery and device selection through API
+* Access logs through API
+* Manage unexpected disconnects and reconnects
+* Abort long-running actions, such as uploading firmware
+* Daemonize and provide Debian-compatible service script
 * Bring in [find-first-matching functionality](https://github.com/hbldh/bleak/pull/565) when available from release `bleak`.
-* Clean up the imports with likely a combination of pulling events and exceptions out, along with interface definitions.
-* Documentation, including more doc strings, and typing
+
 
 ## Known Gaps
 
-* Multiprocess logging needs to be unified
-* Access logs through API
-* Manage unexpected disconnects and reconnects
-* Abort long-running actions, such as uploading a profile or firmware
 * Timeouts on certain locks and await actions
-* Adding, removing, or replacing the DE1 or scale
-* Potentially move to `aiologger` to reduce logging delays
 * Single-command read of the DE1 debug register
 * Clean, descale, transport
-* Support for non-GHC machines in the API
-* Catalog of discovered BLE devices for the API
+* Clean up the imports
+* More doc strings and typing
+* Stand-alone documentation
 * Quick-start guide
 
 ## Other Work
@@ -126,7 +160,7 @@ ALL NECESSARY SERVICING, REPAIR OR CORRECTION.
 
 
 
-## What's (Not So) New
+## Some Older Notes of Explanatory Value
 
 _**Please see CHANGELOG.md for more newer details**_
 
@@ -221,7 +255,7 @@ Though "WET" and needing to be "DRY", the first-found DE1 and Skale will be used
 Refactoring of this is pending the formal release of `BleakScanner.find_device_by_filter(filterfunc)` from [bleak PR #565](https://github.com/hbldh/bleak/pull/565)
 
 
-## What Seems To Be Working – High Level Functionality
+## High Level Functionality
 
 * Connect by address to DE1
 * Read and decode BLE characteristics 
