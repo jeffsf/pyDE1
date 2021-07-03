@@ -68,6 +68,7 @@ Several internal method signatures changed to accomodate changes in IPC. These a
 
 ### Deprecated
 
+`try_de1.py` is deprecated in favor of `run.py` or similar three-liners.
 
 ### Removed
 
