@@ -28,13 +28,10 @@ def run_api_outbound(log_queue: multiprocessing.Queue,
 
     import logging
     import multiprocessing
-    import os
     import time
     import asyncio
     import json
     import signal
-
-    from socket import gethostname
 
     from collections import Callable
 
@@ -47,6 +44,10 @@ def run_api_outbound(log_queue: multiprocessing.Queue,
     from pyDE1.default_logger import initialize_default_logger, \
         set_some_logging_levels
 
+    from pyDE1.config.mqtt import MQTT_TOPIC_ROOT, MQTT_CLIENT_ID, \
+        MQTT_BROKER_HOSTNAME, MQTT_BROKER_PORT, MQTT_TRANSPORT, \
+        MQTT_TLS_CONTEXT, MQTT_KEEPALIVE, MQTT_USERNAME, MQTT_PASSWORD
+
     logger = logging.getLogger(multiprocessing.current_process().name)
 
     initialize_default_logger(log_queue)
@@ -57,22 +58,6 @@ def run_api_outbound(log_queue: multiprocessing.Queue,
 
     # https://github.com/eclipse/paho.mqtt.c/issues/864
     # Add support for Unix-domain sockets #864 (open issue)
-
-    # TODO: Move these into a settings object
-
-    MQTT_TOPIC_ROOT = 'pyDE1'
-
-    MQTT_CLIENT_ID = f"pyDE1@{gethostname()}[{os.getpid()}]"
-
-    MQTT_BROKER_HOSTNAME = '::'
-    MQTT_BROKER_PORT = 1883
-
-    MQTT_TRANSPORT = 'tcp'
-    MQTT_TLS_CONTEXT = None
-    MQTT_KEEPALIVE = 60
-
-    MQTT_USERNAME = None
-    MQTT_PASSWORD = None
 
     # MQTT_PROTOCOL_VERSION = asyncio_mqtt.client.ProtocolVersion.V5
 

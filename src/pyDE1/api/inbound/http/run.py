@@ -28,10 +28,8 @@ from pyDE1.supervise import SupervisedTask, SupervisedExecutor
 def run_api_inbound(log_queue: multiprocessing.Queue,
                     api_pipe: mpc.Connection):
 
-    SERVER_HOST = ''
-    SERVER_PORT = 1234
-    SERVER_ROOT = '/'
-    PATCH_SIZE_LIMIT = 4096
+    from pyDE1.config.http import SERVER_HOST, SERVER_PORT, SERVER_ROOT, \
+        PATCH_SIZE_LIMIT
 
     import logging
     import multiprocessing

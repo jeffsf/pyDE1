@@ -4,6 +4,12 @@ Copyright © 2021 Jeff Kletsky. All Rights Reserved.
 License for this software, part of the pyDE1 package, is granted under
 GNU General Public License v3.0 only
 SPDX-License-Identifier: GPL-3.0-only
+
+"Main" executable:
+  * Set things up
+  * Start and supervise processes
+  * Manage aggregated logging
+  * Manage top-level shutdown
 """
 
 # Supervise:
@@ -12,14 +18,12 @@ SPDX-License-Identifier: GPL-3.0-only
 
 import asyncio
 import atexit
-import concurrent.futures
 import logging
 import multiprocessing
-import multiprocessing.connection as mpc
+import os
 import signal
 import threading
 import time
-from typing import Callable, Optional
 
 from pyDE1.api.outbound.mqtt import run_api_outbound
 from pyDE1.api.inbound.http import run_api_inbound
@@ -28,12 +32,12 @@ import pyDE1.default_logger
 
 from pyDE1.controller import run_controller
 
-from pyDE1.supervise import SupervisedTask, SupervisedExecutor, \
-    SupervisedProcess
+from pyDE1.supervise import SupervisedExecutor, SupervisedProcess
 
 from pyDE1.signal_handlers import add_handler_sigchld_show_processes, \
     add_handler_shutdown_signals
 
+from pyDE1.config.logging import LOG_DIRECTORY, LOG_FILENAME
 
 if __name__ == "__main__":
 
@@ -166,11 +170,6 @@ if __name__ == "__main__":
     # Now that the other processes are running, define the log handler
     # this will eventually get moved out
     #
-
-    import os
-
-    LOG_DIRECTORY = '/tmp/log/pyDE1/'
-    LOG_FILENAME = 'combined.log'
 
     def log_queue_reader_blocks(log_queue: multiprocessing.Queue,
                                 terminate_logging_event: threading.Event,
