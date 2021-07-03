@@ -22,6 +22,7 @@ import logging
 import multiprocessing
 import os
 import signal
+import sys
 import threading
 import time
 
@@ -41,6 +42,11 @@ from pyDE1.config.logging import LOG_DIRECTORY, LOG_FILENAME
 
 
 def run():
+
+    logger = logging.getLogger('run')
+
+    # NB: Can only be set once, make sure the top-level script uses
+    # if __name__ == '__main__':
     multiprocessing.set_start_method('spawn')
 
     loop = asyncio.get_event_loop()
@@ -49,7 +55,7 @@ def run():
     # If the controller is going to move into its own process
     # this process needs to handle the arrival of signals
 
-    logger = logging.getLogger('run')
+
 
     # Might be able to use SimpleQueue here,
     # at least until the queue gets joined at exit
