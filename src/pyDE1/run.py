@@ -39,8 +39,8 @@ from pyDE1.signal_handlers import add_handler_sigchld_show_processes, \
 
 from pyDE1.config.logging import LOG_DIRECTORY, LOG_FILENAME
 
-if __name__ == "__main__":
 
+def run():
     multiprocessing.set_start_method('spawn')
 
     loop = asyncio.get_event_loop()
@@ -49,7 +49,7 @@ if __name__ == "__main__":
     # If the controller is going to move into its own process
     # this process needs to handle the arrival of signals
 
-    logger = logging.getLogger('try_de1')
+    logger = logging.getLogger('run')
 
     # Might be able to use SimpleQueue here,
     # at least until the queue gets joined at exit
@@ -231,3 +231,6 @@ if __name__ == "__main__":
     # loop.close() seems to be the source of a kill-related exit code
     print("after loop.close()")
 
+
+if __name__ == "__main__":
+    run()
