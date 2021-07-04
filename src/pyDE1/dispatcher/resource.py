@@ -10,9 +10,12 @@ Enum that defines the recognized resources that the Dispatcher can access
 
 import enum
 
-RESOURCE_VERSION = '1.2.0'
+RESOURCE_VERSION = '1.3.0'
 
 class Resource (enum.Enum):
+
+    SCAN = 'scan'
+    SCAN_DEVICES = 'scan/devices'
 
     DE1 = 'de1'
 
@@ -78,11 +81,12 @@ class Resource (enum.Enum):
         retval = True
         # False if in
         if self in (
-            self.DE1_PROFILE,
-            self.DE1_FIRMWARE,
-            self.DE1_MODE,
-            self.SCALE_TARE,
-            self.SCALE_DISPLAY,
+                self.SCAN,
+                self.DE1_PROFILE,
+                self.DE1_FIRMWARE,
+                self.DE1_MODE,
+                self.SCALE_TARE,
+                self.SCALE_DISPLAY,
         ):
             retval = False
         return retval
@@ -92,6 +96,7 @@ class Resource (enum.Enum):
         retval = True
         # False if in
         if self in (
+                self.SCAN_DEVICES,
                 self.DE1_READ_ONCE,
                 self.VERSION,
         ):

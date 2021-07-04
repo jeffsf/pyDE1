@@ -12,3 +12,11 @@ SERVER_HOST = ''
 SERVER_PORT = 1234
 SERVER_ROOT = '/'
 PATCH_SIZE_LIMIT = 4096
+
+ASYNC_TIMEOUT = 1.0  # Seconds, before abandoning the request
+
+# If true, don't output nodes that have no value (write-only)
+# or are empty dicts
+# Otherwise math.nan fills in for the missing value
+# Should be considered as deprecated
+PRUNE_EMPTY_NODES = False

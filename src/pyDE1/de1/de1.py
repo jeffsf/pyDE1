@@ -56,13 +56,15 @@ from pyDE1.utils import task_name_exists, cancel_tasks_by_name
 
 from pyDE1.dispatcher.resource import ConnectivityEnum, DE1ModeEnum
 
+from pyDE1.config.bluetooth import CONNECT_TIMEOUT
+
 
 # If True, randomly skips upload packets
 _TEST_BLE_LOSS_DURING_FW_UPLOAD = False
 if _TEST_BLE_LOSS_DURING_FW_UPLOAD:
     import random
 
-logger = logging.getLogger('de1')
+logger = logging.getLogger('DE1')
 
 # TODO: Initialization should be able to be done by address or BLEDevice
 #       NB: https://github.com/hbldh/bleak/issues/361 on Linux and scan
@@ -86,7 +88,7 @@ class DE1 (Singleton):
     MAX_WAIT_FOR_READY_EVENTS = 5.0  # seconds, 1.5-2.5 seconds seems typical
 
     def _singleton_init(self):
-        self._address = None
+        self._address_or_bledevice: Optional[Union[str, BLEDevice]] = None
         self._name = None
         self._bleak_client: Optional[BleakClientWrapped] = None
 
@@ -154,7 +156,7 @@ class DE1 (Singleton):
             logger.debug(f"No running loop to _notify_not_ready(): {loop}")
 
         if wipe_address:
-            self._address = None
+            self._address_or_bledevice = None
             self._bleak_client = None  # Constructor requires an address
 
         self._cuuid_dict: Dict[CUUID, NotificationState] = dict()
@@ -252,7 +254,7 @@ class DE1 (Singleton):
 
     @property
     def address(self):
-        addr = self._address
+        addr = self._address_or_bledevice
         if isinstance(addr, BLEDevice):
             addr = addr.address
         return addr
@@ -262,13 +264,10 @@ class DE1 (Singleton):
         if self.address is not None:
             raise DE1APIValueError(
                 "Changing the DE1 address is not yet supported")
-        # If using BLEDevice directly
-        # AttributeError: 'BleakClientBlueZDBus' object has no attribute 'lower'
-        try:
-            address = address.address
-        except AttributeError:
-            pass
-        self._address = address
+        self._address_or_bledevice = address
+        if isinstance(address, BLEDevice):
+            self._name = address.name
+        self._bleak_client = BleakClientWrapped(self._address_or_bledevice)
 
     @property
     def name(self):
@@ -302,14 +301,14 @@ class DE1 (Singleton):
     #     It may be the case that this disconnects other devices
     #     See: https://github.com/hbldh/bleak/issues/361
 
-    async def connect(self, timeout=5.0):
+    async def connect(self, timeout: Optional[float] = None):
+
+        if timeout is None:
+            timeout = CONNECT_TIMEOUT
 
         logger.info(f"Connecting to DE1 at {self.address}")
 
-        if self._bleak_client is None:
-            if self.address is None:
-                raise DE1NoAddressError
-            self._bleak_client = BleakClientWrapped(self.address)
+        assert self._bleak_client is not None
         self._bleak_client.set_disconnected_callback(
             self._create_disconnect_callback()
         )
@@ -321,7 +320,6 @@ class DE1 (Singleton):
         )
 
         if self.is_connected:
-            self._address = self._bleak_client.address
             if self.name is None:
                 self._name = self._bleak_client.name
             logger.info(f"Connected to DE1 at {self.address}")

@@ -6,14 +6,6 @@ GNU General Public License v3.0 only
 SPDX-License-Identifier: GPL-3.0-only
 """
 
-class DE1:
-    pass
-
-class Scale:
-    pass
-
-class FlowSequencer:
-    pass
-
-class DiscoveredDevices:
-    pass
+SCAN_TIME = 5           # Seconds
+CONNECT_TIMEOUT = 10    # Seconds
+SCAN_CACHE_EXPIRY = 300 # Seconds, probably too long

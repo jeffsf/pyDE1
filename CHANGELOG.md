@@ -1,5 +1,62 @@
 # Changelog
 
+## 0.5.0 – Pending
+
+### New
+
+Bluetooth scanning with API. See README.bluetooth.md for details
+
+`scale_factory(BLEDevice)` returns an appropriate Scale subtype
+
+Scale subtypes need to register their advertisement-name prefix, such as
+
+```
+Scale.register_constructor(AtomaxSkaleII, 'Skale')
+```
+
+Timeout on `await` calls initiated by the API
+
+### Fixed
+
+### Changed
+
+HTTP API PUT/PATCH requests now return a list, which may be empty. Results, if any, from individual setters are returned as dict/obj members of the list.
+
+Some config parameters moved into `pyDE1.config.bluetooth`
+
+"find_first" functionality now implemented in `pyDE1.scanner`
+
+
+
+#### Mapping Version 3.0.0
+
+Add Resource.SCAN and Resource.SCAN_RESULTS
+
+See note above on return results, resulting in major version bump
+
+#### Resource Version 1.3.0
+
+Add
+
+    SCAN = 'scan'
+    SCAN_DEVICES = 'scan/devices'
+
+
+### Deprecated
+
+`stop_scanner_if_running()` in favor of just calling `scanner.stop()`
+
+### Removed
+
+`READ_BACK_ON_PATCH` removed as PATCH operations now can return results themselves.
+
+`device_adv_is_recognized_by` class method on DE1 and Scale replaced by registered prefixes
+
+### Known Issues
+
+Implicit scan-for-address in the creation of a `BleakClient` does not cache or report any devices it discovers. This does not have any negative impacts, but could be improved for the future.
+
+
 ## 0.4.1 – 2021-07-04
 
 ### Fixed
@@ -7,6 +64,7 @@
 Import problems with `manual_setup` resolved with a explicit reference to the `pyDE1.ugly_bits` version. Local overrides that may have been in use prior will likely no longer used. TODO: Provide a more robust config system to replace this.
 
 Non-espresso flow (hot water flush, steam, hot water) now have their accumulated volume associated with Frame 0, rather than the last frame number of the previous espresso shot.
+
 
 ## 0.4.0 – 2021-07-03
 

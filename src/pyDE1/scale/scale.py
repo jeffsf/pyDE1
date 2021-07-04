@@ -21,8 +21,21 @@ from pyDE1.dispatcher.resource import ConnectivityEnum
 from pyDE1.event_manager import SubscribedEvent
 from pyDE1.event_manager.events import ConnectivityState, ConnectivityChange
 from pyDE1.scale.events import ScaleWeightUpdate, ScaleTareSeen
+from pyDE1.scanner import _registered_ble_prefixes
+from pyDE1.config.bluetooth import CONNECT_TIMEOUT
 
 logger = logging.getLogger('Scale')
+
+# TODO: Can/should this be related to the class?
+#       If so, how should subclasses respond?
+
+# Used for factory and for BLE detection and filtering
+_prefix_to_constructor = dict()
+_recognized_scale_prefixes = set()
+
+
+def recognized_scale_prefixes():
+    return _recognized_scale_prefixes.copy()
 
 
 class ScaleError(RuntimeError):
@@ -43,7 +56,7 @@ class ScaleNotConnectedError(ScaleError):
 class Scale:
 
     def __init__(self):
-        self._address = None
+        self._address_or_bledevice: Optional[Union[str, BLEDevice]] = None
         self._name: Optional[str] = None
 
         # These are often model-specific, override in subclass init
@@ -87,16 +100,6 @@ class Scale:
         asyncio.get_event_loop().create_task(
             self._event_weight_update.subscribe(self._create_self_callback()))
 
-    @classmethod
-    def device_adv_is_recognized_by(cls, device: BLEDevice, adv: AdvertisementData):
-        """
-        Think about how to have this scan the subclasses
-        for the most-specific match.
-
-        Also think about how to manage the possibility of a collection
-        of scales, that might already be instantiated
-        """
-        raise NotImplementedError
 
     @property
     def type(self):
@@ -104,7 +107,7 @@ class Scale:
 
     @property
     def address(self):
-        addr = self._address
+        addr = self._address_or_bledevice
         if isinstance(addr, BLEDevice):
             addr = addr.address
         return addr
@@ -113,14 +116,11 @@ class Scale:
     def address(self, address: Union[BLEDevice, str]):
         if self.address is not None:
             raise DE1APIValueError(
-                "Changing the scale address is not yet supported")
-        # If using BLEDevice directly
-        # AttributeError: 'BleakClientBlueZDBus' object has no attribute 'lower'
-        try:
-            address = address.address
-        except AttributeError:
-            pass
-        self._address = address
+                "Changing the Scale address is not yet supported")
+        self._address_or_bledevice = address
+        if isinstance(address, BLEDevice):
+            self._name = address.name
+        self._bleak_client = BleakClientWrapped(self._address_or_bledevice)
 
     @property
     def name(self):
@@ -130,15 +130,15 @@ class Scale:
     def sensor_lag(self):
         return self._sensor_lag
 
-    async def connect(self, timeout=5.0):
+    async def connect(self, timeout: Optional[float] = None):
+
+        if timeout is None:
+            timeout = CONNECT_TIMEOUT
 
         class_name = type(self).__name__
         logger.info(f"Connecting to {class_name} at {self.address}")
 
-        if self._bleak_client is None:
-            if self.address is None:
-                raise ScaleNoAddressError
-            self._bleak_client = BleakClientWrapped(self.address)
+        assert self._bleak_client is not None
         self._bleak_client.set_disconnected_callback(
             self._create_disconnect_callback()
         )
@@ -150,7 +150,7 @@ class Scale:
         )
 
         if self.is_connected:
-            self._address = self._bleak_client.address
+            self._address_or_bledevice = self._bleak_client.address
             if self.name is None:
                 self._name = self._bleak_client.name
             logger.info(f"Connected to {class_name} at {self.address}")
@@ -284,7 +284,7 @@ class Scale:
         if do_it:
             await self.tare()
 
-    async def display_bool(self, on):
+    async def display_bool(self, on: bool):
         if on:
             await self.display_on()
         else:
@@ -464,3 +464,30 @@ class Scale:
         elif value is ConnectivityEnum.NOT_CONNECTED \
                 and self.is_connected:
             await self.disconnect()
+
+    @staticmethod
+    def register_constructor(constructor: Callable, prefix: str):
+        _prefix_to_constructor[prefix] = constructor
+        _recognized_scale_prefixes.add(prefix)
+        _registered_ble_prefixes.add(prefix)
+
+
+def scale_factory(ble_device: BLEDevice)-> Scale:
+    constructor = None
+    try:
+        constructor = _prefix_to_constructor[ble_device.name]
+    except KeyError:
+        for prefix in _prefix_to_constructor.values():
+            if ble_device.name.startswith(prefix):
+                constructor = _prefix_to_constructor[prefix]
+    if constructor is None:
+        raise DE1APIValueError(
+            f"No recognized scale registered for {ble_device.name}"
+        )
+    logger.debug(f"Creating a new instance of {constructor} "
+                 f"from {ble_device}")
+    scale: Scale = constructor()
+    scale.address = ble_device
+    return scale
+
+

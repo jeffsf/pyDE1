@@ -18,21 +18,25 @@ async def manual_setup(disconnect_set: set):
     from pyDE1.flow_sequencer import FlowSequencer
     from pyDE1.scale.processor import ScaleProcessor
 
-    from pyDE1.scale import AtomaxSkaleII
+    from pyDE1.scale.scale import recognized_scale_prefixes, scale_factory
 
-    from pyDE1.find_first import find_first_de1, find_first_skale
+    from pyDE1.scanner import find_first_matching, \
+        DiscoveredDevices, DiscoveredDeviceEntry, _registered_ble_prefixes, \
+        scan_until_timeout
 
     from pyDE1.shot_file import CombinedShotLogger
 
     logger = logging.getLogger('manual_setup')
 
     # TODO: Externalize
-    de1_device = await find_first_de1()
-    skale_device = await find_first_skale()
+    de1_device = await find_first_matching(('DE1',))
+    scale_device = await find_first_matching(recognized_scale_prefixes())
+
 
     # TODO: Externalize
     if de1_device is None:
         logger.error("No DE1, exiting")
+        # TODO: How can this cause an exit of main if supervised?
         signal.raise_signal(signal.SIGTERM)
 
     # There's a bug in creating from device on at least bleak 0.11.0 on macOS
@@ -41,13 +45,17 @@ async def manual_setup(disconnect_set: set):
     de1 = DE1()
     de1.address = de1_device
 
-    skale = AtomaxSkaleII()
-    skale.address = skale_device
+    if scale_device:
+        scale = scale_factory(scale_device)
+    else:
+        scale = None
+        logger.info("No scale_device found")
 
     sp = ScaleProcessor()
 
     # TODO: Externalize
-    await sp.set_scale(skale)
+    if scale is not None:
+        await sp.set_scale(scale)
 
     # TODO: DEBUG related
     shot_logger = CombinedShotLogger()
@@ -69,6 +77,6 @@ async def manual_setup(disconnect_set: set):
     # TODO: Externalize
     disconnect_set.add(de1)
     await de1.connect()
-    if skale.address is not None:
-        disconnect_set.add(skale)
-        await skale.connect()
+    if scale is not None:
+        disconnect_set.add(scale)
+        await scale.connect()

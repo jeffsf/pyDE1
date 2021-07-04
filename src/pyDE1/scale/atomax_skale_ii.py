@@ -98,14 +98,6 @@ class AtomaxSkaleII(Scale):
         def cuuid(self):
             return AtomaxSkaleII.Char.CONFIGURATION_EF80.cuuid
 
-    @classmethod
-    def device_adv_is_recognized_by(cls, device: BLEDevice,
-                                    adv: AdvertisementData):
-        if adv.local_name and adv.local_name.startswith('Skale'):
-            return cls
-        else:
-            return None
-
     async def standard_initialization(self, hold_notification=False):
         await super(AtomaxSkaleII, self).standard_initialization(
             hold_notification=True)
@@ -233,3 +225,6 @@ class AtomaxSkaleII(Scale):
 
         self._button_1_tare_subscriber_id \
             = await self._event_button_press.subscribe(button_1_tare)
+
+
+Scale.register_constructor(AtomaxSkaleII, 'Skale')

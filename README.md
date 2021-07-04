@@ -187,8 +187,6 @@ GET also returns empty nodes to illustrate the structure of the document. This c
 
 Although PATCH has been implemented for most payloads, PUT is not yet enabled. PUT will be the appropriate verb for`DE1_PROFILE` and `DE1_FIRMWARE` as, at this time, in-place modification of these is not supported. The API mechanism for starting a firmware upload as not been determined, as it should be able to abort as it runs in the background, as well as notify when complete. Profile upload is likely to be similar, though it occurs on a much faster time scale.
 
-If you'd like the convenience of a GET of the same resource after a PATCH, you can set `READ_BACK_ON_PATCH` to `True` in `dispacher.py`
-
 > The Python `http.server` module is used. It is not appropriate for exposed use.
 > There is no security to the control and query API at this time.
 > See further https://docs.python.org/3/library/http.server.html

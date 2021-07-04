@@ -10,15 +10,17 @@ SPDX-License-Identifier: GPL-3.0-only
 #       need a "resource temporarily unavailable" exception
 
 # TODO: Wipe cached state on disconnect
-
+import asyncio
 import copy
 import inspect
 import logging
 import math  # for nan to be uniquely math.nan
 import time
 
-from typing import Union, Dict, Set
+from functools import reduce
+from typing import Union, Dict, Set, Optional
 
+import pyDE1.scanner
 from pyDE1.de1.notifications import NotificationState, MMR0x80Data
 from pyDE1.utils import fix_enums
 from pyDE1.utils_public import rgetattr, rsetattr
@@ -30,6 +32,8 @@ from pyDE1.de1 import DE1
 from pyDE1.scale import Scale
 from pyDE1.scale.processor import ScaleProcessor
 from pyDE1.flow_sequencer import FlowSequencer
+from pyDE1.scanner import DiscoveredDevices, scan_from_api
+
 from pyDE1.de1.c_api import PackedAttr, MMR0x80LowAddr, pack_one_mmr0x80_write
 from pyDE1.exceptions import DE1APITypeError, DE1APIValueError, \
     DE1APIAttributeError, DE1APIKeyError
@@ -37,21 +41,48 @@ from pyDE1.dispatcher.mapping import IsAt
 
 logger = logging.getLogger('APIImpl')
 
-# If true, don't output nodes that have no value (write-only)
-# or are empty dicts
-# Otherwise math.nan fills in for the missing value
-PRUNE_EMPTY_NODES = False
+from pyDE1.config.http import ASYNC_TIMEOUT, PRUNE_EMPTY_NODES
+
+"""
+How this works:
+
+http/run.py creates an APIRequest and adds it to the queue
+
+The _request_queue_processor from dispatcher picks it up and calls
+GET:        resource_dict = await get_resource_to_dict(got.resource)
+PATCH, PUT: await patch_resource_from_dict(got.resource, got.payload)
+
+The resource_dict becomes a payload for the APIResponse object that is queued
+
+To be able to return meaningful results from PUT/PATCH, the recipient 
+needs to know which of possibly many elements the result comes from.
+As most won't be returning anything, at least right now, append each,
+within a nested dict, to a list and pass that back.
+"""
 
 
-async def _value_to_property_setter(prop, value):
+async def _prop_value_setter(prop, value):
 
     if inspect.isroutine(prop):
         if inspect.iscoroutinefunction(prop):
-            retval = await prop(value)
+            retval = asyncio.wait_for(prop(value), ASYNC_TIMEOUT)
         else:
             retval = prop(value)
     else:
-        raise DE1APITypeError (f"Setter {prop} is not an executable")
+        raise DE1APITypeError (f"Setter {prop} is not callable")
+
+    return retval
+
+
+async def _prop_value_getter(prop):
+
+    if inspect.isroutine(prop):
+        if inspect.iscoroutinefunction(prop):
+            retval = await asyncio.wait_for(prop(), ASYNC_TIMEOUT)
+        else:
+            retval = prop()
+    else:
+        raise DE1APITypeError (f"Setter {prop} is not callable")
 
     return retval
 
@@ -72,6 +103,7 @@ async def _get_isat_value(isat: IsAt):
     flow_sequencer = FlowSequencer()
     scale_processor = ScaleProcessor()
     scale = scale_processor.scale
+    dd = DiscoveredDevices()
 
     retval = None
 
@@ -86,6 +118,13 @@ async def _get_isat_value(isat: IsAt):
 
     elif target is Scale:
         retval = rgetattr(scale, attr_path)
+
+    elif target is DiscoveredDevices:
+        if attr_path == 'devices_for_json':
+            # accept the potential asyncio.TimeoutError and pass up
+            retval = await _prop_value_getter(dd.devices_for_json)
+        else:
+            retval = rgetattr(dd, attr_path)
 
     elif isinstance(target, MMR0x80LowAddr):
         # NB: This assumes that the MMR and CUUID are kept up to date
@@ -221,10 +260,9 @@ def _get_target_sets_inner(partial_dict: dict,
             else:
                 if not readable and not writable:
                     logger.error(
-                        "IsAt should have either or both attr_path or setter_path "
-                        f"not None: {isat.__repr__()}"
+                        "IsAt should have either or both "
+                        f"attr_path or setter_path not None: {isat.__repr__()}"
                     )
-
 
         elif isinstance(isat, dict):
             _get_target_sets_inner(isat, dict_of_sets,
@@ -348,8 +386,12 @@ async def patch_resource_from_dict(resource: Resource, values_dict: dict):
             f"not {type(mapping)} with {type(values_dict)}"
         )
 
-    await _patch_dict_to_mapping_inner(values_dict, mapping,
-                                       pending_packed_attrs)
+    results_list = list()
+    await _patch_dict_to_mapping_inner(values_dict,
+                                       mapping,
+                                       pending_packed_attrs,
+                                       list(),
+                                       results_list)
 
     # if there are pending_packed_attrs, send them
 
@@ -359,13 +401,16 @@ async def patch_resource_from_dict(resource: Resource, values_dict: dict):
 
     # release locks
 
-    return
+    return results_list
 
 
 async def _patch_dict_to_mapping_inner(partial_value_dict: dict,
                                        partial_mapping_dict: dict,
                                        pending_packed_attrs: Dict[
-                                           type(PackedAttr), PackedAttr]):
+                                           type(PackedAttr), PackedAttr],
+                                       running_path: list,
+                                       results_list: list):
+
     """
     This assumes that everything has been determined as "valid"
     """
@@ -428,10 +473,31 @@ async def _patch_dict_to_mapping_inner(partial_value_dict: dict,
                         f"Unsupported target for '{key}': {mapping_isat}")
 
                 if setter_path is not None:
+                    # Allow for a non-property setter to return a value
                     setter = rgetattr(this_target, setter_path)
-                    await _value_to_property_setter(setter, new_value)
+                    retval = await _prop_value_setter(setter, new_value)
+                    if retval is not None:
+                        # reduce(lambda a, b: {b: a}, [5,4,3,2,1], 'val')
+                        #     {1: {2: {3: {4: {5: 'val'}}}}}
+                        result_dict = reduce(lambda a, b: {b: a},
+                                             running_path,
+                                             retval)
+                        results_list.append(result_dict)
+
                 else:
                     rsetattr(this_target, attr_path, new_value)
+
+            # TODO: Is there a better way to work with an unbound function?
+            elif target is None:
+                if setter_path == 'scan_from_api':
+                    retval = await scan_from_api(new_value)
+                    if retval is not None:
+                        # reduce(lambda a, b: {b: a}, [5,4,3,2,1], 'val')
+                        #     {1: {2: {3: {4: {5: 'val'}}}}}
+                        result_dict = reduce(lambda a, b: {b: a},
+                                             running_path,
+                                             retval)
+                        results_list.append(result_dict)
 
             elif isinstance(target, MMR0x80LowAddr):
 
@@ -484,8 +550,13 @@ async def _patch_dict_to_mapping_inner(partial_value_dict: dict,
                     f"Mapping target of {target} is not recognized")
 
         elif isinstance(mapping_isat, dict):
+            # TODO: Where did "this_val" (unused?) come from?
             this_val = await _patch_dict_to_mapping_inner(
-                partial_value_dict[key], partial_mapping_dict[key],
-                pending_packed_attrs)
+                partial_value_dict[key],
+                partial_mapping_dict[key],
+                pending_packed_attrs,
+                # Prepend as reduce needs "reversed" list and need copy anyway
+                running_path=[mapping_isat] + running_path,
+                results_list=results_list)
         else:
             this_val = new_value

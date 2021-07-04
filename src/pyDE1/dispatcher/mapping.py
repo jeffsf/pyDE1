@@ -45,21 +45,19 @@ else:
     logger.info("Importing stub for FlowSequencer")
     from pyDE1.dispatcher.stubs import FlowSequencer
 
-# cpn = multiprocessing.current_process().name
-# for k in sys.modules.keys():
-#     if (k.startswith('pyDE1')
-#             or k.startswith('bleak')
-#             or k.startswith('asyncio-mqtt')):
-#         print(
-#             f"{cpn}: EARLY: {k}"
-#         )
+if 'pyDE1.scanner' in sys.modules:
+    from pyDE1.scanner import DiscoveredDevices
+else:
+    logger.info("Importing stub for DiscoveredDevices")
+    from pyDE1.dispatcher.stubs import DiscoveredDevices
+
 
 from pyDE1.de1.c_api import PackedAttr, MMR0x80LowAddr, get_cuuid, \
     ShotSettings, SetTime, Versions, WaterLevels
 
 from pyDE1.exceptions import DE1APIValueError
 
-MAPPING_VERSION = "2.1.1"
+MAPPING_VERSION = "3.0.0"
 
 
 class IsAt (NamedTuple):
@@ -193,6 +191,21 @@ MAPPING[Resource.VERSION] = {
 MAPPING[Resource.DE1_PROFILE] = IsAt(target=DE1, attr_path=None,
                                      setter_path='upload_json_v2_profile',
                                      v_type=Union[bytes, bytearray])
+
+# TODO: How to reference a module-level subroutine? Use module as target?
+# TODO: How to get the scan ID back to the caller
+
+MAPPING[Resource.SCAN] = {
+    'begin': IsAt(target=None, attr_path=None,
+                  setter_path='scan_from_api', v_type=bool)
+}
+
+# TODO: This is an async getter because of the lock
+MAPPING[Resource.SCAN_DEVICES] = {
+    'devices': IsAt(target=DiscoveredDevices, attr_path='devices_for_json',
+                    read_only=True,
+                    v_type=dict)
+}
 
 # Work from leaves back, so can be "included" by reference
 

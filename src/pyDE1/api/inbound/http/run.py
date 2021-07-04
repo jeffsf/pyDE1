@@ -119,7 +119,6 @@ def run_api_inbound(log_queue: multiprocessing.Queue,
             else:
                 return string
 
-
     class RequestHandler (http.server.BaseHTTPRequestHandler):
 
         def do_GET(self):

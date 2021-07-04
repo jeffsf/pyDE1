@@ -77,24 +77,22 @@ def run():
         logger = logging.getLogger('Shutdown')
         logger.info(f"{str(signal)} SHUTDOWN INITIATED "
                     f"{multiprocessing.active_children()}")
-        # logger.info("Terminate API processes")
-        # for p in multiprocessing.active_children():
-        #     logger.info(f"Terminating {p}")
-        #     p.terminate()
+        logger.info("Terminate API processes")
+        for p in multiprocessing.active_children():
+            logger.info(f"Terminating {p}")
+            p.terminate()
         logger.info("Waiting for processes to terminate")
         again = True
         while again:
             t1 = time.time()
-            alive_in = supervised_inbound_api_process.process.is_alive()
-            alive_out = supervised_outbound_api_process.process.is_alive()
-            # logger.info(ac := multiprocessing.active_children())
-            ac = multiprocessing.active_children()
             await asyncio.sleep(0.1)
+            ac = multiprocessing.active_children()
+            # logger.debug(ac)
             again = len(ac) > 0 and (t1 - t0 < 5)
             if not again:
                 logger.info(f"Elapsed: {t1 - t0:0.3f} sec")
                 if (t1 - t0 >= 5):
-                    print("timed out with active_children ac}")
+                    print(f"timed out with active_children {ac}")
                     for p in (ac):
                         try:
                             p.kill()
