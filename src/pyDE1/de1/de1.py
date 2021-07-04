@@ -1012,7 +1012,11 @@ class DE1 (Singleton):
                     else:
                         de1._volume_dispensed_preinfuse += v_inc
                     de1._volume_dispensed_total += v_inc
-                    de1._volume_dispensed_by_frame[ssu.frame_number] += v_inc
+                    if de1.current_state is API_MachineStates.Espresso:
+                        to_frame = ssu.frame_number
+                    else:
+                        to_frame = 0
+                    de1._volume_dispensed_by_frame[to_frame] += v_inc
 
             last_sample_time = ssu.sample_time
 
