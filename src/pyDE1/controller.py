@@ -16,7 +16,7 @@ import time
 
 # Hopefully this allows using a "local" version
 import inspect  # to determine the source file for manual_setup()
-from ugly_bits import manual_setup
+from pyDE1.ugly_bits import manual_setup
 
 
 def run_controller(log_queue: multiprocessing.Queue,
