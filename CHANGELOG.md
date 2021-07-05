@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.4.1 – 2021-07-04
+
+### Fixed
+
+Import problems with `manual_setup` resolved with a explicit reference to the `pyDE1.ugly_bits` version. Local overrides that may have been in use prior will likely no longer used. TODO: Provide a more robust config system to replace this.
+
+Non-espresso flow (hot water flush, steam, hot water) now have their accumulated volume associated with Frame 0, rather than the last frame number of the previous espresso shot.
+
 ## 0.4.0 – 2021-07-03
 
 ### New
