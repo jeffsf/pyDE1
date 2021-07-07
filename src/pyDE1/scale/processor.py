@@ -14,16 +14,23 @@ import logging
 from typing import Optional, List, Tuple, Coroutine, Callable
 from uuid import UUID
 
-from pyDE1.scale import Scale, ScaleError
+from scanner import BleakScannerWrapped
+
+from pyDE1.config.bluetooth import CONNECT_TIMEOUT
+from pyDE1.exceptions import DE1NoAddressError, DE1APIValueError
+from pyDE1.scale import Scale, ScaleError, scale_factory, \
+    recognized_scale_prefixes
 from pyDE1.event_manager import SubscribedEvent
 from pyDE1.scale.events import ScaleWeightUpdate, ScaleTareSeen, \
     WeightAndFlowUpdate
+from pyDE1.scanner import DiscoveredDevices, find_first_matching
 from pyDE1.singleton import Singleton
+
+logger = logging.getLogger('ScaleProcessor')
 
 
 class ScaleProcessorError (ScaleError):
-    def __init__(self):
-        super(ScaleProcessorError, self).__init__()
+    pass
 
 
 class ScaleProcessor (Singleton):
@@ -76,11 +83,11 @@ class ScaleProcessor (Singleton):
     def scale(self):
         return self._scale
 
-    async def set_scale(self, scale: Scale):
-        # This feels like it shoud be await-ed
-        # drop subscription to any previous scale
+    async def set_scale(self, scale: Optional[Scale]):
+        # NB: A Scale is self-referential and may not be GCed if "dropped" here
         if self._scale == scale:
             return
+        # Unsubscribe the existing scale
         if self._scale is not None:
             await asyncio.gather(
                 self._scale.event_weight_update.unsubscribe(
@@ -90,20 +97,105 @@ class ScaleProcessor (Singleton):
                     self._scale_tare_seen_id
                 )
             )
+
+        # Always set
         self._scale = scale
-        # Can't assign in an await easily and no "async lambda"
+
         # TODO: Replace this with (a, b) = await asyncio.gather(ta, tb)
-        self._scale_weight_update_id = \
-            await self._scale.event_weight_update.subscribe(
-                self._create_scale_weight_update_subscriber()
-            )
-        self._scale_tare_seen_id = \
-            await self._scale.event_tare_seen.subscribe(
-                self._create_scale_tare_seen_subscriber()
+        if self._scale is not None:
+            (
+                self._scale_weight_update_id,
+                self._scale_tare_seen_id
+            ) = await asyncio.gather(
+                self._scale.event_weight_update.subscribe(
+                    self._create_scale_weight_update_subscriber()),
+
+                self._scale.event_tare_seen.subscribe(
+                    self._create_scale_tare_seen_subscriber()),
+
+                return_exceptions=True
             )
         await self._reset()  # New scale, toss old history
 
         return self
+
+    @property
+    def scale_address(self):
+        if self.scale is not None:
+            return self.scale.address
+
+    #
+    # Self-contained call for API
+    #
+
+    async def first_if_found(self, doit: bool):
+        if self.scale and self.scale.is_connected:
+            logger.warning(
+                "first_if_found requested, but already connected. "
+                "No action taken.")
+        elif not doit:
+            logger.warning(
+                "first_if_found requested, but not True. No action taken.")
+        else:
+            device = await find_first_matching(
+                recognized_scale_prefixes())
+            if device:
+                await self.change_scale_to_id(device.address)
+        return self.scale_address
+
+    async def change_scale_to_id(self, ble_device_id: Optional[str]):
+        """
+        For now, this won't return until connected or fails to connect
+        As a result, will trigger the timeout on API calls
+        """
+        logger.info(f"Request to replace scale with {ble_device_id}")
+
+        # TODO: Need to make distasteful assumption that the id is the address
+        try:
+            if self.scale_address == ble_device_id:
+                logger.info(f"Already using {ble_device_id}. No action taken")
+                return
+        except AttributeError:
+            pass
+
+        old_scale = self.scale
+
+        try:
+            if ble_device_id is None:
+                # Straightforward request to disconnect and not replace
+                await self.set_scale(None)
+
+            else:
+                ble_device = DiscoveredDevices().ble_device_from_id(ble_device_id)
+                if ble_device is None:
+                    logger.warning(f"No record of {ble_device_id}, initiating scan")
+                    # TODO: find_device_by_filter doesn't add to DiscoveredDevices
+                    ble_device = await BleakScannerWrapped.find_device_by_address(
+                        ble_device_id, timeout=CONNECT_TIMEOUT)
+                if ble_device is None:
+                    raise DE1NoAddressError(
+                        f"Unable to find device with id: '{ble_device_id}'")
+
+                try:
+                    logger.info(f"Disconnecting {self.scale}")
+                    await self.scale.disconnect()
+                except AttributeError:
+                    pass
+
+                new_scale = scale_factory(ble_device)
+                if new_scale is None:
+                    raise DE1APIValueError(
+                        f"No scale could be created from {ble_device}")
+
+                await self.set_scale(new_scale)
+                await self.scale.connect()
+
+        finally:
+            # Scale is self-referential, make sure GC-ed
+            if old_scale is not None and self.scale != old_scale:
+                await old_scale.disconnect()
+                old_scale.decommission()
+                del old_scale
 
     @property
     def event_weight_and_flow_update(self):

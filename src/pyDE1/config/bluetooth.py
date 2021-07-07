@@ -8,4 +8,5 @@ SPDX-License-Identifier: GPL-3.0-only
 
 SCAN_TIME = 5           # Seconds
 CONNECT_TIMEOUT = 10    # Seconds
+DISCONNECT_TIMEOUT = 5  # Seconds
 SCAN_CACHE_EXPIRY = 300 # Seconds, probably too long

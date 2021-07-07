@@ -14,9 +14,11 @@ import asyncio
 import logging
 import multiprocessing.connection as mpc
 import time
+import traceback
+from traceback import TracebackException
 
 from pyDE1.de1 import DE1
-from pyDE1.exceptions import DE1NotConnectedError
+from pyDE1.exceptions import DE1NotConnectedError, DE1ValueError
 from pyDE1.flow_sequencer import FlowSequencer
 
 from pyDE1.dispatcher.resource import Resource
@@ -91,10 +93,11 @@ async def _request_queue_processor(request_queue: asyncio.Queue,
 
     while True:
         got: APIRequest = await request_queue.get()
-        print(f"{type(got)}: {got.method} "
-              f"Requires: {got.resource} {got.connectivity_required}")
+        logger.debug(f"{got.method.name} {got.resource.name} requires "
+                     f"{got.connectivity_required}")
         resource_dict = {}
         exception = None
+        tbe = None
         if got.method is HTTPMethod.GET:
             try:
                 # TODO: Should be "ready" and not just "connected"
@@ -107,40 +110,69 @@ async def _request_queue_processor(request_queue: asyncio.Queue,
                 resource_dict = await get_resource_to_dict(got.resource)
             except Exception as e:
                 exception = e
+                tbe = TracebackException.from_exception(exception)
                 logger.error(
                     f"Exception in processing {got.method} {got.resource}"
                     f" {repr(exception)}")
-            response = APIResponse(
-                original_timestamp=got.timestamp,
-                timestamp=time.time(),
-                payload = resource_dict,
-                exception=exception,
-            )
+                traceback.print_tb(tbe)
+            response = APIResponse(original_timestamp=got.timestamp,
+                                   timestamp=time.time(),
+                                   payload=resource_dict,
+                                   exception=exception,
+                                   tbe=tbe)
 
         elif got.method is HTTPMethod.PATCH:
+
+            # TODO: Refactor these checks somewhere clearer to API readers
+            if got.resource in (Resource.DE1_ID, Resource.SCALE_ID):
+                if 'first_if_found' in got.payload:
+                    # Only acceptable patch, if present
+                    if len(got.payload.keys()) > 1:
+                        raise DE1ValueError(
+                            f"Use of 'first_if_found' with {got.resource} "
+                            f"needs to be exclusive: {got.payload}")
+
             results_list = None
             try:
                 # TODO: Should be "ready" and not just "connected"
                 if (got.connectivity_required['DE1'] and not de1.is_connected):
-                    raise DE1NotConnectedError("DE1 not connected")
+                    # Need a pass for setting the DE1 id, as well as connecting
+                    if (got.resource is Resource.DE1_ID
+                        and len(got.payload.keys()) == 1
+                        and ('id' in got.payload
+                             or 'first_if_found' in got.payload)
+                    ):
+                        logger.debug("DE1 gets a pass while disconnected")
+                    else:
+                        raise DE1NotConnectedError("DE1 not connected")
+
                 if (got.connectivity_required[ 'Scale']
                         and scale_processor.scale is not None
                         and not scale_processor.scale.is_connected):
-                    raise DE1NotConnectedError("Scale not connected")
+                    # Need a pass for setting the scale, as well as connecting
+                    if (got.resource is Resource.SCALE_ID
+                        and len(got.payload.keys()) == 1
+                        and ('id' in got.payload
+                             or 'first_if_found' in got.payload)
+                    ):
+                        logger.debug("Scale gets a pass while disconnected")
+                    else:
+                        raise DE1NotConnectedError("Scale not connected")
+
                 results_list = await patch_resource_from_dict(got.resource,
                                                               got.payload)
             except Exception as e:
                 exception = e
+                tbe = TracebackException.from_exception(exception)
                 logger.error(
                     f"Exception in processing {got.method} {got.resource}"
                     f" {repr(exception)}")
-
-            response = APIResponse(
-                original_timestamp=got.timestamp,
-                timestamp=time.time(),
-                payload = results_list,
-                exception=exception,
-            )
+                logger.error(''.join(tbe.format()))
+            response = APIResponse(original_timestamp=got.timestamp,
+                                   timestamp=time.time(),
+                                   payload=results_list,
+                                   exception=exception,
+                                   tbe=tbe)
 
         elif got.method is HTTPMethod.PUT \
                 and got.resource is Resource.DE1_PROFILE:
@@ -159,28 +191,24 @@ async def _request_queue_processor(request_queue: asyncio.Queue,
                                                               got.payload)
             except Exception as e:
                 exception = e
+                tbe = TracebackException.from_exception(exception)
                 logger.error(
                     f"Exception in processing {got.method} {got.resource}"
                     f" {repr(exception)}")
-
-
-            response = APIResponse(
-                original_timestamp=got.timestamp,
-                timestamp=time.time(),
-                payload = results_list,
-                exception=exception,
-            )
+                traceback.print_tb(tbe)
+            response = APIResponse(original_timestamp=got.timestamp,
+                                   timestamp=time.time(),
+                                   payload=results_list,
+                                   exception=exception,
+                                   tbe=tbe)
 
 
         else:
-            response = APIResponse(
-                original_timestamp=got.timestamp,
-                timestamp=time.time(),
-                payload={},
-                exception=NotImplementedError(
-                    f"{got.method} is not supported"
-                ),
-            )
+            response = APIResponse(original_timestamp=got.timestamp,
+                                   timestamp=time.time(), payload={},
+                                   exception=NotImplementedError(
+                                       f"{got.method} is not supported"
+                                   ))
 
         response_queue.put_nowait(response)
         if (qd := response_queue.qsize()) > QUEUE_TOO_DEEP:

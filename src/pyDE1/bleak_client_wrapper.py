@@ -41,8 +41,9 @@ class BleakClientWrapped (BleakClient):
     def name(self):
         try:
             retval = self._device_info['Name']
-        except (KeyError, AttributeError):
+        except (KeyError, AttributeError, TypeError):
             # CoreBluetooth on bleak 0.11.0 and 0.12.0
+            # TypeError if not connected
             retval = None
         return retval
 
@@ -56,19 +57,31 @@ class BleakClientWrapped (BleakClient):
             logger.debug(
                 f"atexit sync_disconnect: Not connected to {self.name} at "
                 f"{self.address}")
+            print(f"atexit sync_disconnect: Not connected to {self.name} at "
+                f"{self.address}")
             return
         else:
             logger.info(
                 f"atexit sync_disconnect: Disconnecting {self.name} at "
                 f"{self.address}")
+            print(f"atexit sync_disconnect: Disconnecting {self.name} at "
+                f"{self.address}")
             loop = asyncio.get_event_loop()
-            if loop is not None:
+            if not loop.is_running():
+                logger.info("atexit sync_disconnect: Starting event loop")
+                print(f"atexit sync_disconnect: Starting event loop")
                 loop.run_until_complete(self.disconnect())
             else:
-                logger.critical(
-                    f"atexit sync_disconnect: NO LOOP AVAILABLE. "
-                    f"Unable to disconnect {self.name} at {self.address}"
-                )
+                logger.info("atexit sync_disconnect: Using running loop")
+                print(f"atexit sync_disconnect: Using running loop")
+                loop.create_task(self.disconnect())
+            # else:
+            #     logger.critical(
+            #         f"atexit sync_disconnect: NO LOOP AVAILABLE. "
+            #         f"Unable to disconnect {self.name} at {self.address}"
+            #     )
+            #     print(f"atexit sync_disconnect: NO LOOP AVAILABLE. "
+            #         f"Unable to disconnect {self.name} at {self.address}")
 
     async def connect(self, **kwargs) -> bool:
         atexit.register(self.sync_disconnect)
@@ -82,13 +95,18 @@ class BleakClientWrapped (BleakClient):
         retval = await super(BleakClientWrapped, self).disconnect()
         self._willful_disconnect = False
         if retval:
+            logger.debug("Unregistering atexit disconnect "
+                         f"{self.name} at {self.address}")
             atexit.unregister(self.sync_disconnect)
         return retval
 
     # TODO: How to handle unexpected disconnects?
     #       Handling auto-wrapping the on-disconnect handler seems excessive.
 
-    def __del__(self):
-        self.sync_disconnect()
+    # This is not the source of doubled disconnects
+    # def __del__(self):
+    #     if self.is_connected:
+    #         logger.debug("__del__")
+    #         self.sync_disconnect()
 
 

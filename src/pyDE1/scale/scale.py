@@ -9,6 +9,7 @@ SPDX-License-Identifier: GPL-3.0-only
 import asyncio
 import logging
 import time
+import gc
 
 from typing import Optional, Callable, Coroutine, Union
 
@@ -16,12 +17,13 @@ from bleak.backends.device import BLEDevice
 from bleak.backends.scanner import AdvertisementData
 
 from pyDE1.bleak_client_wrapper import BleakClientWrapped
-from pyDE1.exceptions import DE1APIValueError
+from pyDE1.scanner import BleakScannerWrapped
+from pyDE1.exceptions import DE1APIValueError, DE1NoAddressError
 from pyDE1.dispatcher.resource import ConnectivityEnum
 from pyDE1.event_manager import SubscribedEvent
 from pyDE1.event_manager.events import ConnectivityState, ConnectivityChange
 from pyDE1.scale.events import ScaleWeightUpdate, ScaleTareSeen
-from pyDE1.scanner import _registered_ble_prefixes
+from pyDE1.scanner import _registered_ble_prefixes, DiscoveredDevices
 from pyDE1.config.bluetooth import CONNECT_TIMEOUT
 
 logger = logging.getLogger('Scale')
@@ -82,6 +84,14 @@ class Scale:
         self._estimated_period = self._nominal_period
         self._last_weight_update_received = 0
         self._last_tare_request_sent = 0
+
+        # See Scale.decommission()
+        self._to_decommission = (
+            '_event_connectivity',
+            '_event_weight_update',
+            '_event_button_press',
+            '_event_tare_seen',
+        )
 
         # TODO: Think about how to manage "tare seen"
         #       Could use asyncio.Event(), but what are the states
@@ -357,14 +367,32 @@ class Scale:
 
         return self_callback
 
+    def decommission(self):
+        # A Scale has several self-references that may prevent GC
+        # Rather than try to deal with weakref, just remove the callbacks
+        # Oh, and the list of those collbacks!
+        logger.info(f'Decommissioning {self} at {self.address}')
+
+        self._bleak_client.set_disconnected_callback(None)
+        for break_ref in self._to_decommission:
+            setattr(self, break_ref, None)
+        self._to_decommission = None
+
+        # logger.debug("Before GC")
+        # for ref in gc.get_referrers(self):
+        #     logger.info(f"0x{id(self):x} <== {ref}")
+        #
+        # logger.info(f"0x{id(self):x} is_finalized: {gc.is_finalized(self)}")
+
     # TODO: Decide how to handle  self._disconnected_callback
     #   disconnected_callback (callable): Callback that will be scheduled in the
     #   event loop when the client is disconnected. The callable must take one
     #   argument, which will be this client object.
 
     # The callback seems to be expected to be a "plain" function
-    # RuntimeWarning: coroutine 'DE1._create_disconnect_callback.<locals>.disconnect_callback'
-    #                 was never awaited
+    #     task.add_done_callback(
+    #         lambda _: self._disconnected_callback(self)
+    #     )
 
     def _create_disconnect_callback(self) -> Callable:
         scale = self

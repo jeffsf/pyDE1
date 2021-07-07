@@ -12,6 +12,9 @@ class DE1:
 class Scale:
     pass
 
+class ScaleProcessor:
+    pass
+
 class FlowSequencer:
     pass
 

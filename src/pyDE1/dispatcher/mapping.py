@@ -13,6 +13,7 @@ Provide "mock" classes for use in inbound API process
 
 NB: Must be imported AFTER any imports of DE1, Scale, FlowSequencer, ...
 """
+import importlib.util
 import logging
 import multiprocessing
 import sys
@@ -23,32 +24,43 @@ from pyDE1.dispatcher.resource import Resource, RESOURCE_VERSION, \
 
 # TODO: Work through main and remote thread imports
 
-logger = logging.getLogger(multiprocessing.current_process().name)
+logger = logging.getLogger('Mapping')
 
 pname = f"into {multiprocessing.current_process().name} process"
 
 if 'pyDE1.de1' in sys.modules:
+    logger.info("Importing DE1")
     from pyDE1.de1 import DE1
 else:
-    logger.info("Importing stub for DE1")
+    logger.info("Using stub for DE1")
     from pyDE1.dispatcher.stubs import DE1
 
 if 'pyDE1.scale' in sys.modules:
+    logger.info("Importing Scale")
     from pyDE1.scale import Scale
 else:
-    logger.info("Importing stub for Scale")
+    logger.info("Using stub for Scale")
     from pyDE1.dispatcher.stubs import Scale
 
+if 'pyDE1.scale.processor' in sys.modules:
+    logger.info("Importing ScaleProcessor")
+    from pyDE1.scale.processor import ScaleProcessor
+else:
+    logger.info("Using stub for ScaleProcessor")
+    from pyDE1.dispatcher.stubs import ScaleProcessor
+
 if 'pyDE1.flow_sequencer' in sys.modules:
+    logger.info("Importing FlowSequencer")
     from pyDE1.flow_sequencer import FlowSequencer
 else:
-    logger.info("Importing stub for FlowSequencer")
+    logger.info("Using stub for FlowSequencer")
     from pyDE1.dispatcher.stubs import FlowSequencer
 
 if 'pyDE1.scanner' in sys.modules:
+    logger.info("Importing DiscoveredDevices")
     from pyDE1.scanner import DiscoveredDevices
 else:
-    logger.info("Importing stub for DiscoveredDevices")
+    logger.info("Using stub for DiscoveredDevices")
     from pyDE1.dispatcher.stubs import DiscoveredDevices
 
 
@@ -57,7 +69,7 @@ from pyDE1.de1.c_api import PackedAttr, MMR0x80LowAddr, get_cuuid, \
 
 from pyDE1.exceptions import DE1APIValueError
 
-MAPPING_VERSION = "3.0.0"
+MAPPING_VERSION = "3.1.0"
 
 
 class IsAt (NamedTuple):
@@ -209,12 +221,16 @@ MAPPING[Resource.SCAN_DEVICES] = {
 
 # Work from leaves back, so can be "included" by reference
 
-# For now, these are not writable
+# For now, name is not writable
 MAPPING[Resource.DE1_ID] = {
     'name': IsAt(target=DE1, attr_path='name', v_type=str,
                  read_only=True),
-    'id': IsAt(target=DE1, attr_path='address', v_type=str,
-               read_only=True),
+    'id': IsAt(target=DE1, attr_path='address', v_type=Optional[str],
+               setter_path='change_de1_to_id'),
+    # first_if_found, if true, will replace only if one is found
+    # It is an error to be true if 'id' is present at this time
+    'first_if_found': IsAt(target=DE1, attr_path=None,
+                        setter_path='first_if_found', v_type=bool),
 }
 
 # NB: A single-entry tuple needs to end with a comma
@@ -419,10 +435,15 @@ MAPPING[Resource.DE1_CALIBRATION_LINE_FREQUENCY] = {
 MAPPING[Resource.SCALE_ID] = {
     'name': IsAt(target=Scale, attr_path='name', v_type=str,
                  read_only=True),
-    'id': IsAt(target=Scale, attr_path='address', v_type=str,
-               read_only=True),
+    'id': IsAt(target=ScaleProcessor, attr_path='scale_address',
+               v_type=Optional[str],
+               setter_path='change_scale_to_id'),
     'type': IsAt(target=Scale, attr_path='type', v_type=str,
                  read_only=True),
+    # first_if_found, if true, will replace only if one is found
+    # It is an error to be true if 'id' is present at this time
+    'first_if_found': IsAt(target=ScaleProcessor, attr_path=None,
+                           setter_path='first_if_found', v_type=bool),
 }
 
 MAPPING[Resource.SCALE_CONNECTIVITY] = {

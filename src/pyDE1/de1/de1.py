@@ -50,6 +50,7 @@ import pyDE1.de1.handlers
 from pyDE1.event_manager import SubscribedEvent
 from pyDE1.de1.events import ShotSampleUpdate, \
     ShotSampleWithVolumesUpdate
+from pyDE1.scanner import DiscoveredDevices, BleakScannerWrapped
 from pyDE1.singleton import Singleton
 
 from pyDE1.utils import task_name_exists, cancel_tasks_by_name
@@ -58,6 +59,8 @@ from pyDE1.dispatcher.resource import ConnectivityEnum, DE1ModeEnum
 
 from pyDE1.config.bluetooth import CONNECT_TIMEOUT
 
+from pyDE1.scanner import find_first_matching
+
 
 # If True, randomly skips upload packets
 _TEST_BLE_LOSS_DURING_FW_UPLOAD = False
@@ -65,14 +68,6 @@ if _TEST_BLE_LOSS_DURING_FW_UPLOAD:
     import random
 
 logger = logging.getLogger('DE1')
-
-# TODO: Initialization should be able to be done by address or BLEDevice
-#       NB: https://github.com/hbldh/bleak/issues/361 on Linux and scan
-
-# TODO: Scanner that can return first quickly or all within a time period
-
-# NB: It doesn't look like CoreBluetooth reveals an identifier that is stable
-#     across boots.  It uses a UUID rather than the MAC address of the device.
 
 class DE1 (Singleton):
 
@@ -269,15 +264,72 @@ class DE1 (Singleton):
             addr = addr.address
         return addr
 
-    @address.setter
-    def address(self, address: Union[BLEDevice, str]):
-        if self.address is not None:
-            raise DE1APIValueError(
-                "Changing the DE1 address is not yet supported")
-        self._address_or_bledevice = address
-        if isinstance(address, BLEDevice):
-            self._name = address.name
-        self._bleak_client = BleakClientWrapped(self._address_or_bledevice)
+    async def set_address(self, address: Optional[Union[BLEDevice, str]]):
+        if address is None:
+            await self.disconnect()
+            self.prepare_for_connection(wipe_address=True)
+        elif address == self.address:
+            pass
+        else:
+            await self.disconnect()
+            self.prepare_for_connection(wipe_address=True)
+            self._address_or_bledevice = address
+            if isinstance(address, BLEDevice):
+                self._name = address.name
+            self._bleak_client = BleakClientWrapped(self._address_or_bledevice)
+
+    #
+    # Self-contained calls for API
+    #
+
+    async def first_if_found(self, doit: bool):
+        if self.is_connected:
+            logger.warning(
+                "first_if_found requested, but already connected. "
+                "No action taken.")
+        elif not doit:
+            logger.warning(
+                "first_if_found requested, but not True. No action taken.")
+        else:
+            device = await find_first_matching(('DE1',))
+            if device:
+                await self.change_de1_to_id(device.address)
+        return self.address
+
+    async def change_de1_to_id(self, ble_device_id: Optional[str]):
+        """
+        For now, this won't return until connected or fails to connect
+        As a result, will trigger the timeout on API calls
+        """
+        logger.info(f"Address change requested for DE1 from {self.address} "
+                    f"to {ble_device_id}")
+
+        de1 = DE1()
+
+        # TODO: Need to make distasteful assumption that the id is the address
+        try:
+            if self.address == ble_device_id:
+                logger.info(f"Already using {ble_device_id}. No action taken")
+                return
+        except AttributeError:
+            pass
+
+        if ble_device_id is None:
+            # Straightforward request to disconnect and not replace
+            await self.set_address(None)
+
+        else:
+            ble_device = DiscoveredDevices().ble_device_from_id(ble_device_id)
+            if ble_device is None:
+                logger.warning(f"No record of {ble_device_id}, initiating scan")
+                # TODO: find_device_by_filter doesn't add to DiscoveredDevices
+                ble_device = await BleakScannerWrapped.find_device_by_address(
+                    ble_device_id, timeout=CONNECT_TIMEOUT)
+            if ble_device is None:
+                raise DE1NoAddressError(
+                    f"Unable to find device with id: '{ble_device_id}'")
+            await self.set_address(ble_device)
+            await self.connect()
 
     @property
     def name(self):
@@ -648,14 +700,6 @@ class DE1 (Singleton):
     async def upload_json_v2_profile(self, profile: Union[bytes,
                                                           bytearray,
                                                           str]):
-        if isinstance(profile, (bytes, bytearray)):
-            profile = profile.decode('utf-8')
-        elif isinstance(profile, str):
-            pass
-        else:
-            raise DE1APITypeError(
-                "Profile should be bytes, bytearray, or str, "
-                f"not {type(profile)}")
         pj = json.loads(profile)
         pbf = ProfileByFrames().from_json(pj)
         await self.upload_profile(pbf)

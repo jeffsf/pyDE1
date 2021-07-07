@@ -121,8 +121,17 @@ def run_api_inbound(log_queue: multiprocessing.Queue,
 
     class RequestHandler (http.server.BaseHTTPRequestHandler):
 
+        logger = logging.getLogger('HTTP')
+
+        def log_message(self, format, *args):
+            logger.info("%s - - [%s] %s" %
+                        (self.address_string(),
+                         self.log_date_time_string(),
+                         format % args))
+
         def do_GET(self):
             timestamp = time.time()
+            logger.info(f"Request: {self.requestline}")
 
             try:
                 # resource = Resource(self.path.removeprefix(SERVER_ROOT))
@@ -172,7 +181,20 @@ def run_api_inbound(log_queue: multiprocessing.Queue,
                 #
                 # TODO: Include the stack trace and all
                 #
-                body = repr(resp.exception).encode('utf-8')
+                body = ''.join(resp.tbe.format()).encode('utf-8')
+                self.send_response(HTTPStatus.SERVICE_UNAVAILABLE)
+                self.send_header("Content-type", "text/plain")
+                self.send_header("Content-length", str(len(body)))
+                self.send_header("Last-Modified", formatdate(resp.timestamp,
+                                                             localtime=True))
+                self.end_headers()
+                self.wfile.write(body)
+
+            elif isinstance(resp.exception,
+                            (TimeoutError,
+                             asyncio.exceptions.TimeoutError)):
+
+                body = ''.join(resp.tbe.format()).encode('utf-8')
                 self.send_response(HTTPStatus.SERVICE_UNAVAILABLE)
                 self.send_header("Content-type", "text/plain")
                 self.send_header("Content-length", str(len(body)))
@@ -182,7 +204,7 @@ def run_api_inbound(log_queue: multiprocessing.Queue,
                 self.wfile.write(body)
 
             else:
-                body = repr(resp.exception).encode('utf-8')
+                body = ''.join(resp.tbe.format()).encode('utf-8')
                 self.send_response(HTTPStatus.INTERNAL_SERVER_ERROR)
                 self.send_header("Content-type", "text/plain")
                 self.send_header("Content-length", str(len(body)))
@@ -192,7 +214,8 @@ def run_api_inbound(log_queue: multiprocessing.Queue,
                 self.wfile.write(body)
 
             logger.debug(
-                f"RTT: {(time.time() - timestamp) * 1000:0.1f} ms"
+                f"RTT: {(time.time() - timestamp) * 1000:0.1f} ms "
+                f"{self.requestline}"
             )
             return
 
@@ -211,6 +234,7 @@ def run_api_inbound(log_queue: multiprocessing.Queue,
         def do_PATCH(self):
 
             timestamp = time.time()
+            logger.info(f"Request: {self.requestline}")
 
             try:
                 # resource = Resource(self.path.removeprefix(SERVER_ROOT))
@@ -256,6 +280,7 @@ def run_api_inbound(log_queue: multiprocessing.Queue,
                 self.send_header("Content-type", "text/plain")
                 self.end_headers()
                 self.wfile.write(bytes(repr(exception), 'utf-8'))
+                # self.wfile.write(content)
                 return
 
             req = APIRequest(timestamp=timestamp,
@@ -284,7 +309,8 @@ def run_api_inbound(log_queue: multiprocessing.Queue,
                 self.wfile.write(resp_bytes)
 
             else:
-                body = repr(resp.exception).encode('utf-8')
+
+                body = ''.join(resp.tbe.format()).encode('utf-8')
 
                 if isinstance(resp.exception,
                               DE1APIUnsupportedStateTransitionError):
@@ -296,6 +322,14 @@ def run_api_inbound(log_queue: multiprocessing.Queue,
 
                 elif isinstance(resp.exception, DE1APIError):
                     http_status = HTTPStatus.BAD_REQUEST
+
+                elif isinstance(resp.exception, DE1NotConnectedError):
+                    http_status = HTTPStatus.CONFLICT
+
+                elif isinstance(resp.exception,
+                                (TimeoutError,
+                                 asyncio.exceptions.TimeoutError)):
+                    http_status = HTTPStatus.REQUEST_TIMEOUT
 
                 else:
                     http_status = HTTPStatus.INTERNAL_SERVER_ERROR
@@ -309,7 +343,8 @@ def run_api_inbound(log_queue: multiprocessing.Queue,
                 self.wfile.write(body)
 
             logger.debug(
-                f"RTT: {(time.time() - timestamp) * 1000:0.1f} ms"
+                f"RTT: {(time.time() - timestamp) * 1000:0.1f} ms "
+                f"{self.requestline}"
             )
             return
 
@@ -318,6 +353,7 @@ def run_api_inbound(log_queue: multiprocessing.Queue,
         def do_PUT(self):
 
             timestamp = time.time()
+            logger.info(f"Request: {self.requestline}")
 
             try:
                 # resource = Resource(self.path.removeprefix(SERVER_ROOT))
@@ -404,7 +440,7 @@ def run_api_inbound(log_queue: multiprocessing.Queue,
                 self.wfile.write(resp_bytes)
 
             else:
-                body = repr(resp.exception).encode('utf-8')
+                body = ''.join(resp.tbe.format()).encode('utf-8')
 
                 if isinstance(resp.exception,
                               DE1APIUnsupportedStateTransitionError):
@@ -416,6 +452,14 @@ def run_api_inbound(log_queue: multiprocessing.Queue,
 
                 elif isinstance(resp.exception, DE1APIError):
                     http_status = HTTPStatus.BAD_REQUEST
+
+                elif isinstance(resp.exception,
+                                (TimeoutError,
+                                 asyncio.exceptions.TimeoutError)):
+                    http_status = HTTPStatus.REQUEST_TIMEOUT
+
+                elif isinstance(resp.exception, DE1NotConnectedError):
+                    http_status = HTTPStatus.CONFLICT
 
                 else:
                     http_status = HTTPStatus.INTERNAL_SERVER_ERROR
@@ -429,14 +473,15 @@ def run_api_inbound(log_queue: multiprocessing.Queue,
                 self.wfile.write(body)
 
             logger.debug(
-                f"RTT: {(time.time() - timestamp) * 1000:0.1f} ms"
+                f"RTT: {(time.time() - timestamp) * 1000:0.1f} ms "
+                f"{self.requestline}"
             )
             return
 
     server = http.server.HTTPServer((SERVER_HOST, SERVER_PORT),
                                     RequestHandler)
 
-    supervisor_server = SupervisedExecutor(None, server.serve_forever)
+    SupervisedExecutor(None, server.serve_forever)
 
     loop.run_forever()
 

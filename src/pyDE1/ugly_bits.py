@@ -8,65 +8,65 @@ SPDX-License-Identifier: GPL-3.0-only
 
 import asyncio
 import logging
+import time
+
+from pyDE1.scale.processor import ScaleProcessor
+from pyDE1.scale import recognized_scale_prefixes
+from pyDE1.scanner import DiscoveredDevices, find_first_matching
 
 
 async def manual_setup(disconnect_set: set):
 
+    # DiscoveredDevices()
+    # return
+
     import signal
 
     from pyDE1.de1 import DE1
-    from pyDE1.flow_sequencer import FlowSequencer
-    from pyDE1.scale.processor import ScaleProcessor
 
-    from pyDE1.scale.scale import recognized_scale_prefixes, scale_factory
-
-    from pyDE1.scanner import find_first_matching, \
-        DiscoveredDevices, DiscoveredDeviceEntry, _registered_ble_prefixes, \
-        scan_until_timeout
+    from pyDE1.scanner import scan_from_api
 
     from pyDE1.shot_file import CombinedShotLogger
 
     logger = logging.getLogger('manual_setup')
 
-    # TODO: Externalize
-    de1_device = await find_first_matching(('DE1',))
-    scale_device = await find_first_matching(recognized_scale_prefixes())
+    # Still using internals rather than API, see if can find DE1 and scale
 
+    # logger.info(await scan_from_api(True))
+    # await asyncio.sleep(5)
+    # logger.info("slept 5 seconds")
+    # de1_ble_device = None
+    # scale_ble_device = None
+    # results = await DiscoveredDevices().devices_seen()
+    # for dd in results:
+    #     logger.debug(dd.device)
+    #     if dd.device.name.startswith('DE1'):
+    #         de1_ble_device = dd.device
+    #         break
+    # for dd in results:
+    #     if dd.device.name.startswith('Skale'):
+    #         scale_ble_device = dd.device
+    #         break
 
-    # TODO: Externalize
-    if de1_device is None:
-        logger.error("No DE1, exiting")
-        # TODO: How can this cause an exit of main if supervised?
-        signal.raise_signal(signal.SIGTERM)
+    # sp = ScaleProcessor()
+    #
+    # t0 = time.time()
 
-    # There's a bug in creating from device on at least bleak 0.11.0 on macOS
+    # de1_ble_device = await find_first_matching(('DE1',))
+    # scale_ble_device = await find_first_matching(recognized_scale_prefixes())
 
-    # TODO: Externalize
     de1 = DE1()
-    de1.address = de1_device
+    disconnect_set.add(de1)
 
-    if scale_device:
-        scale = scale_factory(scale_device)
-    else:
-        scale = None
-        logger.info("No scale_device found")
+    # await de1.change_de1_to_id(de1_ble_device.address)
+    # await sp.change_scale_to_id(scale_ble_device.address)
 
-    sp = ScaleProcessor()
+    # t1 = time.time()
+    # logger.debug(f"##### Connection time: {(t1 - t0):.3f} seconds")
 
-    # TODO: Externalize
-    if scale is not None:
-        await sp.set_scale(scale)
-
-    # TODO: DEBUG related
-    shot_logger = CombinedShotLogger()
-
-    # TODO: DEBUG related
-    await asyncio.gather(
-        de1.event_shot_sample_with_volumes_update.subscribe(
-            shot_logger.sswvu_subscriber),
-        sp.event_weight_and_flow_update.subscribe(
-            shot_logger.wafu_subscriber)
-    )
+    # if scale_ble_device is not None:
+    #     sp = ScaleProcessor()
+    #     await sp.change_scale_to_id(scale_ble_device.address)
 
     # This will fail with asyncio.exceptions.TimeoutError
     # await asyncio.gather(
@@ -74,9 +74,4 @@ async def manual_setup(disconnect_set: set):
     #     skale.connect(),
     # )
 
-    # TODO: Externalize
-    disconnect_set.add(de1)
-    await de1.connect()
-    if scale is not None:
-        disconnect_set.add(scale)
-        await scale.connect()
+

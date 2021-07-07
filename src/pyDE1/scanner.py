@@ -4,10 +4,6 @@ Copyright © 2021 Jeff Kletsky. All Rights Reserved.
 License for this software, part of the pyDE1 package, is granted under
 GNU General Public License v3.0 only
 SPDX-License-Identifier: GPL-3.0-only
-
-Quick-and-dirty, WET, find first DE1 or Skale
-Scale find will eventually check subclasses of Scale with
-cls.device_adv_is_recognized_by()
 """
 
 import asyncio
@@ -182,6 +178,13 @@ class DiscoveredDevices (Singleton):
                 'discovered': entry.last_seen
             })
         return retval
+
+    def ble_device_from_id(self, id: str) -> Optional[BLEDevice]:
+        try:
+            ble_device = self._devices_seen[id].device
+        except KeyError:
+            ble_device = None
+        return ble_device
 
     async def clear(self):
         async with self._lock:

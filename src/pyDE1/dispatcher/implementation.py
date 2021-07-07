@@ -41,7 +41,9 @@ from pyDE1.dispatcher.mapping import IsAt
 
 logger = logging.getLogger('APIImpl')
 
-from pyDE1.config.http import ASYNC_TIMEOUT, PRUNE_EMPTY_NODES
+from pyDE1.config.http import ASYNC_TIMEOUT, PRUNE_EMPTY_NODES, PROFILE_TIMEOUT
+from pyDE1.config.bluetooth import CONNECT_TIMEOUT, SCAN_TIME, \
+    DISCONNECT_TIMEOUT
 
 """
 How this works:
@@ -61,11 +63,30 @@ within a nested dict, to a list and pass that back.
 """
 
 
+def get_timeout(prop, value):
+    bound_class = prop.__self__.__class__
+    name = prop.__name__
+    timeout = ASYNC_TIMEOUT
+    if name == 'connectivity_setter' and value:
+        timeout = CONNECT_TIMEOUT + 0.100
+    elif name in ('change_de1_to_id', 'change_scale_to_id'):
+        if value is None:
+            timeout = DISCONNECT_TIMEOUT
+        else:
+            timeout = CONNECT_TIMEOUT + ASYNC_TIMEOUT + 0.100
+    elif name == 'first_if_found':
+        timeout = SCAN_TIME + CONNECT_TIMEOUT + ASYNC_TIMEOUT + 0.100
+    elif name == 'upload_json_v2_profile':
+        timeout = PROFILE_TIMEOUT
+    return timeout
+
+
 async def _prop_value_setter(prop, value):
 
     if inspect.isroutine(prop):
         if inspect.iscoroutinefunction(prop):
-            retval = asyncio.wait_for(prop(value), ASYNC_TIMEOUT)
+            retval = await asyncio.wait_for(prop(value),
+                                            get_timeout(prop, value))
         else:
             retval = prop(value)
     else:
@@ -78,7 +99,8 @@ async def _prop_value_getter(prop):
 
     if inspect.isroutine(prop):
         if inspect.iscoroutinefunction(prop):
-            retval = await asyncio.wait_for(prop(), ASYNC_TIMEOUT)
+            retval = await asyncio.wait_for(prop(),
+                                            get_timeout(prop, None))
         else:
             retval = prop()
     else:
@@ -108,7 +130,8 @@ async def _get_isat_value(isat: IsAt):
     retval = None
 
     # For any attribute or property with a getter, getattr() "just works"
-    # NB: property methords should not be coroutine functions
+    # If possibly a callable, need to
+    #     await _prop_value_getter(rgetattr(target, attr_path))
 
     if target is DE1:
         retval = rgetattr(de1, attr_path)
@@ -117,14 +140,17 @@ async def _get_isat_value(isat: IsAt):
         retval = rgetattr(flow_sequencer, attr_path)
 
     elif target is Scale:
-        retval = rgetattr(scale, attr_path)
+        if scale is None:
+            retval = None
+        else:
+            retval = rgetattr(scale, attr_path)
+
+    elif target is ScaleProcessor:
+        retval = rgetattr(scale_processor, attr_path)
 
     elif target is DiscoveredDevices:
-        if attr_path == 'devices_for_json':
-            # accept the potential asyncio.TimeoutError and pass up
-            retval = await _prop_value_getter(dd.devices_for_json)
-        else:
-            retval = rgetattr(dd, attr_path)
+        # Need to wrap as devices_for_json is async
+        retval = await _prop_value_getter(rgetattr(dd, attr_path))
 
     elif isinstance(target, MMR0x80LowAddr):
         # NB: This assumes that the MMR and CUUID are kept up to date
@@ -461,13 +487,15 @@ async def _patch_dict_to_mapping_inner(partial_value_dict: dict,
                     f"Mapping for '{key}': {mapping_isat} is not writable"
                 )
 
-            if target in (DE1, FlowSequencer, Scale):
+            if target in (DE1, FlowSequencer, Scale, ScaleProcessor):
                 if target is DE1:
                     this_target = de1
                 elif target is FlowSequencer:
                     this_target = flow_sequencer
                 elif target is Scale:
                     this_target = scale
+                elif target is ScaleProcessor:
+                    this_target = scale_processor
                 else:
                     raise DE1APITypeError(
                         f"Unsupported target for '{key}': {mapping_isat}")
@@ -481,6 +509,7 @@ async def _patch_dict_to_mapping_inner(partial_value_dict: dict,
                         #     {1: {2: {3: {4: {5: 'val'}}}}}
                         result_dict = reduce(lambda a, b: {b: a},
                                              running_path,
+                                             # TODO: Really a type mismatch?
                                              retval)
                         results_list.append(result_dict)
 

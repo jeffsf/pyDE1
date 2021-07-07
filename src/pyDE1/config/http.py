@@ -13,7 +13,8 @@ SERVER_PORT = 1234
 SERVER_ROOT = '/'
 PATCH_SIZE_LIMIT = 4096
 
-ASYNC_TIMEOUT = 1.0  # Seconds, before abandoning the request
+ASYNC_TIMEOUT = 1.0     # Seconds, before abandoning the request
+PROFILE_TIMEOUT = 4.5   # Seconds, 20*2 frames + head + tail at ~100 ms each
 
 # If true, don't output nodes that have no value (write-only)
 # or are empty dicts

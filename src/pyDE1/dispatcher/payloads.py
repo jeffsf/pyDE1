@@ -11,6 +11,7 @@ These should be pickle-able so can be passed between processes
 """
 
 import enum
+from traceback import TracebackException
 
 from typing import Optional
 
@@ -75,15 +76,16 @@ class APIRequest:
 
 class APIResponse:
 
-    def __init__(self, original_timestamp: float,
-                 timestamp: float,
-                 payload,
+    def __init__(self,
+                 original_timestamp: float,
+                 timestamp: float, payload,
                  exception: Optional[Exception] = None,
-                 ):
+                 tbe: Optional[TracebackException] = None):
         self._original_timestamp = original_timestamp
         self._timestamp = timestamp
         self._payload = payload
         self._exception = exception
+        self._tbe = tbe
 
     @property
     def original_timestamp(self):
@@ -100,6 +102,10 @@ class APIResponse:
     @property
     def exception(self):
         return self._exception
+
+    @property
+    def tbe(self):
+        return self._tbe
 
 
 

@@ -26,6 +26,7 @@ Some config parameters moved into `pyDE1.config.bluetooth`
 
 "find_first" functionality now implemented in `pyDE1.scanner`
 
+`de1.address()` is replaced with `await de1.set_address()` as it needs to disconnect the existing client on address change. It also supports address change.
 
 
 #### Mapping Version 3.0.0
