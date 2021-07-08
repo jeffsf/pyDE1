@@ -85,7 +85,7 @@ class DE1 (Singleton):
     # def __init__(self):
     #     pass
 
-    MAX_WAIT_FOR_READY_EVENTS = 5.0  # seconds, 1.5-2.5 seconds seems typical
+    MAX_WAIT_FOR_READY_EVENTS = 3.0  # seconds, 1.5-2.5 seconds seems typical
 
     def _singleton_init(self):
         self._address_or_bledevice: Optional[Union[str, BLEDevice]] = None
@@ -195,7 +195,7 @@ class DE1 (Singleton):
         )
 
         t0 = time.time()
-        (event_list, ignore) = await asyncio.gather(
+        ((event_list, addr_low_list), ignore) = await asyncio.gather(
             self.read_standard_mmr_registers(),
             self.read_cuuid(CUUID.StateInfo),
         )
@@ -218,14 +218,24 @@ class DE1 (Singleton):
                 f"{t1 - t0:.3f} seconds")
         except asyncio.TimeoutError:
             logger.warning("Timeout waiting for responses.")
-            count = 0
+            idx = 0
             for event in event_list:
                 event: asyncio.Event
                 if not event.is_set():
-                    logger.warning(
-                        f"No response from #{count} of {len(event_list)}")
-                count += 1
-            logger.error("Stupidly continuing anyway")
+                    if idx < len(event_list) - 1:
+                        failed = MMR0x80LowAddr(addr_low_list[idx])
+                        logger.warning(
+                            f"No response from #{idx + 1} "
+                            f"of {len(event_list)}, " \
+                            + str(failed))
+                        await self.read_one_mmr0x80(failed)
+                    else:
+                        logger.warning(
+                            "No response from CUUID.StateInfo"
+                        )
+                        await self.read_cuuid(CUUID.StateInfo)
+                idx += 1
+            logger.error("Stupidly continuing anyway after re-requesting")
 
         # NB: This gets sent if all there or not
         await self._notify_ready()
@@ -584,7 +594,8 @@ class DE1 (Singleton):
 # MMR-based properties
 #
 
-    async def read_standard_mmr_registers(self) -> List[asyncio.Event]:
+    async def read_standard_mmr_registers(self) -> (List[asyncio.Event],
+                                                    List[MMR0x80LowAddr]):
         """
         Request a read of the readable MMR registers, in bulk
         :return:
@@ -612,11 +623,20 @@ class DE1 (Singleton):
         #     self.read_mmr(words_block_3 - 1, 0x80, start_block_3),
         # )
 
-        retval = await self.read_mmr(words_block_1, 0x80, start_block_1)
-        retval.extend(await self.read_mmr(words_block_2, 0x80, start_block_2))
-        retval.extend(await self.read_mmr(words_block_3, 0x80, start_block_3))
+        event_list = await self.read_mmr(
+            words_block_1, 0x80, start_block_1)
+        event_list.extend(await self.read_mmr(
+            words_block_2, 0x80, start_block_2))
+        event_list.extend(await self.read_mmr(
+            words_block_3, 0x80, start_block_3))
 
-        return retval
+        addr_low_list = []
+        addr_low_list.extend(range(start_block_1, end_block_1 + 4, 4))
+        addr_low_list.extend(range(start_block_2, end_block_2 + 4, 4))
+        addr_low_list.extend(range(start_block_3, end_block_3 + 4, 4))
+
+        return event_list, addr_low_list
+
 
 
     #
