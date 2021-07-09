@@ -74,7 +74,7 @@
       "transition": "smooth",
       "pressure": "4.0",
       "flow": "2.2",
-      "seconds": "25.00",
+      "seconds": "30.00",
       "volume": "100",
       "limiter": {
         "value": "0",
