@@ -15,6 +15,7 @@ import multiprocessing.connection as mpc
 import time
 
 from email.utils import formatdate  # RFC2822 dates
+from typing import Optional, Union
 
 from pyDE1.exceptions import *
 
@@ -119,6 +120,7 @@ def run_api_inbound(log_queue: multiprocessing.Queue,
             else:
                 return string
 
+
     class RequestHandler (http.server.BaseHTTPRequestHandler):
 
         logger = logging.getLogger('HTTP')
@@ -129,25 +131,130 @@ def run_api_inbound(log_queue: multiprocessing.Queue,
                          self.log_date_time_string(),
                          format % args))
 
-        def do_GET(self):
-            timestamp = time.time()
-            logger.info(f"Request: {self.requestline}")
+        def send_error_response(self,
+                                code: Union[HTTPStatus, int], resp_str: str,
+                                timestamp: Optional[float] = None):
+            if timestamp is None:
+                timestamp = time.time()
+            resp_bytes = resp_str.encode('utf-8')
+            self.send_response(code)
+            self.send_header("Content-type", "text/plain")
+            self.send_header("Content-length", str(len(resp_bytes)))
+            self.send_header("Last-Modified", formatdate(timestamp,
+                                                         localtime=True))
+            self.end_headers()
+            self.wfile.write(resp_bytes)
 
+        def get_resource(self) -> Optional[Resource]:
+            logger.info(f"Request: {self.requestline}")
+            resource: Optional[Resource] = None
+            code = None
+            resp_str = ''
             try:
                 # resource = Resource(self.path.removeprefix(SERVER_ROOT))
                 resource = Resource(remove_prefix(self.path, SERVER_ROOT))
             except ValueError:
-                self.send_response(HTTPStatus.NOT_FOUND)
-                self.send_header("Content-type", "text/plain")
-                self.end_headers()
-                self.wfile.write(bytes('Unrecognized resource\n', 'utf-8'))
-                return
+                code = HTTPStatus.NOT_FOUND
+                resp_str = f"Unrecognized resource {self.requestline}"
 
-            if not resource.can_get:
-                self.send_response(HTTPStatus.METHOD_NOT_ALLOWED)
-                self.send_header("Content-type", "text/plain")
+            if ((resource is not None and (
+                    (self.command == "GET" and not resource.can_get)
+                    or (self.command == "PATCH" and not resource.can_patch)
+                    or (self.command == "PUT" and not resource.can_put)
+                    or (self.command == "POST" and not resource.can_post)
+                    or (self.command == "DELETE" and not resource.can_delete))
+                 or self.command not in (
+                 'GET', 'PATCH', 'PUT', 'POST', 'DELETE'))):
+                code = HTTPStatus.METHOD_NOT_ALLOWED
+                resp_str = f"{self.command} not permitted for {resource}"
+
+            if code is not None:
+                self.send_error_response(code, resp_str)
+
+            return resource
+
+        # NB: This does not support Transfer-encoding: chunked
+        def get_content(self) -> Optional[Union[bytes, bytearray, str]]:
+
+            content = None
+            content_length = int(self.headers.get('content-length'))
+            if content_length is None:
+                self.send_error_response(
+                    HTTPStatus.LENGTH_REQUIRED,
+                    "Missing Content-Length header")
+
+            elif content_length > PATCH_SIZE_LIMIT:
+                self.send_error_response(
+                    HTTPStatus.REQUEST_ENTITY_TOO_LARGE,
+                    "Patch is too large")
+
+            else:
+                if content_length > 0:
+                    content = self.rfile.read(content_length)
+                else:
+                    content = ''
+
+            return content
+
+        def queue_and_respond(self, req: APIRequest):
+            api_pipe.send(req)
+            resp = api_pipe.recv()
+
+            if resp.exception is None:
+                resp_str = json.dumps(resp.payload,
+                                      sort_keys=True, indent=4) + "\n"
+                resp_bytes = resp_str.encode('utf-8')
+
+                self.send_response(HTTPStatus.OK)
+                self.send_header("Content-type", "application/json")
+                self.send_header("Content-length", str(len(resp_bytes)))
+                self.send_header("Last-Modified", formatdate(resp.timestamp,
+                                                             localtime=True))
                 self.end_headers()
-                self.wfile.write(bytes('GET not permitted', 'utf-8'))
+                self.wfile.write(resp_bytes)
+
+            else:
+
+                body = ''.join(resp.tbe.format())
+
+                if isinstance(resp.exception,
+                              (DE1APIUnsupportedStateTransitionError,
+                               DE1NotConnectedError,
+                               DE1IsConnectedError,
+                               DE1NoAddressError,
+                               DE1OperationInProgressError,)):
+                    http_status = HTTPStatus.CONFLICT
+
+                elif isinstance(resp.exception,
+                                DE1APIUnsupportedFeatureError):
+                    http_status = HTTPStatus.IM_A_TEAPOT
+
+                elif isinstance(resp.exception, DE1APIError):
+                    http_status = HTTPStatus.BAD_REQUEST
+
+                elif isinstance(resp.exception,
+                                (TimeoutError,
+                                 asyncio.exceptions.TimeoutError)):
+                    http_status = HTTPStatus.REQUEST_TIMEOUT
+
+                else:
+                    http_status = HTTPStatus.INTERNAL_SERVER_ERROR
+
+                self.send_error_response(code=http_status,
+                                         resp_str=body,
+                                         timestamp=resp.timestamp)
+
+            rtt = (time.time() - resp.original_timestamp) * 1000
+            logger.debug(
+                f"RTT: {rtt:0.1f} ms {self.requestline}"
+            )
+            return
+
+        def do_GET(self):
+
+            timestamp = time.time()
+            resource = self.get_resource()
+            if resource is None:
                 return
 
             # Not actionable here as connectivity is unknown
@@ -159,128 +266,28 @@ def run_api_inbound(log_queue: multiprocessing.Queue,
                              connectivity_required=requires,
                              payload=None)
 
-            api_pipe.send(req)
-
-            # TODO: This should be async or otherwise to provide a timeout
-            resp: APIResponse = api_pipe.recv()
-
-            if resp.exception is None:
-                resp_str = json.dumps(resp.payload,
-                                      sort_keys=True, indent=4) + "\n"
-                resp_bytes = resp_str.encode('utf-8')
-
-                self.send_response(200)
-                self.send_header("Content-type", "application/json")
-                self.send_header("Content-length", str(len(resp_bytes)))
-                self.send_header("Last-Modified", formatdate(resp.timestamp,
-                                                             localtime=True))
-                self.end_headers()
-                self.wfile.write(resp_bytes)
-
-            elif isinstance(resp.exception, DE1NotConnectedError):
-                #
-                # TODO: Include the stack trace and all
-                #
-                body = ''.join(resp.tbe.format()).encode('utf-8')
-                self.send_response(HTTPStatus.SERVICE_UNAVAILABLE)
-                self.send_header("Content-type", "text/plain")
-                self.send_header("Content-length", str(len(body)))
-                self.send_header("Last-Modified", formatdate(resp.timestamp,
-                                                             localtime=True))
-                self.end_headers()
-                self.wfile.write(body)
-
-            elif isinstance(resp.exception,
-                            (TimeoutError,
-                             asyncio.exceptions.TimeoutError)):
-
-                body = ''.join(resp.tbe.format()).encode('utf-8')
-                self.send_response(HTTPStatus.SERVICE_UNAVAILABLE)
-                self.send_header("Content-type", "text/plain")
-                self.send_header("Content-length", str(len(body)))
-                self.send_header("Last-Modified", formatdate(resp.timestamp,
-                                                             localtime=True))
-                self.end_headers()
-                self.wfile.write(body)
-
-            else:
-                body = ''.join(resp.tbe.format()).encode('utf-8')
-                self.send_response(HTTPStatus.INTERNAL_SERVER_ERROR)
-                self.send_header("Content-type", "text/plain")
-                self.send_header("Content-length", str(len(body)))
-                self.send_header("Last-Modified", formatdate(resp.timestamp,
-                                                             localtime=True))
-                self.end_headers()
-                self.wfile.write(body)
-
-            logger.debug(
-                f"RTT: {(time.time() - timestamp) * 1000:0.1f} ms "
-                f"{self.requestline}"
-            )
-            return
-
-        """
-        curl -X PATCH --data '{"name": "new name"}' \
-        -H "content-type: application/json" \
-        http://localhost:NNNN/path/to/resource
-        
-        or 
-        
-        --data @filename.json
-        """
-
-        # NB: This does not support Transfer-encoding: chunked
+            self.queue_and_respond(req)
 
         def do_PATCH(self):
 
             timestamp = time.time()
-            logger.info(f"Request: {self.requestline}")
-
-            try:
-                # resource = Resource(self.path.removeprefix(SERVER_ROOT))
-                resource = Resource(remove_prefix(self.path, SERVER_ROOT))
-            except ValueError:
-                self.send_response(HTTPStatus.NOT_FOUND)
-                self.send_header("Content-type", "text/plain")
-                self.end_headers()
-                self.wfile.write(bytes('Unrecognized resource\n', 'utf-8'))
+            resource = self.get_resource()
+            if resource is None:
                 return
 
-            if not resource.can_patch:
-                self.send_response(HTTPStatus.METHOD_NOT_ALLOWED)
-                self.send_header("Content-type", "text/plain")
-                self.end_headers()
-                self.wfile.write(bytes('PATCH not permitted', 'utf-8'))
+            content = self.get_content()
+            if content is None:
                 return
-
-            content_length = int(self.headers.get('content-length'))
-            if content_length is None:
-                self.send_response(HTTPStatus.LENGTH_REQUIRED)
-                self.send_header("Content-type", "text/plain")
-                self.end_headers()
-                self.wfile.write(
-                    "Missing Content-Length header".encode('utf-8'))
-                return
-
-            if content_length > PATCH_SIZE_LIMIT:
-                self.send_response(HTTPStatus.REQUEST_ENTITY_TOO_LARGE)
-                self.send_header("Content-type", "text/plain")
-                self.end_headers()
-                self.wfile.write("Patch is too large".encode('utf-8'))
-                return
-
-            content = self.rfile.read(content_length)
 
             try:
                 patch = json.loads(content)
                 targets = validate_patch_return_targets(resource=resource,
                                                         patch=patch)
+
             except (json.JSONDecodeError, DE1APIError) as exception:
-                self.send_response(HTTPStatus.BAD_REQUEST)
-                self.send_header("Content-type", "text/plain")
-                self.end_headers()
-                self.wfile.write(bytes(repr(exception), 'utf-8'))
-                # self.wfile.write(content)
+                self.send_error_response(
+                    HTTPStatus.BAD_REQUEST,
+                    repr(exception))
                 return
 
             req = APIRequest(timestamp=timestamp,
@@ -289,115 +296,26 @@ def run_api_inbound(log_queue: multiprocessing.Queue,
                              connectivity_required=targets,
                              payload=patch)
 
-            api_pipe.send(req)
-
-            # TODO: This should be async or otherwise to provide a timeout
-
-            resp: APIResponse = api_pipe.recv()
-
-            if resp.exception is None:
-                resp_str = json.dumps(resp.payload,
-                                      sort_keys=True, indent=4) + "\n"
-                resp_bytes = resp_str.encode('utf-8')
-
-                self.send_response(200)
-                self.send_header("Content-type", "application/json")
-                self.send_header("Content-length", str(len(resp_bytes)))
-                self.send_header("Last-Modified", formatdate(resp.timestamp,
-                                                             localtime=True))
-                self.end_headers()
-                self.wfile.write(resp_bytes)
-
-            else:
-
-                body = ''.join(resp.tbe.format()).encode('utf-8')
-
-                if isinstance(resp.exception,
-                              DE1APIUnsupportedStateTransitionError):
-                    http_status = HTTPStatus.CONFLICT
-
-                elif isinstance(resp.exception,
-                                DE1APIUnsupportedFeatureError):
-                    http_status = HTTPStatus.IM_A_TEAPOT
-
-                elif isinstance(resp.exception, DE1APIError):
-                    http_status = HTTPStatus.BAD_REQUEST
-
-                elif isinstance(resp.exception, DE1NotConnectedError):
-                    http_status = HTTPStatus.CONFLICT
-
-                elif isinstance(resp.exception,
-                                (TimeoutError,
-                                 asyncio.exceptions.TimeoutError)):
-                    http_status = HTTPStatus.REQUEST_TIMEOUT
-
-                else:
-                    http_status = HTTPStatus.INTERNAL_SERVER_ERROR
-
-                self.send_response(http_status)
-                self.send_header("Content-type", "text/plain")
-                self.send_header("Content-length", str(len(body)))
-                self.send_header("Last-Modified", formatdate(resp.timestamp,
-                                                             localtime=True))
-                self.end_headers()
-                self.wfile.write(body)
-
-            logger.debug(
-                f"RTT: {(time.time() - timestamp) * 1000:0.1f} ms "
-                f"{self.requestline}"
-            )
+            self.queue_and_respond(req)
             return
-
-        # NB: This does not support Transfer-encoding: chunked
 
         def do_PUT(self):
 
             timestamp = time.time()
-            logger.info(f"Request: {self.requestline}")
-
-            try:
-                # resource = Resource(self.path.removeprefix(SERVER_ROOT))
-                resource = Resource(remove_prefix(self.path, SERVER_ROOT))
-            except ValueError:
-                self.send_response(HTTPStatus.NOT_FOUND)
-                self.send_header("Content-type", "text/plain")
-                self.end_headers()
-                self.wfile.write(bytes('Unrecognized resource\n', 'utf-8'))
+            resource = self.get_resource()
+            if resource is None:
                 return
 
-            if not resource.can_put:
-                self.send_response(HTTPStatus.METHOD_NOT_ALLOWED)
-                self.send_header("Content-type", "text/plain")
-                self.end_headers()
-                self.wfile.write(bytes('PUT not permitted', 'utf-8'))
+            if resource is not Resource.DE1_PROFILE:
+                self.send_error_response(
+                    HTTPStatus.NOT_IMPLEMENTED,
+                    f"PUT not yet supported beyond {Resource.DE1_PROFILE}"
+                )
                 return
 
-            if not resource is Resource.DE1_PROFILE:
-                self.send_response(HTTPStatus.NOT_IMPLEMENTED)
-                self.send_header("Content-type", "text/plain")
-                self.end_headers()
-                self.wfile.write(bytes(
-                    f'PUT not yet supported beyond {Resource.DE1_PROFILE}',
-                    'utf-8'))
+            content = self.get_content()
+            if content is None:
                 return
-
-            content_length = int(self.headers.get('content-length'))
-            if content_length is None:
-                self.send_response(HTTPStatus.LENGTH_REQUIRED)
-                self.send_header("Content-type", "text/plain")
-                self.end_headers()
-                self.wfile.write(
-                    "Missing Content-Length header".encode('utf-8'))
-                return
-
-            if content_length > PATCH_SIZE_LIMIT:
-                self.send_response(HTTPStatus.REQUEST_ENTITY_TOO_LARGE)
-                self.send_header("Content-type", "text/plain")
-                self.end_headers()
-                self.wfile.write("Patch is too large".encode('utf-8'))
-                return
-
-            content = self.rfile.read(content_length)
 
             try:
                 if resource in (Resource.DE1_PROFILE,
@@ -407,11 +325,11 @@ def run_api_inbound(log_queue: multiprocessing.Queue,
                     patch = json.loads(content)
                 targets = validate_patch_return_targets(resource=resource,
                                                         patch=patch)
+
             except (json.JSONDecodeError, DE1APIError) as exception:
-                self.send_response(HTTPStatus.BAD_REQUEST)
-                self.send_header("Content-type", "text/plain")
-                self.end_headers()
-                self.wfile.write(bytes(repr(exception), 'utf-8'))
+                self.send_error_response(
+                    HTTPStatus.BAD_REQUEST,
+                    repr(exception))
                 return
 
             req = APIRequest(timestamp=timestamp,
@@ -420,62 +338,7 @@ def run_api_inbound(log_queue: multiprocessing.Queue,
                              connectivity_required=targets,
                              payload=patch)
 
-            api_pipe.send(req)
-
-            # TODO: This should be async or otherwise to provide a timeout
-
-            resp: APIResponse = api_pipe.recv()
-
-            if resp.exception is None:
-                resp_str = json.dumps(resp.payload,
-                                      sort_keys=True, indent=4) + "\n"
-                resp_bytes = resp_str.encode('utf-8')
-
-                self.send_response(200)
-                self.send_header("Content-type", "application/json")
-                self.send_header("Content-length", str(len(resp_bytes)))
-                self.send_header("Last-Modified", formatdate(resp.timestamp,
-                                                             localtime=True))
-                self.end_headers()
-                self.wfile.write(resp_bytes)
-
-            else:
-                body = ''.join(resp.tbe.format()).encode('utf-8')
-
-                if isinstance(resp.exception,
-                              DE1APIUnsupportedStateTransitionError):
-                    http_status = HTTPStatus.CONFLICT
-
-                elif isinstance(resp.exception,
-                                DE1APIUnsupportedFeatureError):
-                    http_status = HTTPStatus.IM_A_TEAPOT
-
-                elif isinstance(resp.exception, DE1APIError):
-                    http_status = HTTPStatus.BAD_REQUEST
-
-                elif isinstance(resp.exception,
-                                (TimeoutError,
-                                 asyncio.exceptions.TimeoutError)):
-                    http_status = HTTPStatus.REQUEST_TIMEOUT
-
-                elif isinstance(resp.exception, DE1NotConnectedError):
-                    http_status = HTTPStatus.CONFLICT
-
-                else:
-                    http_status = HTTPStatus.INTERNAL_SERVER_ERROR
-
-                self.send_response(http_status)
-                self.send_header("Content-type", "text/plain")
-                self.send_header("Content-length", str(len(body)))
-                self.send_header("Last-Modified", formatdate(resp.timestamp,
-                                                             localtime=True))
-                self.end_headers()
-                self.wfile.write(body)
-
-            logger.debug(
-                f"RTT: {(time.time() - timestamp) * 1000:0.1f} ms "
-                f"{self.requestline}"
-            )
+            self.queue_and_respond(req)
             return
 
     server = http.server.HTTPServer((SERVER_HOST, SERVER_PORT),
