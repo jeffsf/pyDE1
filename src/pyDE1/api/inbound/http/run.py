@@ -15,9 +15,13 @@ import multiprocessing.connection as mpc
 import time
 
 from email.utils import formatdate  # RFC2822 dates
+from traceback import TracebackException
 from typing import Optional, Union
 
+from pyDE1.config.http import RESPONSE_TIMEOUT
 from pyDE1.exceptions import *
+
+from pyDE1.utils import timestamp_to_str_with_ms
 
 # Right now, this is all "sync" processing. As it is a benefit to only have
 # one request pending at a time, this shouldn't be a big problem.
@@ -82,7 +86,7 @@ def run_api_inbound(log_queue: multiprocessing.Queue,
     signal.signal(signal.SIGHUP, signal.SIG_IGN)
 
     async def shutdown_signal_handler(signal: signal.Signals,
-                             loop: asyncio.AbstractEventLoop):
+                                      loop: asyncio.AbstractEventLoop):
         logger = logging.getLogger('HTTPShutdown')
         logger.info(f"{str(signal)} SHUTDOWN INITIATED")
         logger.info("Shutting down HTTP server")
@@ -119,7 +123,6 @@ def run_api_inbound(log_queue: multiprocessing.Queue,
                 return string[len(prefix):]
             else:
                 return string
-
 
     class RequestHandler (http.server.BaseHTTPRequestHandler):
 
@@ -164,7 +167,7 @@ def run_api_inbound(log_queue: multiprocessing.Queue,
                     or (self.command == "POST" and not resource.can_post)
                     or (self.command == "DELETE" and not resource.can_delete))
                  or self.command not in (
-                 'GET', 'PATCH', 'PUT', 'POST', 'DELETE'))):
+                         'GET', 'PATCH', 'PUT', 'POST', 'DELETE'))):
                 code = HTTPStatus.METHOD_NOT_ALLOWED
                 resp_str = f"{self.command} not permitted for {resource}"
 
@@ -197,8 +200,26 @@ def run_api_inbound(log_queue: multiprocessing.Queue,
             return content
 
         def queue_and_respond(self, req: APIRequest):
+
             api_pipe.send(req)
-            resp = api_pipe.recv()
+
+            # In the sync world, nothing in parallel in this process
+            # so might as well just block, rather than craziness
+
+            readable = api_pipe.poll(timeout=RESPONSE_TIMEOUT)
+            if readable:
+                resp = api_pipe.recv()
+            else:
+                e = TimeoutError(
+                    "Timeout waiting for response from controller, "
+                    f"over {RESPONSE_TIMEOUT} sec")
+                resp = APIResponse(
+                    timestamp=time.time(),
+                    original_timestamp=req.timestamp,
+                    payload=None,
+                    exception=e,
+                    tbe=TracebackException.from_exception(e)
+                )
 
             if resp.exception is None:
                 resp_str = json.dumps(resp.payload,
@@ -344,7 +365,15 @@ def run_api_inbound(log_queue: multiprocessing.Queue,
     server = http.server.HTTPServer((SERVER_HOST, SERVER_PORT),
                                     RequestHandler)
 
+    # As this may be a restart, ensure that there are not pending responses
+    while api_pipe.poll():
+        got = api_pipe.recv()
+        try:
+            from_str = f" from{timestamp_to_str_with_ms(got.timestamp)}"
+        except AttributeError:
+            from_str = ''
+        logger.warning(f"Flushing stale response{from_str}: {got}")
+
     SupervisedExecutor(None, server.serve_forever)
 
     loop.run_forever()
-
