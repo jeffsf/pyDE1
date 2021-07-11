@@ -11,6 +11,8 @@ import enum
 import logging
 import re
 
+from datetime import datetime
+
 logger_cancel_tasks = logging.getLogger('CancelTasks')
 
 
@@ -147,3 +149,12 @@ def data_as_readable_or_hex(data, replace_rnt=True, replace_space=False):
             data = data.encode('ascii')
         out = data_as_hex(data)
     return out
+
+
+def timestamp_to_str_with_ms(timestamp: float, show_date=True) -> str:
+    string = datetime.fromtimestamp(
+        timestamp).isoformat(sep=' ', timespec='milliseconds')
+    if not show_date:
+        (d, t) = string.split(' ', maxsplit=2)
+        string = t
+    return string
