@@ -23,5 +23,8 @@ RESPONSE_TIMEOUT = SCAN_TIME + CONNECT_TIMEOUT + ASYNC_TIMEOUT + 0.100 + 0.100
 # If true, don't output nodes that have no value (write-only)
 # or are empty dicts
 # Otherwise math.nan fills in for the missing value
-# Should be considered as deprecated
-PRUNE_EMPTY_NODES = False
+# As not compliant with RFC 7159, some parsers may fail with NaN
+# although it is permitted by ECMAScript and JavaScript
+# A False setting is intended to be a development/exploration tool
+# This feature be considered as deprecated
+PRUNE_EMPTY_NODES = True
