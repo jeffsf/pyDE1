@@ -10,7 +10,7 @@ Enum that defines the recognized resources that the Dispatcher can access
 
 import enum
 
-RESOURCE_VERSION = '1.4.0'
+RESOURCE_VERSION = '2.0.0'
 
 class Resource (enum.Enum):
 
@@ -141,6 +141,7 @@ class ConnectivityEnum (enum.Enum):
 
     NOT_CONNECTED = 'not_connected'
     CONNECTED = 'connected'
+    READY = 'ready'
 
 
 class DE1ModeEnum (enum.Enum):

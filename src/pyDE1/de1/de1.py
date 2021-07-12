@@ -104,6 +104,8 @@ class DE1 (Singleton):
         self._event_water_levels = SubscribedEvent(self)
         self._event_shot_sample_with_volumes_update = SubscribedEvent(self)
 
+        self._ready = asyncio.Event()
+
         # Used to restrict multiple access to writing the active profile
         self._profile_lock = asyncio.Lock()
 
@@ -237,14 +239,15 @@ class DE1 (Singleton):
 
         return
 
-    # TODO: Rework initialization
     async def _notify_ready(self):
+        self._ready.set()
         await self._event_connectivity.publish(
             ConnectivityChange(arrival_time=time.time(),
                                state=ConnectivityState.READY))
         logger.info("Ready")
 
     async def _notify_not_ready(self):
+        self._ready.clear()
         await self._event_connectivity.publish(
             ConnectivityChange(arrival_time=time.time(),
                                state=ConnectivityState.NOT_READY))
@@ -394,6 +397,7 @@ class DE1 (Singleton):
 
         else:
             logger.error(f"Connection failed to DE1 at {self.address}")
+            await self._notify_not_ready()
             await self._event_connectivity.publish(
                 ConnectivityChange(arrival_time=time.time(),
                                    state=ConnectivityState.DISCONNECTED))
@@ -404,6 +408,7 @@ class DE1 (Singleton):
             logger.info(f"Disconnecting from DE1, no client")
             return
         await asyncio.gather(
+            self._notify_not_ready(),
             self._bleak_client.disconnect(),
             self._event_connectivity.publish(
                 ConnectivityChange(arrival_time=time.time(),
@@ -439,10 +444,15 @@ class DE1 (Singleton):
                 f"Disconnected from DE1 at {client.address}, "
                 "willful_disconnect: "
                 f"{client.willful_disconnect}")
-            asyncio.create_task(de1._event_connectivity.publish(
-                ConnectivityChange(arrival_time=time.time(),
-                                   state=ConnectivityState.DISCONNECTED)))
-            # if not shutdown underway:
+
+            # asyncio.gather is a Future, not a Task
+            asyncio.ensure_future(asyncio.gather(
+                self._notify_not_ready(),
+                de1._event_connectivity.publish(
+                    ConnectivityChange(arrival_time=time.time(),
+                                       state=ConnectivityState.DISCONNECTED)),
+            ))
+            # TODO: if not shutdown underway:
             de1.prepare_for_connection(wipe_address=client.willful_disconnect)
 
         return disconnect_callback
@@ -1155,23 +1165,25 @@ class DE1 (Singleton):
     # For API
     @property
     def connectivity(self):
+        retval = ConnectivityEnum.NOT_CONNECTED
         if self.is_connected:
-            retval = ConnectivityEnum.CONNECTED
-        else:
-            # intentionally vague, as PUT "connecting" isn't needed
-            retval = ConnectivityEnum.NOT_CONNECTED
+            if self._ready.is_set():
+                retval = ConnectivityEnum.READY
+            else:
+                retval = ConnectivityEnum.CONNECTED
         return retval
 
     async def connectivity_setter(self, value):
         assert isinstance(value, ConnectivityEnum), \
-            f"mode of {value} not a ConnectivityEnum " \
-            "in DE1.connectivity_setter()"
-        if value is ConnectivityEnum.CONNECTED \
-                and not self.is_connected:
+            f"mode of {value} not a ConnectivityEnum "
+        if value is ConnectivityEnum.CONNECTED and not self.is_connected:
             await self.connect()
-        elif value is ConnectivityEnum.NOT_CONNECTED \
-                and self.is_connected:
+        elif value is ConnectivityEnum.NOT_CONNECTED and self.is_connected:
             await self.disconnect()
+        else:
+            raise DE1APIValueError(
+                "Only CONNECTED and NOT_CONNECTED can be set, "
+                f"not {value}")
 
     @property
     def auto_off_time(self):

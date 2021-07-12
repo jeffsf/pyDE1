@@ -81,6 +81,14 @@ class Scale:
         self._event_weight_update: SubscribedEvent = SubscribedEvent(self)
         self._event_button_press: SubscribedEvent = SubscribedEvent(self)
         self._event_tare_seen: SubscribedEvent = SubscribedEvent(self)
+
+        self._ready = asyncio.Event()
+
+        asyncio.get_event_loop().create_task(
+            self._event_connectivity.publish(
+                ConnectivityChange(arrival_time=time.time(),
+                                   state=ConnectivityState.NOT_READY)))
+
         self._estimated_period = self._nominal_period
         self._last_weight_update_received = 0
         self._last_tare_request_sent = 0
@@ -176,9 +184,12 @@ class Scale:
         else:
             logger.error(
                 f"Connection failed to {class_name} at {self.address}")
-            await self._event_connectivity.publish(
-                ConnectivityChange(arrival_time=time.time(),
-                                   state=ConnectivityState.DISCONNECTED))
+            await asyncio.gather(self._notify_not_ready,
+                                 self._event_connectivity.publish(
+                                     ConnectivityChange(
+                                         arrival_time=time.time(),
+                                         state=ConnectivityState.DISCONNECTED))
+                                 )
 
     async def standard_initialization(self, hold_notification=False):
         """
@@ -193,12 +204,14 @@ class Scale:
             await self._notify_ready()
 
     async def _notify_ready(self):
+        self._ready.set()
         await self._event_connectivity.publish(
             ConnectivityChange(arrival_time=time.time(),
                                state=ConnectivityState.READY))
         logger.info("Ready")
 
     async def _notify_not_ready(self):
+        self._ready.clear()
         await self._event_connectivity.publish(
             ConnectivityChange(arrival_time=time.time(),
                                state=ConnectivityState.NOT_READY))
@@ -211,6 +224,7 @@ class Scale:
             return
         await asyncio.gather(
             self._bleak_client.disconnect(),
+            self._notify_not_ready(),
             self._event_connectivity.publish(
                 ConnectivityChange(arrival_time=time.time(),
                                    state=ConnectivityState.DISCONNECTING))
@@ -405,9 +419,12 @@ class Scale:
                 f"Disconnected from {class_name} at {client.address}, "
                 "willful_disconnect: "
                 f"{client.willful_disconnect}")
-            asyncio.create_task(scale._event_connectivity.publish(
+            asyncio.ensure_future(asyncio.gather(
+                self._notify_not_ready(),
+                scale._event_connectivity.publish(
                 ConnectivityChange(arrival_time=time.time(),
                                    state=ConnectivityState.DISCONNECTED)))
+            )
 
         return disconnect_callback
 
@@ -475,23 +492,25 @@ class Scale:
     # For API
     @property
     def connectivity(self):
+        retval = ConnectivityEnum.NOT_CONNECTED
         if self.is_connected:
-            retval = ConnectivityEnum.CONNECTED
-        else:
-            # intentionally vague, as PUT "connecting" isn't needed
-            retval = ConnectivityEnum.NOT_CONNECTED
+            if self._ready.is_set():
+                retval = ConnectivityEnum.READY
+            else:
+                retval = ConnectivityEnum.CONNECTED
         return retval
 
-    async def connectivity_setter(self, value: ConnectivityEnum):
+    async def connectivity_setter(self, value):
         assert isinstance(value, ConnectivityEnum), \
-            f"mode of {value} not a ConnectivityEnum " \
-            "in Scale.connectivity_setter()"
-        if value is ConnectivityEnum.CONNECTED \
-                and not self.is_connected:
+            f"mode of {value} not a ConnectivityEnum"
+        if value is ConnectivityEnum.CONNECTED and not self.is_connected:
             await self.connect()
-        elif value is ConnectivityEnum.NOT_CONNECTED \
-                and self.is_connected:
+        elif value is ConnectivityEnum.NOT_CONNECTED and self.is_connected:
             await self.disconnect()
+        else:
+            raise DE1APIValueError(
+                "Only CONNECTED and NOT_CONNECTED can be set, "
+                f"not {value}")
 
     @staticmethod
     def register_constructor(constructor: Callable, prefix: str):
