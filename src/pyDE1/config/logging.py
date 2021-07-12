@@ -9,4 +9,5 @@ Collected configuration parameters
 """
 
 LOG_DIRECTORY = '/tmp/log/pyDE1/'
+# NB: The log file name is matched against [a-zA-Z0-9._-]
 LOG_FILENAME = 'combined.log'

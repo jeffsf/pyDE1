@@ -16,7 +16,7 @@ import time
 
 from email.utils import formatdate  # RFC2822 dates
 from traceback import TracebackException
-from typing import Optional, Union
+from typing import Optional, Union, NamedTuple, Dict, Pattern
 
 from pyDE1.config.http import RESPONSE_TIMEOUT
 from pyDE1.exceptions import *
@@ -35,6 +35,8 @@ def run_api_inbound(log_queue: multiprocessing.Queue,
 
     from pyDE1.config.http import SERVER_HOST, SERVER_PORT, SERVER_ROOT, \
         PATCH_SIZE_LIMIT
+
+    from pyDE1.config.logging import LOG_DIRECTORY
 
     import logging
     import multiprocessing
@@ -62,6 +64,8 @@ def run_api_inbound(log_queue: multiprocessing.Queue,
     import http.server
     import json
     import multiprocessing
+    import os
+    import re
     import signal
 
     from http import HTTPStatus
@@ -124,6 +128,57 @@ def run_api_inbound(log_queue: multiprocessing.Queue,
             else:
                 return string
 
+    MIME_TYPE_MAP = {
+        '.txt': 'text/plain',
+        '.log': 'text/plain',
+        '.json': 'application/json',
+        '.zip': 'application/zip',
+        '.gz': 'application/gz',
+        '.bz2': 'application/x-bzip2',
+        '.xz': 'application/x-xz',
+    }
+
+    MIME_TYPE_DEFAULT = 'application/octet-stream'
+
+    class FileDetails(NamedTuple):
+        id: str
+        name: str  # Redundant
+        size: int
+        atime: float
+        mtime: float
+        ctime: float
+
+    def file_detail_list(dirname: str):
+        if not os.path.isdir(dirname):
+            raise DE1TypeError(
+                f"Apparent misconfiguration as '{dirname}' "
+                "is not a directory")
+        retval = []
+        with os.scandir(dirname) as dir_entries:
+            for dir_entry in dir_entries:
+                dir_entry: os.DirEntry
+                if not dir_entry.is_file():
+                    continue
+                dir_entry_stat = dir_entry.stat()
+                details = FileDetails(
+                    id=dir_entry.name,
+                    name=dir_entry.name,
+                    size=dir_entry_stat.st_size,
+                    atime=dir_entry_stat.st_atime,
+                    mtime=dir_entry_stat.st_mtime,
+                    ctime=dir_entry_stat.st_ctime
+                )
+                retval.append(details._asdict())
+        return retval
+
+    #
+    # TODO: This should somehow be "automated" and driven off Resource
+    #
+
+    resources_with_params: Dict[Resource, Pattern] = {
+        Resource.LOG: re.compile('^log/(?P<id>[a-zA-Z0-9._-]+)$')
+    }
+
     class RequestHandler (http.server.BaseHTTPRequestHandler):
 
         logger = logging.getLogger('HTTP')
@@ -148,33 +203,46 @@ def run_api_inbound(log_queue: multiprocessing.Queue,
             self.end_headers()
             self.wfile.write(resp_bytes)
 
-        def get_resource(self) -> Optional[Resource]:
+        def get_resource(self) -> (Optional[Resource], Dict):
             logger.info(f"Request: {self.requestline}")
             resource: Optional[Resource] = None
+            parameter_dict = {}
             code = None
             resp_str = ''
+            root_relative = remove_prefix(self.path, SERVER_ROOT)
             try:
                 # resource = Resource(self.path.removeprefix(SERVER_ROOT))
-                resource = Resource(remove_prefix(self.path, SERVER_ROOT))
+                resource = Resource(root_relative)
             except ValueError:
+                # TODO: How to match against blah/{id}/blah
+                #       and how to pass the ID on?
+                for res, pattern in resources_with_params.items():
+                    res: Resource
+                    pattern: Pattern
+                    match = pattern.match(root_relative)
+                    if match is not None:
+                        resource = res
+                        parameter_dict = match.groupdict()
+                    break
+
+            if resource is None:
                 code = HTTPStatus.NOT_FOUND
                 resp_str = f"Unrecognized resource {self.requestline}"
 
-            if ((resource is not None and (
-                    (self.command == "GET" and not resource.can_get)
-                    or (self.command == "PATCH" and not resource.can_patch)
-                    or (self.command == "PUT" and not resource.can_put)
-                    or (self.command == "POST" and not resource.can_post)
-                    or (self.command == "DELETE" and not resource.can_delete))
-                 or self.command not in (
-                         'GET', 'PATCH', 'PUT', 'POST', 'DELETE'))):
+            elif ((self.command == "GET" and not resource.can_get)
+                  or (self.command == "PATCH" and not resource.can_patch)
+                  or (self.command == "PUT" and not resource.can_put)
+                  or (self.command == "POST" and not resource.can_post)
+                  or (self.command == "DELETE" and not resource.can_delete)
+                  or self.command not in (
+                          'GET', 'PATCH', 'PUT', 'POST', 'DELETE')):
                 code = HTTPStatus.METHOD_NOT_ALLOWED
                 resp_str = f"{self.command} not permitted for {resource}"
 
             if code is not None:
                 self.send_error_response(code, resp_str)
 
-            return resource
+            return resource, parameter_dict
 
         # NB: This does not support Transfer-encoding: chunked
         def get_content(self) -> Optional[Union[bytes, bytearray, str]]:
@@ -221,18 +289,27 @@ def run_api_inbound(log_queue: multiprocessing.Queue,
                     tbe=TracebackException.from_exception(e)
                 )
 
+            self.process_response(resp)
+
+        # Split as some requests are handled in this process directly
+        def process_response(self, resp: APIResponse,
+                             mime_type: 'str' = "application/json"):
+
             if resp.exception is None:
-                resp_str = json.dumps(resp.payload,
-                                      sort_keys=True, indent=4) + "\n"
-                resp_bytes = resp_str.encode('utf-8')
+                content = resp.payload
+                if mime_type.endswith('/json') and not isinstance(content, str):
+                    content = json.dumps(content,
+                                          sort_keys=True, indent=4) + "\n"
+                if isinstance(content, str):
+                    content = content.encode('utf-8')
 
                 self.send_response(HTTPStatus.OK)
-                self.send_header("Content-type", "application/json")
-                self.send_header("Content-length", str(len(resp_bytes)))
+                self.send_header("Content-type", mime_type)
+                self.send_header("Content-length", str(len(content)))
                 self.send_header("Last-Modified", formatdate(resp.timestamp,
                                                              localtime=True))
                 self.end_headers()
-                self.wfile.write(resp_bytes)
+                self.wfile.write(content)
 
             else:
 
@@ -274,25 +351,79 @@ def run_api_inbound(log_queue: multiprocessing.Queue,
         def do_GET(self):
 
             timestamp = time.time()
-            resource = self.get_resource()
+            (resource, parameter_dict) = self.get_resource()
             if resource is None:
                 return
 
-            # Not actionable here as connectivity is unknown
-            requires = mapping_requires(MAPPING[resource])
+            if resource == Resource.LOGS:
+                payload = None
+                exc = None
+                tbe = None
+                try:
+                    payload = file_detail_list(LOG_DIRECTORY)
+                except Exception as e:
+                    exc = e
+                    tbe = TracebackException.from_exception(e)
 
-            req = APIRequest(timestamp=timestamp,
-                             method=HTTPMethod.GET,
-                             resource=resource,
-                             connectivity_required=requires,
-                             payload=None)
+                resp = APIResponse(
+                    original_timestamp=timestamp,
+                    timestamp=time.time(),
+                    payload=payload,
+                    exception=exc,
+                    tbe=tbe)
 
-            self.queue_and_respond(req)
+                self.process_response(resp)
+
+            elif resource == Resource.LOG:
+
+                payload = None
+                exc = None
+                tbe = None
+
+                # TODO: Another ugly combination of id with filename
+                filename = os.path.join(LOG_DIRECTORY, parameter_dict['id'])
+
+                try:
+                    with open(filename, 'rb') as log_file:
+                        payload = log_file.read()
+                except Exception as e:
+                    exc = e
+                    tbe = TracebackException.from_exception(e)
+
+                resp = APIResponse(
+                    original_timestamp=timestamp,
+                    timestamp=time.time(),
+                    payload=payload,
+                    exception=exc,
+                    tbe=tbe)
+
+                mime_type = MIME_TYPE_DEFAULT
+                for suffix, mime_for_suffix in MIME_TYPE_MAP.items():
+                    if filename.endswith(suffix):
+                        mime_type = mime_for_suffix
+                        break
+
+                self.process_response(resp, mime_type)
+
+            else:
+
+                # Not actionable here as connectivity is unknown
+                requires = mapping_requires(MAPPING[resource])
+
+                req = APIRequest(timestamp=timestamp,
+                                 method=HTTPMethod.GET,
+                                 resource=resource,
+                                 connectivity_required=requires,
+                                 payload=None)
+
+                self.queue_and_respond(req)
+
+            return
 
         def do_PATCH(self):
 
             timestamp = time.time()
-            resource = self.get_resource()
+            (resource, parameter_dict) = self.get_resource()
             if resource is None:
                 return
 
@@ -323,7 +454,7 @@ def run_api_inbound(log_queue: multiprocessing.Queue,
         def do_PUT(self):
 
             timestamp = time.time()
-            resource = self.get_resource()
+            (resource, parameter_dict) = self.get_resource()
             if resource is None:
                 return
 

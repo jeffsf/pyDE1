@@ -10,12 +10,15 @@ Enum that defines the recognized resources that the Dispatcher can access
 
 import enum
 
-RESOURCE_VERSION = '1.3.0'
+RESOURCE_VERSION = '1.4.0'
 
 class Resource (enum.Enum):
 
     SCAN = 'scan'
     SCAN_DEVICES = 'scan/devices'
+
+    LOG = 'log/{id}'  # TODO: OK, how to I match this?
+    LOGS = 'logs'
 
     DE1 = 'de1'
 
@@ -25,11 +28,11 @@ class Resource (enum.Enum):
 
     DE1_PROFILE = 'de1/profile'
     DE1_PROFILES = 'de1/profiles'
-    DE1_PROFILE_UPLOAD = 'de1/profile/{uid}/upload'
+    DE1_PROFILE_UPLOAD = 'de1/profile/{id}/upload'
 
     DE1_FIRMWARE = 'de1/firmware'
     DE1_FIRMWARES = 'de1/firmwares'
-    DE1_FIRMWARE_UPLOAD = 'de1/firmware/{uid}/upload'
+    DE1_FIRMWARE_UPLOAD = 'de1/firmware/{id}/upload'
 
     DE1_CONNECTIVITY = 'de1/connectivity'
 
@@ -99,6 +102,8 @@ class Resource (enum.Enum):
                 self.SCAN_DEVICES,
                 self.DE1_READ_ONCE,
                 self.VERSION,
+                self.LOG,
+                self.LOGS,
         ):
             retval = False
         return retval
