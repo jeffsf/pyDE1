@@ -1,16 +1,25 @@
 # Changelog
 
-## Unreleased
+## 0.5.0 – 2021-07-14
 
 ### New
 
-Bluetooth scanning with API. See README.bluetooth.md for details
+Bluetooth scanning with API. See `README.bluetooth.md` for details
 
 API can set scale and DE1 by ID, by first_if_found, or None
 
-`scale_factory(BLEDevice)` returns an appropriate Scale subtype
+A list of logs and individual logs can be obtained with GET `Resource.LOGS` and `Routine.LOG`
 
-Scale subtypes need to register their advertisement-name prefix, such as
+`ConnectivityEnum.READY` added, allowing clients to clearly know if the DE1 or scale is available for use.
+
+> NB: Previous code that assumed that `.CONNECTED` was the terminal state
+> should be modified to recognize `.READY`.
+
+`examples/find_first_and_load.py` demonstrates stand-alone connection to a DE1 and scale, loading of a profile, setting of shot parameters, and disconnecting from these devices.
+
+`scale_factory(BLEDevice)` returns an appropriate `Scale` subtype
+
+`Scale` subtypes need to register their advertisement-name prefix, such as
 
 ```
 Scale.register_constructor(AtomaxSkaleII, 'Skale')
@@ -19,6 +28,13 @@ Scale.register_constructor(AtomaxSkaleII, 'Skale')
 Timeout on `await` calls initiated by the API
 
 Use of connecting to the first-found DE1 and scale, monitoring MQTT, uploading a profile, setting SAW, all through the API is shown in `examples/find_first_and_load.py`
+
+Example profiles: EB6 has 30-s ramp vs EB5 at 25-s
+
+Add `timestamp_to_str_with_ms()` to `pyDE1.utils`
+
+On an error return to the inbound API, an exception trace is provided, when available. This is intended to assist in error reporting.
+
 
 
 ### Fixed
@@ -49,13 +65,24 @@ See note above on return results, resulting in major version bump
 
 Add `first_if_found` key to mapping for `Resource.DE1_ID` and `Resource.SCALE_ID`. If True, then connects to the first found, without initiating a scan. When using this feature, no other keys may be provided.
 
-#### Resource Version 1.3.0
+#### Resource Version 2.0.0
+
+> NB: Breaking change: `ConnectivityEnum.READY` added. See Commit b53a8eb
+> 
+> Previous code that assumed that `.CONNECTED` was the terminal state
+> should be modified to recognize `.READY`.
 
 Add
 
+```
     SCAN = 'scan'
     SCAN_DEVICES = 'scan/devices'
+```
 
+```
+    LOG = 'log/{id}'
+    LOGS = 'logs'
+```
 
 ### Deprecated
 
@@ -68,6 +95,8 @@ Add
 `READ_BACK_ON_PATCH` removed as PATCH operations now can return results themselves.
 
 `device_adv_is_recognized_by` class method on DE1 and Scale replaced by registered prefixes
+
+Removed `examples/test_first_find_and_load.py`, use `find_first_and_load.py`
 
 ### Known Issues
 
