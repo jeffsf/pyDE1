@@ -22,7 +22,6 @@ import logging
 import multiprocessing
 import os
 import signal
-import sys
 import threading
 import time
 
@@ -178,6 +177,9 @@ def run():
     def log_queue_reader_blocks(log_queue: multiprocessing.Queue,
                                 terminate_logging_event: threading.Event,
                                 rotate_log_event: threading.Event):
+
+        import email.utils
+
         if not os.path.exists(LOG_DIRECTORY):
             logger.error(
                 "logfile_directory '{}' does not exist. Creating.".format(
@@ -190,7 +192,8 @@ def run():
         fq_logfile = os.path.join(LOG_DIRECTORY, LOG_FILENAME)
         while not terminate_logging_event.is_set():
             with open(file=fq_logfile, mode='a', buffering=1) as fh:
-                logger.info(f"Opening log file")
+                logger.info(
+                    f"Opening log file {email.utils.localtime().isoformat()}")
                 while not terminate_logging_event.is_set():
                     record = log_queue.get()
                     # LogRecord is what gets enqueued
