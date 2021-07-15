@@ -15,7 +15,17 @@ SPDX-License-Identifier: GPL-3.0-only
 
 This represents work-in-progress to an API-first implementation of core software for a controller for the DE1.
 
-The extent of functionality should be sufficient to upload profiles and pull shots, flush the group, steam, and draw hot water through the API, with stop-at-time, -volume, and -mass. Continuous updates of flow parameters, and state transitions are provided over MQTT. Firmware upload is supported, though not yet revealed in the API.
+The extent of functionality is sufficient to upload profiles and pull shots, flush the group, steam, and draw hot water through the API, with stop-at-time, -volume, and -mass. Continuous updates of flow parameters, and state transitions are provided over MQTT. Firmware upload is supported, though not yet revealed in the API.
+
+A "worked example" is available at `examples/find_first_and_load.py` that
+
+* Initializes and starts an MQTT listener, then, through the API
+* Determines if a DE1 and scale are connected
+* If not, connects to the first-found
+* Waits until the DE1 is "ready" (self-initializes without API intervention)
+* Uploads a profile
+* Sets the stop-at-weight target and disables stop-at-time and stop-at-volume
+* Optionally disconnects the DE1 and scale
 
 The APIs are under semantic versioning. The REST-like, HTTP-transport versions can be retrieved from `version` at the document root, and also include the Python and package versions installed. Each of the JSON-formatted, MQTT packets contains a `version` key:value for that payload.
 
@@ -23,6 +33,9 @@ Consumers of these APIs should only need to understand high-level actions, such 
 
 ## Revision History
 
+See also CHANGELOG.md
+
+* 2021-07-14 – 0.5.0, "worked example" description
 * 2021-07-03 – Updated for release 0.4.0, see also CHANGELOG.md
 * 2021-06-26 – Content and organizational updates for release 0.3.0
 * 2021-06-22 – Updated for release 0.2.0
@@ -37,62 +50,77 @@ Thanks to all that have been trying this out and providing valuable feedback!
 
 See also [https://github.com/jeffsf/pyDE1](https://github.com/jeffsf/pyDE1) where the *alpha* branch is current. 
 
-## What's New
+## What's New in 0.5.0
 
 _**Please see CHANGELOG.md for more details**_
 
-### 0.4.0
+### New
 
-This release focuses primarily on structural changes needed to get to a "it's just running" configuration, suitable for non-experts to use. The goal is to be able to run as a service, not requiring anything to be "launched" manually.
+Bluetooth scanning with API. See `README.bluetooth.md` for details
 
-#### New
+API can set scale and DE1 by ID, by first_if_found, or None
 
-Support for non-GHC machines to be able to start flow through the API
+A list of logs and individual logs can be obtained with GET `Resource.LOGS` and `Routine.LOG`
 
-More graceful shutdown on SIGINT, SIGQUIT, SIGABRT, and SIGTERM (SIGHUP is reserved for log rotation)
+`ConnectivityEnum.READY` added, allowing clients to clearly know if the DE1 or scale is available for use.
 
-Logging to a single file, `/tmp/log/pyDE1/combined.log` by default. If changed to, for example, `/var/log/pyDE1/`, the process needs write permission for the directory. 
+> NB: Previous code that assumed that `.CONNECTED` was the terminal state
+> should be modified to recognize `.READY`.
 
-> NB: Keeping the logs in a dedicated directory is suggested, as the plan is to provide an API where a directory list will be used to generate the `logs` collection. `/tmp/` is used for ease of development and is not guaranteed to survive a reboot. 
+`examples/find_first_and_load.py` demonstrates stand-alone connection to a DE1 and scale, loading of a profile, setting of shot parameters, and disconnecting from these devices.
 
-Log file is closed and reopened on SIGHUP.
+### Major Changes
 
-Long-running processes, tasks, and futures are supervised, with automatic restart should they unexpectedly terminate. A limit of two restarts is in place to prevent "thrashing" on non-transient errors.
+HTTP API PUT/PATCH requests now return a list, which may be empty. Results, if any, from individual setters are returned as dict/obj members of the list.
 
-#### Major Changes
+On an error return to the inbound API, an exception trace is provided, when available. This is intended to assist in error reporting.
 
-Change from `asyncio-mqtt` to "bare" `paho-mqtt`. The `asyncio-mqtt` module is still a requirement as it is used in `examples/monitor_delay.py`
+Some config parameters moved into `pyDE1.config.bluetooth`
 
-Controller now runs in its own process. Much of what was in `try_de1.py` is now in `controller.py`, `run.py`, or `ugly_bits.py` 
+"find_first" functionality now implemented in `pyDE1.scanner`
 
-Log entries now include the process name.
+`de1.address()` is replaced with `await de1.set_address()` as it needs to disconnect the existing client on address change. It also supports address change.
 
-##### Mapping Version 2.1.1
+`Resource.SCALE_ID` now returns null values when there is no scale.
 
-* Handle missing modules in "version" request by returning `None` (`null`)
+There's virtually nothing left of `ugly_bits.py` as its functions now can to be handled through the API.
 
-##### Resource Version 1.2.0
+On connect, if any of the standard register reads fails, it is logged with its name, and retried (without waiting).
 
-* Adds to `DE1ModeEnum` Espresso, HotWaterRinse, Steam, HotWater for use by non-GHC machines
-* `.can_post` now returns False, reflecting that POST is and was not supported
+An additional example profile was added. EB6 has 30-s ramp vs EB5 at 25-s. Annoying rounding errors from Insight removed.
 
-##### Response Codes
+#### Resource Version 2.0.0
 
-* 409 — When the current state of the device does not permit the action
-  * `DE1APIUnsupportedStateTransitionError`
+> NB: Breaking change: `ConnectivityEnum.READY` added. See Commit b53a8eb
+> 
+> Previous code that assumed that `.CONNECTED` was the terminal state
+> should be modified to recognize `.READY`.
 
-* 418 — When the device is incapable of or blocked from taking the action
-  * `DE1APIUnsupportedFeatureError`
+Add
 
+```
+    SCAN = 'scan'
+    SCAN_DEVICES = 'scan/devices'
+```
 
-#### Deprecated
+```
+    LOG = 'log/{id}'
+    LOGS = 'logs'
+```
 
-`try_de1.py` is deprecated in favor of `run.py` or similar three-liners.
+### Deprecated
 
-#### Removed
+`stop_scanner_if_running()` in favor of just calling `scanner.stop()`
 
-"null" outbound API implementation — Removed as not refactored for new IPC. If there is a need, the MQTT implementation can be modified to only consume from the pipe and not create or use an MQTT client.
+`ugly_bits.py` for manual configuration now should be able to be handled through the API. See `examples/find_first_and_load.py`
 
+### Removed
+
+`READ_BACK_ON_PATCH` removed as PATCH operations now can return results themselves.
+
+`device_adv_is_recognized_by` class method on DE1 and Scale replaced by registered prefixes
+
+Removed `examples/test_first_find_and_load.py`, use `find_first_and_load.py`
 
 
 ## Requirements
@@ -105,6 +133,7 @@ Available through `pip`:
 * `aiologger`
 * `asyncio-mqtt`
 * `paho-mqtt`
+* `requests`
 
 An MQTT broker compatible with MQTT 5 clients, such as `mosquitto 2.0` (see [below](#installing-mosquitto))
 
@@ -118,12 +147,10 @@ The `bleak` library is supported on macOS, Linux, and Windows. Some development 
 
 ## Short-Term Priorities
 
-* Provide Bluetooth discovery and device selection through API
-* Access logs through API
+* Profile and "history" database
 * Manage unexpected disconnects and reconnects
 * Abort long-running actions, such as uploading firmware
 * Daemonize and provide Debian-compatible service script
-* Bring in [find-first-matching functionality](https://github.com/hbldh/bleak/pull/565) when available from release `bleak`.
 
 
 ## Known Gaps
@@ -162,7 +189,7 @@ ALL NECESSARY SERVICING, REPAIR OR CORRECTION.
 
 ## Some Older Notes of Explanatory Value
 
-_**Please see CHANGELOG.md for more newer details**_
+_**Please see CHANGELOG.md for newer details**_
 
 ### 0.2.0
 
