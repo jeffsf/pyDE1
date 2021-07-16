@@ -140,15 +140,7 @@ class EventNotificationName (enum.Enum):
         if the enumeration does not define any members."
     all need to be defined here
     """
-    # From FlowSequencer:
-    GATE_SEQUENCE_START =  "sequence_start"
-    GATE_FLOW_BEGIN = "sequence_flow_begin"
-    GATE_EXPECT_DROPS = "sequence_expect_drops"
-    GATE_EXIT_PREINFUSE = "sequence_exit_preinfuse"
-    GATE_FLOW_END = "sequence_flow_end"
-    GATE_FLOW_STATE_EXIT = "sequence_flow_state_exit"
-    GATE_LAST_DROPS = "sequence_last_drops"
-    GATE_SEQUENCE_COMPLETE = "sequence_complete"
+    pass
 
 
 class EventNotificationAction (enum.Enum):
@@ -214,6 +206,76 @@ class EventWithNotify (asyncio.Event):
             action=EventNotificationAction.CLEAR
         )
         asyncio.create_task(send_to_outbound_pipe(en))
+
+
+class SequencerGateName (EventNotificationName):
+    GATE_SEQUENCE_START = "sequence_start"
+    GATE_FLOW_BEGIN = "sequence_flow_begin"
+    GATE_EXPECT_DROPS = "sequence_expect_drops"
+    GATE_EXIT_PREINFUSE = "sequence_exit_preinfuse"
+    GATE_FLOW_END = "sequence_flow_end"
+    GATE_FLOW_STATE_EXIT = "sequence_flow_state_exit"
+    GATE_LAST_DROPS = "sequence_last_drops"
+    GATE_SEQUENCE_COMPLETE = "sequence_complete"
+
+
+class SequencerGateNotification (EventNotification):
+
+    sequence_id = uuid.uuid4()
+
+    @classmethod
+    def new_sequence(cls):
+        cls.sequence_id = uuid.uuid4()
+        return cls.sequence_id
+
+    def __init__(self, arrival_time: Optional[float],
+                 create_time: Optional[float] = None,
+                 sender = None,
+                 name: EventNotificationName = None,
+                 action: EventNotificationAction = None
+                 ):
+        super(SequencerGateNotification, self).__init__(
+            arrival_time=arrival_time,
+            create_time=create_time,
+            sender=sender,
+            name=name,
+            action=action
+        )
+        self.sequence_id = self.__class__.sequence_id
+
+
+class SequencerGate (EventWithNotify):
+    """
+    Extends to add the sequence ID
+    """
+
+    def __init__(self, sender, name: SequencerGateName):
+        if not isinstance(name, SequencerGateName):
+            raise TypeError(
+                "EventNotification needs a valid SequencerGateName, not "
+                f"'{name}'")
+        super(SequencerGate, self).__init__(sender=sender, name=name)
+
+    def set(self):
+        # Get to the Event without sending another notification
+        super(EventWithNotify, self).set()
+        sgn = SequencerGateNotification(
+            arrival_time=time.time(),
+            sender=self._sender,
+            name=self._event_name,
+            action=EventNotificationAction.SET
+        )
+        asyncio.create_task(send_to_outbound_pipe(sgn))
+
+    def clear(self):
+        super(EventWithNotify, self).clear()
+        sgn = SequencerGateNotification(
+            arrival_time=time.time(),
+            sender=self._sender,
+            name=self._event_name,
+            action=EventNotificationAction.CLEAR
+        )
+        asyncio.create_task(send_to_outbound_pipe(sgn))
 
 
 async def send_to_outbound_pipe(payload: EventPayload):

@@ -30,8 +30,8 @@ from pyDE1.i_target_setter import I_TargetSetter
 from pyDE1.scale.processor import ScaleProcessor
 from pyDE1.scale.events import WeightAndFlowUpdate
 
-from pyDE1.event_manager import EventWithNotify, EventNotificationName, \
-    EventPayload, send_to_outbound_pipe
+from pyDE1.event_manager import SequencerGate, SequencerGateName, \
+    SequencerGateNotification, EventPayload, send_to_outbound_pipe
 from pyDE1.singleton import Singleton
 
 from pyDE1.utils import cancel_tasks_by_name
@@ -124,25 +124,25 @@ class FlowSequencer (Singleton, I_TargetSetter):
         # For later cancellation. Should this be static or dynamic?
         self._sequence_task_name: str = "SequencerSubtask"
 
-        self._gate_sequence_start = EventWithNotify(self,
-            EventNotificationName.GATE_SEQUENCE_START)
+        self._gate_sequence_start = SequencerGate(self,
+            SequencerGateName.GATE_SEQUENCE_START)
         # These are not necessarily in order
-        self._gate_flow_begin = EventWithNotify(self,
-            EventNotificationName.GATE_FLOW_BEGIN)
-        self._gate_expect_drops = EventWithNotify(self,
-            EventNotificationName.GATE_EXPECT_DROPS)
+        self._gate_flow_begin = SequencerGate(self,
+            SequencerGateName.GATE_FLOW_BEGIN)
+        self._gate_expect_drops = SequencerGate(self,
+            SequencerGateName.GATE_EXPECT_DROPS)
         # self._gate_first_drops = asyncio.Event()
-        self._gate_exit_preinfuse = EventWithNotify(self,
-            EventNotificationName.GATE_EXIT_PREINFUSE)
-        self._gate_flow_end = EventWithNotify(self,
-            EventNotificationName.GATE_FLOW_END)
-        self._gate_flow_state_exit = EventWithNotify(self,
-            EventNotificationName.GATE_FLOW_STATE_EXIT)
-        self._gate_last_drops = EventWithNotify(self,
-            EventNotificationName.GATE_LAST_DROPS)
+        self._gate_exit_preinfuse = SequencerGate(self,
+            SequencerGateName.GATE_EXIT_PREINFUSE)
+        self._gate_flow_end = SequencerGate(self,
+            SequencerGateName.GATE_FLOW_END)
+        self._gate_flow_state_exit = SequencerGate(self,
+            SequencerGateName.GATE_FLOW_STATE_EXIT)
+        self._gate_last_drops = SequencerGate(self,
+            SequencerGateName.GATE_LAST_DROPS)
         # Though always "done" here (and should always be triggered)
-        self._gate_sequence_complete = EventWithNotify(self,
-            EventNotificationName.GATE_SEQUENCE_COMPLETE)
+        self._gate_sequence_complete = SequencerGate(self,
+            SequencerGateName.GATE_SEQUENCE_COMPLETE)
 
         self._all_gates = [
             self._gate_sequence_start,
@@ -346,6 +346,9 @@ class FlowSequencer (Singleton, I_TargetSetter):
 
         self._active_state = state
         self._close_all_gates()
+
+        sequence_id = SequencerGateNotification.new_sequence()
+        logger.info(f"Starting sequence_id {sequence_id}")
 
         # create a bunch of tasks
         # Keep the start gate closed, as some may expect others to exist
