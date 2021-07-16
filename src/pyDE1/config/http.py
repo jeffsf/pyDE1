@@ -12,7 +12,7 @@ from pyDE1.config.bluetooth import SCAN_TIME, CONNECT_TIMEOUT
 SERVER_HOST = ''
 SERVER_PORT = 1234
 SERVER_ROOT = '/'
-PATCH_SIZE_LIMIT = 4096
+PATCH_SIZE_LIMIT = 16384    # adaptive_allonge.json is 7632 bytes
 
 ASYNC_TIMEOUT = 1.0     # Seconds, before abandoning the request
 PROFILE_TIMEOUT = 4.5   # Seconds, 20*2 frames + head + tail at ~100 ms each
