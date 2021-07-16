@@ -112,7 +112,7 @@ def set_saw(mass: float):
     r = requests.patch(path_of(Resource.DE1_CONTROL_ESPRESSO),
                        json={"stop_at_time": None,
                              "stop_at_volume": None,
-                             "stop_at_weight": 50})
+                             "stop_at_weight": mass})
     show_result(r)
 
 
