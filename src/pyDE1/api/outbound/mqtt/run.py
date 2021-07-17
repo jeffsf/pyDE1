@@ -20,7 +20,6 @@ import multiprocessing.connection as mpc
 # TODO: look into how loggers here relate to the root logger from "main"
 
 # TODO: Look into or resolve processes' loggers writing over each other
-from pyDE1.supervise import SupervisedTask
 
 
 def run_api_outbound(log_queue: multiprocessing.Queue,
@@ -40,6 +39,7 @@ def run_api_outbound(log_queue: multiprocessing.Queue,
 
     from pyDE1.utils import cancel_tasks_by_name
     from pyDE1.signal_handlers import add_handler_shutdown_signals
+    from pyDE1.supervise import SupervisedTask
 
     from pyDE1.default_logger import initialize_default_logger, \
         set_some_logging_levels

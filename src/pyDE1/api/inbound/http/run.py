@@ -12,16 +12,9 @@ SPDX-License-Identifier: GPL-3.0-only
 
 import multiprocessing
 import multiprocessing.connection as mpc
-import time
 
-from email.utils import formatdate  # RFC2822 dates
-from traceback import TracebackException
-from typing import Optional, Union, NamedTuple, Dict, Pattern
-
-from pyDE1.config.http import RESPONSE_TIMEOUT
+# TODO: import * is only allowed at the  module level
 from pyDE1.exceptions import *
-
-from pyDE1.utils import timestamp_to_str_with_ms
 
 # Right now, this is all "sync" processing. As it is a benefit to only have
 # one request pending at a time, this shouldn't be a big problem.
@@ -33,13 +26,29 @@ from pyDE1.supervise import SupervisedTask, SupervisedExecutor
 def run_api_inbound(log_queue: multiprocessing.Queue,
                     api_pipe: mpc.Connection):
 
+    import asyncio
+    import http.server
+    import json
+    import logging
+    import multiprocessing
+    import os
+    import re
+    import signal
+    import time
+
+    from email.utils import formatdate  # RFC2822 dates
+    from http import HTTPStatus
+    from traceback import TracebackException
+    from typing import Optional, Union, NamedTuple, Dict, Pattern
+
     from pyDE1.config.http import SERVER_HOST, SERVER_PORT, SERVER_ROOT, \
         PATCH_SIZE_LIMIT
 
     from pyDE1.config.logging import LOG_DIRECTORY
 
-    import logging
-    import multiprocessing
+    from pyDE1.config.http import RESPONSE_TIMEOUT
+
+    from pyDE1.utils import timestamp_to_str_with_ms
 
     logger = logging.getLogger(multiprocessing.current_process().name)
 
@@ -59,16 +68,6 @@ def run_api_inbound(log_queue: multiprocessing.Queue,
     #         print(
     #             f"{cpn}: {k}"
     #         )
-
-    import asyncio
-    import http.server
-    import json
-    import multiprocessing
-    import os
-    import re
-    import signal
-
-    from http import HTTPStatus
 
     # This one is needed as it has specific fields that need to be unpickled
     from pyDE1.exceptions import DE1APIUnsupportedStateTransitionError, \

@@ -8,22 +8,22 @@ SPDX-License-Identifier: GPL-3.0-only
 See `manual_setup()` for some still-needed setup on process start
 """
 
-import asyncio
-import logging
 import multiprocessing
 import multiprocessing.connection as mpc
-import time
-
-# Hopefully this allows using a "local" version
-import inspect  # to determine the source file for manual_setup()
-from pyDE1.ugly_bits import manual_setup
 
 
 def run_controller(log_queue: multiprocessing.Queue,
                    inbound_pipe: mpc.Connection,
                    outbound_pipe: mpc.Connection):
 
+    import asyncio
+    import logging
     import signal
+    import time
+
+    # Hopefully this allows using a "local" version
+    import inspect  # to determine the source file for manual_setup()
+    from pyDE1.ugly_bits import manual_setup
 
     from pyDE1.de1.c_api import API_MachineStates
 
