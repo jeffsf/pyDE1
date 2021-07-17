@@ -9,11 +9,12 @@ SPDX-License-Identifier: GPL-3.0-only
 # TODO: Notifying locks on profile and firmware upload
 
 import asyncio
+import hashlib
 import json
 import logging
 import time
 
-from copy import copy
+from copy import copy, deepcopy
 from typing import Union, Dict, Coroutine, Optional, List, Callable
 
 from bleak.backends.device import BLEDevice
@@ -34,8 +35,8 @@ from pyDE1.de1.c_api import \
 
 from pyDE1.de1.ble import CUUID
 from pyDE1.de1.notifications import NotificationState, MMR0x80Data
-from pyDE1.de1.profile import ProfileByFrames, DE1ProfileValidationError
-
+from pyDE1.de1.profile import Profile, ProfileByFrames, \
+    DE1ProfileValidationError
 
 from pyDE1.i_target_setter import I_TargetSetter
 from pyDE1.event_manager.events import ConnectivityState, ConnectivityChange
@@ -97,6 +98,8 @@ class DE1 (Singleton):
         # TODO: Where is "last heard from"?
         self._cuuid_dict: Dict[CUUID, NotificationState] = dict()
         self._mmr_dict: Dict[Union[MMR0x80LowAddr, int], MMR0x80Data] = dict()
+
+        self._latest_profile: Optional[Profile] = None
 
         self._event_connectivity = SubscribedEvent(self)
         self._event_state_update = SubscribedEvent(self)
@@ -337,6 +340,10 @@ class DE1 (Singleton):
     @property
     def name(self):
         return self._name
+
+    @property
+    def latest_profile(self):
+        return deepcopy(self._latest_profile)
 
     @property
     def event_state_update(self):
@@ -710,8 +717,7 @@ class DE1 (Singleton):
     async def upload_json_v2_profile(self, profile: Union[bytes,
                                                           bytearray,
                                                           str]):
-        pj = json.loads(profile)
-        pbf = ProfileByFrames().from_json(pj)
+        pbf = ProfileByFrames().from_json(profile)
         await self.upload_profile(pbf)
 
     # "Internal" version
@@ -737,14 +743,17 @@ class DE1 (Singleton):
                 raise DE1OperationInProgressError(
                     'There is already a profile upload in progress')
         profile_upload_stopped = asyncio.Event()
-        await asyncio.create_task(self._upload_profile(
+        upload_task = asyncio.create_task(self._upload_profile(
             profile=profile,
             override_stop_limits=osl,
             override_tank_temperature=ott,
             profile_upload_stopped=profile_upload_stopped)
         )
         await profile_upload_stopped.wait()
-        # TODO: Not clear here if interrupted or successful
+        if (e := upload_task.exception()) is not None:
+            logger.info(f"Upload task exception: {upload_task.exception()}")
+            # TODO: This will raise on cancelled, is that "right"?
+            raise e
 
 
     @staticmethod
@@ -770,12 +779,22 @@ class DE1 (Singleton):
                         done = await self.start_notifying(cuuid)
                         # await done.wait()
 
+                self._latest_profile = None
+                bytes_for_fingerprint = bytearray()
+
                 await self.write_packed_attr(profile.header_write())
+                bytes_for_fingerprint += profile.header_write().as_wire_bytes()
                 for frame in profile.shot_frame_writes():
                     await self.write_packed_attr(frame)
+                    bytes_for_fingerprint += frame.as_wire_bytes()
                 for frame in profile.ext_shot_frame_writes():
                     await self.write_packed_attr(frame)
+                    bytes_for_fingerprint += frame.as_wire_bytes()
                 await self.write_packed_attr(profile.shot_tail_write())
+                bytes_for_fingerprint \
+                    += profile.shot_tail_write().as_wire_bytes()
+
+                profile._fingerprint = hashlib.sha1(bytes_for_fingerprint)
 
                 if profile.number_of_preinfuse_frames is not None:
                     self._number_of_preinfuse_frames = \
@@ -806,6 +825,7 @@ class DE1 (Singleton):
                             weight=target
                         )
 
+                self._latest_profile = profile
 
         except asyncio.CancelledError:
             pass

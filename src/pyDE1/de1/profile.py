@@ -8,10 +8,13 @@ SPDX-License-Identifier: GPL-3.0-only
 
 from __future__ import annotations
 
-import asyncio
 import enum
+import hashlib
 import io
 import json
+import uuid
+
+import warnings
 
 from copy import deepcopy
 from typing import Any, Union, Optional, List
@@ -31,6 +34,9 @@ class DE1ProfileValidationErrorJSON (DE1ProfileValidationError):
     def __init__(self, *args, **kwargs):
         super(DE1ProfileValidationErrorJSON, self).__init__(args, kwargs)
 
+class SourceFormat (enum.Enum):
+    JSONv2 = 'JSONv2'
+
 
 class Profile:
     """
@@ -40,18 +46,69 @@ class Profile:
     """
 
     def __init__(self):
-        pass
+        self._id: str = None
+        self._fingerprint: Optional[str] = None
+        self._source: Optional[Union[str, bytes, bytearray]] = None
+        self._source_format: Optional[str] = None
 
-    def from_json(self, json_representation: dict) -> Profile:
+    @property
+    def id(self) -> Optional[Union[uuid.UUID, str]]:
+        """
+        Unique ID of the "source" (byte stream) of the profile.
+        If no source, then the fingerprint
+
+        May be None if the profile hasn't been sent to the DE1
+        """
+        return self._id
+
+    @property
+    def fingerprint(self) -> Optional[Union[uuid.UUID, str]]:
+        """
+        The fingerprint (UUID) of the "program" sent to the DE1
+
+        May be None if the profile hasn't been sent to the DE1
+        """
+        return self._fingerprint
+
+    @property
+    def source(self) -> Optional[Union[str, bytes, bytearray]]:
+        """
+        The "source file" contents, usable for reconstruction, if any
+        """
+        return self._source
+
+    @source.setter
+    def source(self, value):
+        self._source = value
+        self._id = hashlib.sha1(value)
+
+    @property
+    def source_format(self) -> Optional[SourceFormat]:
+        """
+        Format of "source file", if any
+        """
+        return self._source_format
+
+    def from_json(self, json_str_or_bytes: Union[str,
+                                                 bytes, bytearray]) -> Profile:
+        """
+        Should self._source_format = SourceFormat.JSONv2
+        """
         raise NotImplementedError
 
-    def from_json_file(self, file: Union[str, io.TextIOBase, io.BufferedIOBase]) -> Profile:
+    def from_json_file(self, file: Union[str,
+                                         io.TextIOBase,
+                                         io.BufferedIOBase]) -> Profile:
+        warnings.warn(
+            "Reading directly .from_json_file() will be removed, "
+            "use .from_json()", DeprecationWarning)
+
         if isinstance(file, str):
             with open(file, 'r') as profile_fh:
-                profile_json = json.load(profile_fh)
+                self.source = profile_fh.read()
         else:
-            profile_json = json.load(file)
-        self.from_json(profile_json)
+            self.source = file.read()
+        self.from_json(json.loads(self._source))
         return self
 
     def as_json(self) -> dict:
@@ -60,6 +117,12 @@ class Profile:
     def validate(self) -> bool:
         raise NotImplementedError
 
+    def regenerate_source(self):
+        """
+        MUST be called whenever changes are made to the underlying components
+        to ensure that the id, source, source_type, and fingerprint are correct
+        """
+        raise NotImplementedError
 
 
 class ProfileByFrames (Profile):
@@ -69,7 +132,6 @@ class ProfileByFrames (Profile):
 
     def __init__(self):
         super(ProfileByFrames, self).__init__()
-
         self._ShotDescHeader: Optional[ShotDescHeader] = None
         self._shot_frames: List[ShotFrame] = []
         self._shot_ext_frames: List[Optional [ShotExtFrame]] = []
@@ -105,14 +167,13 @@ class ProfileByFrames (Profile):
     def shot_tail_write(self):
         return FrameWrite_ShotTail(len(self._shot_frames), self._ShotTail)
 
-
     def validate(self) -> bool:
         if None in [
             self._ShotDescHeader,
             self._shot_frames,
             # self._shot_ext_frames,
             self._ShotTail,
-            ]:
+        ]:
             raise DE1ProfileValidationError("One or more required values are None")
         if isinstance(self._shot_frames, list):
             for f in self._shot_frames:
@@ -147,22 +208,29 @@ class ProfileByFrames (Profile):
         # TODO: The PackedAttr classes should self-validate as well
         return True
 
-    def from_json(self, json_as_dict: dict,
-                  round_to_two_decimals=True) -> ProfileByFrames:
+    def from_json(self, json_str_or_bytes: Union[str,
+                                                 bytes,
+                                                 bytearray]) -> ProfileByFrames:
         """
-        Somewhere in the prior translation process to JSON, "off by one bit"
-        caused "pressure": "8.999999999999993"
+        Rounding of the supplied values has been removed so that
+        the "source" preserved and used for the "fingerprint"
+        is the same as the input.
+        """
 
-        By default, round floats to two decimal digits
-        """
+        self.source = json_str_or_bytes     # This sets the id as well
+                                            # Fingerprint is set on upload
+
+        json_dict = json.loads(json_str_or_bytes)
 
         try:
-            if (v := int(json_as_dict['version'])) != 2:
+            if (v := int(json_dict['version'])) != 2:
                 raise DE1ProfileValidationErrorJSON(
                     f"Only version 2 profiles are recognized, not '{v}'")
         except KeyError:
             raise DE1ProfileValidationErrorJSON(
                 f"Only version 2 profiles are recognized, no version found")
+
+        self._source_format = SourceFormat.JSONv2
 
         # TODO: Confirm or determine:
 
@@ -187,12 +255,12 @@ class ProfileByFrames (Profile):
             HeaderV=_header_v,
             NumberOfFrames=None,
             NumberOfPreinfuseFrames=int(round(float(
-                json_as_dict['target_volume_count_start']))),
+                json_dict['target_volume_count_start']))),
             MinimumPressure=_minimum_pressure_default,
             MaximumFlow=_maximum_flow_default,
         )
 
-        for step in json_as_dict['steps']:
+        for step in json_dict['steps']:
 
             flag = 0x00
             pump = step['pump']
@@ -270,13 +338,6 @@ class ProfileByFrames (Profile):
             else:
                 TriggerVal = 0
 
-            if round_to_two_decimals:
-                SetVal = round(SetVal, 2)
-                TriggerVal = round(TriggerVal, 2)
-                temperature = round(temperature, 2)
-                seconds = round(seconds, 2)
-                volume = round(volume, 2)
-
             self._shot_frames.append(ShotFrame(
                 Flag=flag,
                 SetVal=SetVal,
@@ -286,17 +347,11 @@ class ProfileByFrames (Profile):
                 MaxVol=volume
             ))
 
-            # Is a ShotExtFrame needed for this frame?
-
             if ('limiter' in step
                     and round(float(step['limiter']['value']), 2) > 0):
 
                 value = float(step['limiter']['value'])
                 range = float(step['limiter']['range'])
-
-                if round_to_two_decimals:
-                    value = round(value, 2)
-                    range = round(range, 2)
 
                 self._shot_ext_frames.append(ShotExtFrame(
                     MaxFlowOrPressure=value,
@@ -312,22 +367,22 @@ class ProfileByFrames (Profile):
 
         self._ShotTail = ShotTail(
             MaxTotalVolume=int(round(float((
-                json_as_dict['target_volume'])))),
+                json_dict['target_volume'])))),
             ignore_pi=_ignore_pi_default,
         )
 
-        if 'tank_temperature' in json_as_dict:
-            self.tank_temperature = float(json_as_dict['tank_temperature'])
+        if 'tank_temperature' in json_dict:
+            self.tank_temperature = float(json_dict['tank_temperature'])
 
-        if 'target_weight' in json_as_dict:
-            self.target_weight = float(json_as_dict['target_weight'])
+        if 'target_weight' in json_dict:
+            self.target_weight = float(json_dict['target_weight'])
 
-        if 'target_volume' in json_as_dict:
-            self.target_volume = float(json_as_dict['target_volume'])
+        if 'target_volume' in json_dict:
+            self.target_volume = float(json_dict['target_volume'])
 
-        if 'target_volume_count_start' in json_as_dict:
+        if 'target_volume_count_start' in json_dict:
             self.number_of_preinfuse_frames = \
-                int(round(float(json_as_dict['target_volume_count_start'])))
+                int(round(float(json_dict['target_volume_count_start'])))
 
         return self
 
