@@ -22,7 +22,7 @@ from typing import Union, Dict, Set, Optional
 
 import pyDE1.scanner
 from pyDE1.de1.notifications import NotificationState, MMR0x80Data
-from pyDE1.utils import fix_enums
+from pyDE1.utils import prep_for_json
 from pyDE1.utils_public import rgetattr, rsetattr
 
 from pyDE1.dispatcher.resource import Resource
@@ -204,7 +204,7 @@ async def _get_isat_value(isat: IsAt):
             f"Mapping target of {target} is not recognized"
         )
 
-    return fix_enums(retval)
+    return prep_for_json(retval)
 
 
 async def _get_mapping_to_dict(partial_dict: dict) -> dict:

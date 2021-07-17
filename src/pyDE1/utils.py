@@ -10,6 +10,7 @@ import asyncio
 import enum
 import logging
 import re
+import uuid
 
 from datetime import datetime
 
@@ -58,8 +59,13 @@ def address_is_persistent(address: str) -> bool:
         return False
 
 
-def fix_enums(val):
+def prep_for_json(val):
     """
+    Special cases for conversion to JSON:
+    * enum classes
+    * bytes-like
+    * UUID
+
     Return the name of an IntEnum, does not help with IntFlag
     So far no IntFlag enums headed to the external API
     """
@@ -75,6 +81,8 @@ def fix_enums(val):
         return val.value
     elif isinstance(val, (bytearray, bytes)):
         return val.hex()
+    elif isinstance(val, uuid.UUID):
+        return str(val)
     else:
         return val
 

@@ -58,7 +58,7 @@ import uuid
 from inspect import iscoroutinefunction, signature
 from typing import Optional, Coroutine, Union, List
 
-from pyDE1.utils import fix_enums
+from pyDE1.utils import prep_for_json
 
 logger = logging.getLogger('EventManager')
 
@@ -119,7 +119,7 @@ class EventPayload:
         They are translated to 'name', 'version', 'sender' and 'event_time'
         """
         # IntEnum gets JSON-ified as an int
-        work = {k: fix_enums(v) for k, v in self.__dict__.items()
+        work = {k: prep_for_json(v) for k, v in self.__dict__.items()
                 if not k.startswith('_')}
         for key in ('version', 'event_time'):
             try:
