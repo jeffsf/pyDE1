@@ -11,6 +11,7 @@ that describe how the shot progressed
 """
 import logging
 import time
+import warnings
 
 from typing import Optional, Coroutine
 
@@ -23,7 +24,6 @@ from pyDE1.scale.events import WeightAndFlowUpdate
 
 import aiologger
 logger = aiologger.Logger.with_default_handlers()
-
 
 
 async def basic_shot_sample_logger(ssu: ShotSampleWithVolumesUpdate):
@@ -41,6 +41,9 @@ async def basic_shot_sample_logger(ssu: ShotSampleWithVolumesUpdate):
 
 
 async def gated_basic_shot_sample_logger(sswvu: ShotSampleWithVolumesUpdate):
+    warnings.warn(
+        "de1._recorder_active will be removed shortly "
+        "in favor of database recording in anothe process.")
     now = time.time()
     if sswvu.sender._recorder_active:
         line = "{:5.2f} {:5.2f} {:4.1f} {:2d} {:.1f} {:.1f} {:.1f} {} " \

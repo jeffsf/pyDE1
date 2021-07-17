@@ -15,6 +15,7 @@ import time
 
 import asyncio
 import logging
+import warnings
 
 from typing import Optional, Callable, Coroutine, List
 
@@ -628,6 +629,9 @@ class FlowSequencer (Singleton, I_TargetSetter):
             raise
 
     async def _sequence_recorder(self):
+        warnings.warn(
+            "de1._recorder_active will be removed shortly "
+            "in favor of database recording in anothe process.")
         de1 = self._de1
         try:
             # Always enable recording, let the recorder decide
