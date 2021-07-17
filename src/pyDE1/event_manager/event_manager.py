@@ -241,7 +241,11 @@ class SequencerGateNotification (EventNotification):
             name=name,
             action=action
         )
+        self._version = "1.1.0"
+        # TODO: Clean up imports, maybe move this out?
+        from pyDE1.flow_sequencer import FlowSequencer
         self.sequence_id = self.__class__.sequence_id
+        self.active_state = FlowSequencer().active_state
 
 
 class SequencerGate (EventWithNotify):
