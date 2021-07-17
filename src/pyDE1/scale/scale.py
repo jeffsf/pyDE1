@@ -222,13 +222,16 @@ class Scale:
         if self._bleak_client is None:
             logger.info(f"Disconnecting from {class_name}, no client")
             return
-        await asyncio.gather(
-            self._bleak_client.disconnect(),
-            self._notify_not_ready(),
-            self._event_connectivity.publish(
-                ConnectivityChange(arrival_time=time.time(),
-                                   state=ConnectivityState.DISCONNECTING))
-        )
+        if self.is_connected:
+            logger.debug(f"await gather disconnect, not ready, disconnecting")
+            gr = await asyncio.gather(
+                self._bleak_client.disconnect(),
+                self._notify_not_ready(),
+                self._event_connectivity.publish(
+                    ConnectivityChange(arrival_time=time.time(),
+                                       state=ConnectivityState.DISCONNECTING))
+            )
+
         if self.is_connected:
             logger.error(
                 f"Disconnect failed from {class_name} at {self.address}")
@@ -236,7 +239,9 @@ class Scale:
                 ConnectivityChange(arrival_time=time.time(),
                                    state=ConnectivityState.CONNECTED))
         else:
-            logger.info(f"Scale.disconnect(): Disconnected from {class_name} at {self.address}")
+            logger.info(
+                f"Scale.disconnect(): Disconnected from {class_name} "
+                f"at {self.address}")
             await self._event_connectivity.publish(
                 ConnectivityChange(arrival_time=time.time(),
                                    state=ConnectivityState.DISCONNECTED))

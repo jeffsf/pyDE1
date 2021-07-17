@@ -46,13 +46,17 @@ class Profile:
     """
 
     def __init__(self):
-        self._id: str = None
-        self._fingerprint: Optional[str] = None
+        self._id: Optional[str] = None
         self._source: Optional[Union[str, bytes, bytearray]] = None
         self._source_format: Optional[str] = None
+        self._fingerprint: Optional[str] = None
+        self.title: Optional[str] = None
+        self.author: Optional[str] = None
+        self.notes: Optional[str] = None
+        self.beverage_type: Optional[str] = None
 
     @property
-    def id(self) -> Optional[Union[uuid.UUID, str]]:
+    def id(self) -> Optional[str]:
         """
         Unique ID of the "source" (byte stream) of the profile.
         If no source, then the fingerprint
@@ -62,7 +66,7 @@ class Profile:
         return self._id
 
     @property
-    def fingerprint(self) -> Optional[Union[uuid.UUID, str]]:
+    def fingerprint(self) -> Optional[str]:
         """
         The fingerprint (UUID) of the "program" sent to the DE1
 
@@ -80,7 +84,7 @@ class Profile:
     @source.setter
     def source(self, value):
         self._source = value
-        self._id = hashlib.sha1(value)
+        self._id = hashlib.sha1(value).hexdigest()
 
     @property
     def source_format(self) -> Optional[SourceFormat]:
@@ -90,9 +94,10 @@ class Profile:
         return self._source_format
 
     def from_json(self, json_str_or_bytes: Union[str,
-                                                 bytes, bytearray]) -> Profile:
+                                                 bytes,
+                                                 bytearray]) -> Profile:
         """
-        Should self._source_format = SourceFormat.JSONv2
+        Should set self._source_format = SourceFormat.JSONv2
         """
         raise NotImplementedError
 
@@ -249,7 +254,8 @@ class ProfileByFrames (Profile):
         #       beverage_type
         #       target_weight
         #       target_volume
-        #       metadata; title, author, notes, hidden, reference file, ...
+        #       metadata; title, author, notes,
+        #                 hidden, reference file, ...
 
         self._ShotDescHeader = ShotDescHeader(
             HeaderV=_header_v,
@@ -384,11 +390,27 @@ class ProfileByFrames (Profile):
             self.number_of_preinfuse_frames = \
                 int(round(float(json_dict['target_volume_count_start'])))
 
+        try:
+            self.title = json_dict['title']
+        except KeyError:
+            pass
+
+        try:
+            self.author = json_dict['author']
+        except KeyError:
+            pass
+
+        try:
+            self.notes = json_dict['notes']
+        except KeyError:
+            pass
+
+        try:
+            self.beverage_type = json_dict['beverage_type']
+        except KeyError:
+            pass
+
         return self
-
-
-
-
 
 
 if __name__ == '__main__':

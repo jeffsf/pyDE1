@@ -11,10 +11,14 @@ See `manual_setup()` for some still-needed setup on process start
 import multiprocessing
 import multiprocessing.connection as mpc
 
+from pyDE1.flow_sequencer import FlowSequencer
+from pyDE1.scale.processor import ScaleProcessor
+
 
 def run_controller(log_queue: multiprocessing.Queue,
                    inbound_pipe: mpc.Connection,
-                   outbound_pipe: mpc.Connection):
+                   outbound_pipe: mpc.Connection,
+                   database_queue: multiprocessing.Queue):
 
     import asyncio
     import logging
@@ -61,8 +65,11 @@ def run_controller(log_queue: multiprocessing.Queue,
     async def shutdown_signal_handler(signal: signal.Signals,
                              loop: asyncio.AbstractEventLoop):
         nonlocal _shutting_down
-        _shutting_down = True
         logger = logging.getLogger('ControllerShutdown')
+        if _shutting_down:
+            logger.info("Already shutting down")
+            return
+        _shutting_down = True
         logger.info(f"{str(signal)} SHUTDOWN INITIATED")
         logger.info("Terminate API processes")
         t0 = time.time()
@@ -75,9 +82,12 @@ def run_controller(log_queue: multiprocessing.Queue,
         ):
             logger.info("Sleep DE1")
             await de1.sleep()
-        logger.info(f"Disconnecting {_disconnect_set}")
-        for device in _disconnect_set:
-            await device.disconnect()
+        logger.info(f"Disconnecting devices")
+        # for device in _disconnect_set:
+        #     await device.disconnect()
+        for device in [DE1(), ScaleProcessor().scale]:
+            if device is not None:
+                await device.disconnect()
         t1 = time.time()
         logger.info(f"Controller elapsed: {t1 - t0:0.3f} sec")
 
@@ -106,6 +116,9 @@ def run_controller(log_queue: multiprocessing.Queue,
 
     # Sets up the destination for events to be sent to outbound (MQTT) API
     SubscribedEvent.outbound_pipe = outbound_pipe
+    SubscribedEvent.database_queue = database_queue
+
+    FlowSequencer.database_queue = database_queue
 
     # This needs to be scheduled as the loop isn't running yet
     try:

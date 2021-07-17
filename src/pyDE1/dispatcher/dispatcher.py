@@ -101,7 +101,8 @@ async def _request_queue_processor(request_queue: asyncio.Queue,
         if got.method is HTTPMethod.GET:
             try:
                 # TODO: Should be "ready" and not just "connected"
-                if (got.connectivity_required['DE1'] and not de1.is_connected):
+                if (got.connectivity_required['DE1']
+                        and not de1.is_connected):
                     raise DE1NotConnectedError("DE1 not connected")
                 if (got.connectivity_required[ 'Scale']
                         and scale_processor.scale is not None

@@ -21,7 +21,7 @@ from bleak.backends.scanner import AdvertisementData
 
 from pyDE1.exceptions import *
 from pyDE1.singleton import Singleton
-from pyDE1.event_manager import EventPayload, send_to_outbound_pipe
+from pyDE1.event_manager import EventPayload, send_to_outbound_pipes
 from pyDE1.supervise import SupervisedTask
 
 from pyDE1.config.bluetooth import *
@@ -51,14 +51,14 @@ class BleakScannerWrapped (BleakScanner):
         logger.debug("Starting scanner")
         ep = ScannerNotification(action=ScannerNotificationAction.STARTED,
                                  run_id=self.run_id)
-        await send_to_outbound_pipe(ep)
+        await send_to_outbound_pipes(ep)
         await super(BleakScannerWrapped, self).start()
 
     async def stop(self):
         await super(BleakScannerWrapped, self).stop()
         ep = ScannerNotification(action=ScannerNotificationAction.ENDED,
                                  run_id=self.run_id)
-        await send_to_outbound_pipe(ep)
+        await send_to_outbound_pipes(ep)
         logger.debug("Stopped scanner")
 
 
@@ -111,7 +111,7 @@ async def notify_bledevice(device: BLEDevice, run_id: Optional[str] = None):
                                      id=device.address,
                                      name=device.name,
                                      run_id=run_id)
-            asyncio.create_task(send_to_outbound_pipe(ep))
+            asyncio.create_task(send_to_outbound_pipes(ep))
             break
 
 

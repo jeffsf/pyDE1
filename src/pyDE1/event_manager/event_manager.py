@@ -52,6 +52,8 @@ import json
 import logging
 import multiprocessing
 import multiprocessing.connection as mpc
+import queue
+import signal
 import time
 import uuid
 
@@ -195,7 +197,7 @@ class EventWithNotify (asyncio.Event):
             name=self._event_name,
             action=EventNotificationAction.SET
         )
-        asyncio.create_task(send_to_outbound_pipe(en))
+        asyncio.create_task(send_to_outbound_pipes(en))
 
     def clear(self):
         super(EventWithNotify, self).clear()
@@ -205,7 +207,7 @@ class EventWithNotify (asyncio.Event):
             name=self._event_name,
             action=EventNotificationAction.CLEAR
         )
-        asyncio.create_task(send_to_outbound_pipe(en))
+        asyncio.create_task(send_to_outbound_pipes(en))
 
 
 class SequencerGateName (EventNotificationName):
@@ -225,7 +227,7 @@ class SequencerGateNotification (EventNotification):
 
     @classmethod
     def new_sequence(cls):
-        cls.sequence_id = uuid.uuid4()
+        cls.sequence_id = str(uuid.uuid4())
         return cls.sequence_id
 
     def __init__(self, arrival_time: Optional[float],
@@ -269,7 +271,7 @@ class SequencerGate (EventWithNotify):
             name=self._event_name,
             action=EventNotificationAction.SET
         )
-        asyncio.create_task(send_to_outbound_pipe(sgn))
+        asyncio.create_task(send_to_outbound_pipes(sgn))
 
     def clear(self):
         super(EventWithNotify, self).clear()
@@ -279,19 +281,28 @@ class SequencerGate (EventWithNotify):
             name=self._event_name,
             action=EventNotificationAction.CLEAR
         )
-        asyncio.create_task(send_to_outbound_pipe(sgn))
+        asyncio.create_task(send_to_outbound_pipes(sgn))
 
 
-async def send_to_outbound_pipe(payload: EventPayload):
+async def send_to_outbound_pipes(payload: EventPayload):
 
     # multiprocessing.queue() can block at least on "full"
     # macOS doesn't support qsize()
 
-    if SubscribedEvent.outbound_pipe is not None:
+    if payload._event_time is None:
         payload._event_time = time.time()
-        q_payload = payload.as_json()
-        SubscribedEvent.outbound_pipe.send(q_payload)
-
+    q_payload = payload.as_json()
+    # for pipe in [SubscribedEvent.outbound_pipe,
+    #              SubscribedEvent.database_queue]:
+    #     if SubscribedEvent.outbound_pipe is not None:
+    #         pipe.send(q_payload)
+    SubscribedEvent.outbound_pipe.send(q_payload)
+    # Will raise queue.Full
+    try:
+        SubscribedEvent.database_queue.put_nowait(q_payload)
+    except queue.Full:
+        pass  # TODO: Do something useful here
+        # signal.raise_signal(signal.SIGTERM)  # Causes looping
 
 
 class SubscribedEvent:
@@ -311,6 +322,7 @@ class SubscribedEvent:
     """
 
     outbound_pipe: Optional[mpc.Connection] = None
+    database_queue: Optional[multiprocessing.Queue] = None
 
     def __init__(self, sender):
         self._sender = sender
@@ -409,7 +421,7 @@ class SubscribedEvent:
         # multiprocessing.queue() can block at least on "full"
         # macOS doesn't support qsize()
         if not payload._internal_only:
-            await send_to_outbound_pipe(payload)
+            await send_to_outbound_pipes(payload)
 
         delivery_done = time.time()
 

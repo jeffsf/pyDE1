@@ -27,10 +27,10 @@ import time
 
 from pyDE1.api.outbound.mqtt import run_api_outbound
 from pyDE1.api.inbound.http import run_api_inbound
+from pyDE1.database.run import run_database_logger
+from pyDE1.controller import run_controller
 
 import pyDE1.default_logger
-
-from pyDE1.controller import run_controller
 
 from pyDE1.supervise import SupervisedExecutor, SupervisedProcess
 
@@ -71,6 +71,7 @@ def run():
         supervised_inbound_api_process.do_not_restart = True
         supervised_outbound_api_process.do_not_restart = True
         supervised_controller_process.do_not_restart = True
+        supervised_database_logger_process.do_not_restart = True
 
         t0 = time.time()
         logger = logging.getLogger('Shutdown')
@@ -154,6 +155,20 @@ def run():
         daemon=False)
     supervised_inbound_api_process.start()
 
+    # 20 packets per second, 20 seconds ~ 400
+    database_queue = multiprocessing.Queue(maxsize=400)
+
+    # Database logging
+    supervised_database_logger_process = SupervisedProcess(
+        target=run_database_logger,
+        kwargs={
+            'log_queue': log_queue,
+            'notification_queue': database_queue,
+        },
+        name='DatabaseLogger',
+        daemon=False)
+    supervised_database_logger_process.start()
+
     # Core logic
     # TODO: Not clear how this should restart
     #       As the DE1 will need to be reinitialized
@@ -163,6 +178,7 @@ def run():
             'log_queue': log_queue,
             'inbound_pipe': inbound_pipe_controller,
             'outbound_pipe': outbound_pipe_write,
+            'database_queue': database_queue,
         },
         name="Controller",
         daemon=False

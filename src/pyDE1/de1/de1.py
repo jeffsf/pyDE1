@@ -25,6 +25,9 @@ from pyDE1.bleak_client_wrapper import BleakClientWrapped
 from pyDE1.exceptions import *
 from pyDE1.de1.ble import UnsupportedBLEActionError
 
+import pyDE1.database.insert as db_insert
+import aiosqlite
+
 # general utilities
 
 from pyDE1.de1.c_api import \
@@ -180,6 +183,8 @@ class DE1 (Singleton):
         #       in ShotSample so this isn't needed for volume tracking
         self._number_of_preinfuse_frames: int = 0
 
+        self._latest_profile = None
+
         self._last_stop_requested = 0
 
         # Internal flag
@@ -195,9 +200,12 @@ class DE1 (Singleton):
         )
 
         t0 = time.time()
-        ((event_list, addr_low_list), ignore) = await asyncio.gather(
+        ((event_list, addr_low_list), ignore, ignore, ignore) \
+            = await asyncio.gather(
             self.read_standard_mmr_registers(),
             self.read_cuuid(CUUID.StateInfo),
+            self.read_cuuid(CUUID.Versions),
+            self.read_cuuid(CUUID.ShotSettings)
         )
 
         event_list.append(self._cuuid_dict[CUUID.StateInfo].ready_event)
@@ -719,6 +727,9 @@ class DE1 (Singleton):
                                                           str]):
         pbf = ProfileByFrames().from_json(profile)
         await self.upload_profile(pbf)
+        async with aiosqlite.connect('/var/lib/pyDE1/pyDE1.sqlite3') as db:
+            await db_insert.profile(pbf, db, time.time())
+            logger.info("Returned from db insert")
 
     # "Internal" version
 
@@ -794,7 +805,8 @@ class DE1 (Singleton):
                 bytes_for_fingerprint \
                     += profile.shot_tail_write().as_wire_bytes()
 
-                profile._fingerprint = hashlib.sha1(bytes_for_fingerprint)
+                profile._fingerprint = hashlib.sha1(
+                    bytes_for_fingerprint).hexdigest()
 
                 if profile.number_of_preinfuse_frames is not None:
                     self._number_of_preinfuse_frames = \
@@ -1328,3 +1340,4 @@ class DE1 (Singleton):
 
         else:
             raise DE1APIUnsupportedStateTransitionError(mode, cs, css)
+

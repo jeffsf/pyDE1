@@ -2494,7 +2494,6 @@ class MMR0x80LowAddr (enum.IntEnum):
             MMR0x80LowAddr.FLOW_CALIBRATION,
         }
 
-
     @classmethod
     def will_hang(cls, addr_low, mmr_req_len):
         """
@@ -2515,6 +2514,12 @@ class MMR0x80LowAddr (enum.IntEnum):
     @classmethod
     def in_debug_buffer(cls, addr_low):
         return cls.DEBUG_BUFFER_START.value <= addr_low < cls.RESTART_DEBUG_LOG.value
+
+    @property
+    def read_once(self) -> bool:
+        return self.can_read and not self.can_write \
+            and not MMR0x80LowAddr.in_debug_buffer(self.value) \
+            and self != MMR0x80LowAddr.FIRMWARE_BUILD_NUMBER
 
     @classmethod
     def for_logging(cls, addr_low):

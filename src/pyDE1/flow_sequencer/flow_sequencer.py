@@ -11,6 +11,7 @@ FlowSequencer
 Responsible for coordinating the actions around any of the flow modes
 """
 import enum
+import multiprocessing
 import time
 
 import asyncio
@@ -32,7 +33,7 @@ from pyDE1.scale.processor import ScaleProcessor
 from pyDE1.scale.events import WeightAndFlowUpdate
 
 from pyDE1.event_manager import SequencerGate, SequencerGateName, \
-    SequencerGateNotification, EventPayload, send_to_outbound_pipe
+    SequencerGateNotification, EventPayload, send_to_outbound_pipes
 from pyDE1.singleton import Singleton
 
 from pyDE1.utils import cancel_tasks_by_name
@@ -40,6 +41,9 @@ from pyDE1.utils import cancel_tasks_by_name
 from pyDE1.flow_sequencer.mode_control import ByModeControl, \
     StopAtTime, StopAtWeight, StopAtVolume,  \
     EspressoControl, SteamControl, HotWaterControl, HotWaterRinseControl
+
+# import pyDE1.database.write_notifications import create_history_record
+import pyDE1.database.write_notifications
 
 logger = logging.getLogger('FlowSequencer')
 
@@ -110,6 +114,8 @@ class FlowSequencer (Singleton, I_TargetSetter):
     #
     # def __init__(self):
     #     pass
+
+    database_queue: Optional[multiprocessing.Queue] = None
 
     def _singleton_init(self):
 
@@ -333,6 +339,7 @@ class FlowSequencer (Singleton, I_TargetSetter):
 
         return flow_sequencer_ssu_cb
 
+    # Should this be async def now?
     def _start_sequence(self, state: API_MachineStates):
         """
         Kick off parallel tasks to manage functions during the shot
@@ -346,10 +353,15 @@ class FlowSequencer (Singleton, I_TargetSetter):
             self._abort_sequence()
 
         self._active_state = state
-        self._close_all_gates()
 
         sequence_id = SequencerGateNotification.new_sequence()
         logger.info(f"Starting sequence_id {sequence_id}")
+
+        # Can't really start the recorder here as it needs
+        # to be able to create the sequence (history) record
+        # which can take up to 250 ms
+
+        self._close_all_gates()
 
         # create a bunch of tasks
         # Keep the start gate closed, as some may expect others to exist
@@ -392,7 +404,7 @@ class FlowSequencer (Singleton, I_TargetSetter):
         Maybe a funky way to do it, but this captures "done-ness"
         in one place.
         """
-        await self._gate_flow_state_exit.wait()
+        await self._gate_flow_end.wait()
         ldmt = self.active_control.last_drops_minimum_time
         if ldmt:
             try:
@@ -400,6 +412,7 @@ class FlowSequencer (Singleton, I_TargetSetter):
                                   timeout=ldmt)
             except asyncio.exceptions.TimeoutError:
                 pass
+        await self._gate_flow_state_exit.wait()
         await self._end_sequence()
 
     async def _end_sequence(self):
@@ -472,27 +485,27 @@ class FlowSequencer (Singleton, I_TargetSetter):
         if self.active_state not in self.autotare_states:
             scale.hold_at_tare = False
             logger.debug(f"Scale: release - {self.active_state.name}")
-            await send_to_outbound_pipe(AutoTareNotification(
+            await send_to_outbound_pipes(AutoTareNotification(
                 AutoTareNotificationAction.DISABLED))
             return
         try:
             await self._gate_sequence_start.wait()
             scale.hold_at_tare = True
             logger.debug("Scale: hold at tare")
-            await send_to_outbound_pipe(AutoTareNotification(
+            await send_to_outbound_pipes(AutoTareNotification(
                 AutoTareNotificationAction.ENABLED))
 
             await self._gate_expect_drops.wait()
             scale.hold_at_tare = False
             logger.debug("Scale: release")
-            await send_to_outbound_pipe(AutoTareNotification(
+            await send_to_outbound_pipes(AutoTareNotification(
                 AutoTareNotificationAction.DISABLED))
 
         except asyncio.CancelledError:
             scale = self._scale_processor.scale
             scale.hold_at_tare = False
             logger.info("Scale: release - on cancel")
-            await send_to_outbound_pipe(AutoTareNotification(
+            await send_to_outbound_pipes(AutoTareNotification(
                 AutoTareNotificationAction.DISABLED))
             raise
 
@@ -629,21 +642,34 @@ class FlowSequencer (Singleton, I_TargetSetter):
             raise
 
     async def _sequence_recorder(self):
+        # Always enable recording, let the recorder decide
+
         warnings.warn(
             "de1._recorder_active will be removed shortly "
-            "in favor of database recording in anothe process.")
+            "in favor of database recording in another process.")
         de1 = self._de1
+
         try:
-            # Always enable recording, let the recorder decide
+            await pyDE1.database.write_notifications.create_history_record(self)
             await self._gate_sequence_start.wait()
+
+            FlowSequencer.database_queue.put_nowait(
+                pyDE1.database.write_notifications.RecorderControl(
+                    recording = True,
+                    sequence_id=SequencerGateNotification.sequence_id))
             de1._recorder_active = True
             logger.debug("Recorder: enable")
 
             await self._gate_sequence_complete.wait()
+            FlowSequencer.database_queue.put_nowait(
+                pyDE1.database.write_notifications.RecorderControl(
+                    recording = False,
+                    sequence_id=SequencerGateNotification.sequence_id))
             de1._recorder_active = False
             logger.debug("Recorder: disable")
 
         except asyncio.CancelledError:
+            FlowSequencer.database_queue.put_nowait(False)
             de1._recorder_active = False
             logger.info("Recorder: disable - on cancel")
             raise
@@ -720,7 +746,7 @@ class FlowSequencer (Singleton, I_TargetSetter):
             target = self.active_control.stop_at_weight
         else:
             target = None
-        await send_to_outbound_pipe(StopAtNotification(
+        await send_to_outbound_pipes(StopAtNotification(
             stop_at=stop_at,
             action=action,
             target_value=target,

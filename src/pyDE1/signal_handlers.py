@@ -10,8 +10,12 @@ import asyncio
 import multiprocessing
 import logging
 import signal
+import threading
 from types import FrameType
 from typing import Callable, Coroutine
+
+# process-global indication of shutdown intent
+process_shutdown_event = threading.Event()
 
 SHUTDOWN_SIGNALS = (
         # signal.SIGHUP,  # reserved for log rotation

@@ -13,6 +13,7 @@ import re
 import uuid
 
 from datetime import datetime
+from typing import Optional
 
 logger_cancel_tasks = logging.getLogger('CancelTasks')
 
