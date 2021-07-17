@@ -1,5 +1,36 @@
 # Changelog
 
+## Unreleased
+
+### New
+
+### Fixed
+
+In `find_first_and_load.py`, `set_saw()` now uses the passed mass
+
+### Changed
+
+Upload limit changed to 16 kB to accomodate larger profiles.
+
+FlowSequencer events are now notified over `SequencerGateNotification`
+and include a `sequence_id` for use with history logging.
+
+`Profile.from_json()` now expects a string or bytes-like object, 
+rather than a dict. This change is to ease capture of the 
+profile "source" for use with history logging.
+
+`ProfileByFrames.from_json()` no longer rounds the floats to maintain
+the integrity of the original source. They will still be rounded 
+at the time that they are encoded into binary payloads.
+
+### Deprecated
+
+`Profile.from_json_file()` as it is no longer needed with the API
+able to upload profiles. If needed within the code base, read
+the file, and pass to `Profile.from_json()` to ensure that
+the profile source and signatures are properly updated.
+
+
 ## 0.5.0 – 2021-07-14
 
 ### New
