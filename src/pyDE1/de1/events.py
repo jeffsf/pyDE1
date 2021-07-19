@@ -60,6 +60,7 @@ class ShotSampleUpdate (EventPayload):
                  group_pressure: float,
                  group_flow: float,
                  mix_temp: float,
+                 head_temp: float,
                  set_mix_temp: float,
                  set_head_temp: float,
                  set_group_pressure: float,
@@ -69,11 +70,12 @@ class ShotSampleUpdate (EventPayload):
                  ):
         super(ShotSampleUpdate, self).__init__(arrival_time=arrival_time)
         # TODO: This will need to be managed carefully as impacts subclass
-        self._version = "1.0.0"  # Major version incremented on breaking change
+        self._version = "1.2.0"  # Major version incremented on breaking change
         self.sample_time = sample_time
         self.group_pressure = group_pressure
         self.group_flow = group_flow
         self.mix_temp = mix_temp
+        self.head_temp = head_temp
         self.set_mix_temp = set_mix_temp
         self.set_head_temp = set_head_temp
         self.set_group_pressure = set_group_pressure
@@ -116,6 +118,7 @@ class ShotSampleWithVolumesUpdate (ShotSampleUpdate):
             group_pressure=shot_sample_update.group_pressure,
             group_flow=shot_sample_update.group_flow,
             mix_temp=shot_sample_update.mix_temp,
+            head_temp=shot_sample_update.head_temp,
             set_mix_temp=shot_sample_update.set_mix_temp,
             set_head_temp=shot_sample_update.set_head_temp,
             set_group_pressure=shot_sample_update.set_group_pressure,
@@ -124,7 +127,7 @@ class ShotSampleWithVolumesUpdate (ShotSampleUpdate):
             steam_temp=shot_sample_update.steam_temp,
         )
         # TODO: This will need to be managed carefully as depends on super
-        self._version = "1.1.0"  # Major version incremented on breaking change
+        self._version = "1.2.0"  # Major version incremented on breaking change
 
         self.de1_time = self.arrival_time
         self.volume_preinfuse = volume_preinfuse

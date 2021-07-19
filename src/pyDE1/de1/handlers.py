@@ -294,6 +294,7 @@ def create_ShotSample_callback(de1: de1):
                 group_pressure=obj.GroupPressure,
                 group_flow=obj.GroupFlow,
                 mix_temp=obj.MixTemp,
+                head_temp=obj.HeadTemp,
                 set_mix_temp=obj.SetMixTemp,
                 set_head_temp=obj.SetHeadTemp,
                 set_group_pressure=obj.SetGroupPressure,
