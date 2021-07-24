@@ -1,8 +1,61 @@
 # Changelog
 
-## Unreleased
+## 0.6.0 – 2021-07-25
+
+**The Mimoja Release**
+
+> I am not sure how / where to store shots and profiles. 
+> I hate it to only have it browser local.
+
+*So do I. Wonder no longer.*
+
 
 ### New
+
+A SQLite3 database now saves all profiles uploaded to the DE1,
+as well as capturing virtually all real-time data during all flow sequences,
+including a brief set of data from *before* the state transition.
+
+Profiles are unique by the content of their "raw source" and also have
+a "fingerprint" that is common across all profiles that produce 
+the same "program" for the DE1. Changing a profile's name alone 
+does not change this fingerprint. Changing the frames in a profile
+without changing the name changes both the ID of the profile,
+as well as its fingerprint. These both are calculated using SHA1
+from the underlying data, so should be consistent across installs
+for the same source data or frame set. 
+
+Profiles can also be searched by the customary metadata:
+
+* Title
+* Author
+* Notes
+* Beverage type
+* Date added
+
+
+`aiosqlite` and its dependencies are now required.
+
+Legacy-style shot data can be extracted from the database by an application
+other that that which is running the DE1. Creating a Visualizer-compatible 
+"file" for upload can be done in around 80-100 ms on a RPi 3B. 
+If written to a physical file, it is also compatible with John Weiss' 
+shot-plotting programs. See `pyDE1/shot_file/legacy.py` 
+
+The database retains the last-known profile uploaded to the DE1. 
+If a flow sequence beings prior to uploading a profile, it is used 
+as the "most likely" profile and identified in the database 
+with the `profile_assumed` flag.
+
+**NB: The database needs to be manually initialized prior to use.**
+
+One approach is
+
+```
+sudo -u <user> sqlite3 /var/lib/pyDE1/pyDE1.sqlite3 \
+< path/to/pyDE1/src/pyDE1/database/schema/schema.001.sql 
+
+```
 
 ### Fixed
 
@@ -10,10 +63,11 @@ In `find_first_and_load.py`, `set_saw()` now uses the passed mass
 
 ### Changed
 
-Upload limit changed to 16 kB to accomodate larger profiles.
+Upload limit changed to 16 kB to accommodate larger profiles.
 
 FlowSequencer events are now notified over `SequencerGateNotification`
-and include a `sequence_id` for use with history logging.
+and include a `sequence_id` and the `active_state` 
+for use with history logging.
 
 `Profile.from_json()` now expects a string or bytes-like object, 
 rather than a dict. This change is to ease capture of the 
@@ -23,12 +77,33 @@ profile "source" for use with history logging.
 the integrity of the original source. They will still be rounded 
 at the time that they are encoded into binary payloads.
 
+Standard initialization of the DE1 now includes reading `CUUID.Versions`
+and `ShotSettings` to speed first-time store of profiles.
+
+Robustness of shutdown improved.
+
+Internal `Profile` class extended to capture "raw source", metadata, and UUIDs
+for both the raw source and the resulting "program" sent to the DE1.
+
 ### Deprecated
 
 `Profile.from_json_file()` as it is no longer needed with the API
 able to upload profiles. If needed within the code base, read
 the file, and pass to `Profile.from_json()` to ensure that
 the profile source and signatures are properly updated.
+
+`DE1._recorder_active` and the contents of `shot_file.py` have been 
+superseded by database logging.
+
+### Known Issues
+
+The database name is hard-coded at this time.
+
+`Profile.regenerate_source()` is not implemented at this time.
+
+Occasionally, during shutdown, the database capture reports that
+it was passed `None` and an exception is raised. This may be due to shutdown,
+or may be due to failure to retrieve an earlier exception from the task.
 
 
 ## 0.5.0 – 2021-07-14
@@ -236,7 +311,7 @@ Log entries now include the process name.
 IPC between the controller and outbound (MQTT) API now uses a pipe and
 `loop.add_reader()` to improve robustness and ease graceful shutdown.
 
-Several internal method signatures changed to accomodate changes in
+Several internal method signatures changed to accommodate changes in
 IPC. These are considered "internal" and do not impact the two, public
 APIs.
 
@@ -433,7 +508,7 @@ authentication, and authorization, as well as a more
   optimizations using them have not been done
   
 * Disabled reads of `CUUID.ReadFromMMR` as it returns the request
-  itself (which is not easily distinguishable from the data
+  itself, which is not easily distinguishable from the data
   read. These two interpret their `Length` field differently, making
   it difficult to determine if `5` is an unexpected value or if it was
   just that 6 words were requested to be read.
