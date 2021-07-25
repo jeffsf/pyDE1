@@ -147,7 +147,7 @@ Primary Data
 * fingerprint – SHA1 of the profile frames, as described above, 
   for frame-based profiles (TBD for future "program" representations)
 * date_added – Unix timestamp of record creation date/time
-* 
+
 Operational (Shot-Specific) Settings 
 
 * tank_water_threshold – float
@@ -186,7 +186,7 @@ without joins. Returning the N most-recent shots is essential.
 * end_flow – float
 * end_sequence – float
 * profile_id – FK to Profile
-* profile_assumed – 0 (FALSE) if not "confirmed" to be the one in the DE1
+* profile_assumed – 0 (FALSE) if "confirmed" to be the one in the DE1
 * resource_version – what a GET on Resource.VERSION would return (JSON)
 * resource_de1_id
 * resource_de1_read_once
