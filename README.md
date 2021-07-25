@@ -22,6 +22,11 @@ with stop-at-time, -volume, and -mass. Continuous updates of flow
 parameters, and state transitions are provided over MQTT. Firmware
 upload is supported, though not yet revealed in the API.
 
+Profiles and real-time data are captured into a SQLite3 database 
+that allows multiple, concurrent access. An example program 
+is provided that generates legacy-style, "shot files" that 
+are compatible with Visualizer and John Weiss' shot-plotting programs. 
+
 A "worked example" is available at `examples/find_first_and_load.py` that
 
 * Initializes and starts an MQTT listener, then, through the API
@@ -47,6 +52,7 @@ behind the APIs.
 
 See also CHANGELOG.md
 
+* 2021-07-25 – 0.6.0 adds database store
 * 2021-07-14 – 0.5.0, "worked example" description
 * 2021-07-03 – Updated for release 0.4.0, see also CHANGELOG.md
 * 2021-06-26 – Content and organizational updates for release 0.3.0
@@ -68,92 +74,71 @@ See also
 [https://github.com/jeffsf/pyDE1](https://github.com/jeffsf/pyDE1)
 where the *alpha* branch is current.
 
-## What's New in 0.5.0
+## What's New
 
 _**Please see CHANGELOG.md for more details**_
 
 ### New
 
-Bluetooth scanning with API. See `README.bluetooth.md` for details
+A SQLite3 database now saves all profiles uploaded to the DE1, as well as 
+capturing virtually all real-time data during all flow sequences, 
+including a brief set of data from *before* the state transition.
 
-API can set scale and DE1 by ID, by first_if_found, or None
+Profiles are unique by the content of their "raw source" and also have 
+a "fingerprint" that is common across all profiles that produce 
+the same "program" for the DE1. Changing a profile's name alone 
+does not change this fingerprint. Changing the frames in a profile 
+without changing the name changes both the ID of the profile, 
+as well as its fingerprint. These both are calculated using SHA1 
+from the underlying data, so should be consistent across 
+installs for the same source data or frame set. 
 
-A list of logs and individual logs can be obtained with GET
-`Resource.LOGS` and `Routine.LOG`
+Profiles can also be searched by the customary metadata:
 
-`ConnectivityEnum.READY` added, allowing clients to clearly know if
-the DE1 or scale is available for use.
+* Title
+* Author
+* Notes
+* Beverage type
+* Date added
 
-> NB: Previous code that assumed that `.CONNECTED` was the terminal
-> state should be modified to recognize `.READY`.
 
-`examples/find_first_and_load.py` demonstrates stand-alone connection
-to a DE1 and scale, loading of a profile, setting of shot parameters,
-and disconnecting from these devices.
+`aiosqlite` and its dependencies are now required.
 
-### Major Changes
+Legacy-style shot data can be extracted from the database by 
+an application other that that which is running the DE1. 
+Creating a Visualizer-compatible "file" for upload can be done 
+in around 80-100 ms on a RPi 3B. If written to a physical file, 
+it is also compatible with John Weiss' shot-plotting programs. 
+See `pyDE1/shot_file/legacy.py` 
 
-HTTP API PUT/PATCH requests now return a list, which may be
-empty. Results, if any, from individual setters are returned as
-dict/obj members of the list.
+The database retains the last-known profile uploaded to the DE1. 
+If a flow sequence beings prior to uploading a profile, it is used 
+as the "most likely" profile and identified in the database 
+with the `profile_assumed` flag.
 
-On an error return to the inbound API, an exception trace is provided,
-when available. This is intended to assist in error reporting.
+**NB: The database needs to be manually initialized prior to use.**
 
-Some config parameters moved into `pyDE1.config.bluetooth`
-
-"find_first" functionality now implemented in `pyDE1.scanner`
-
-`de1.address()` is replaced with `await de1.set_address()` as it needs
-to disconnect the existing client on address change. It also supports
-address change.
-
-`Resource.SCALE_ID` now returns null values when there is no scale.
-
-There's virtually nothing left of `ugly_bits.py` as its functions now
-can to be handled through the API.
-
-On connect, if any of the standard register reads fails, it is logged
-with its name, and retried (without waiting).
-
-An additional example profile was added. EB6 has 30-s ramp vs EB5 at
-25-s. Annoying rounding errors from Insight removed.
-
-#### Resource Version 2.0.0
-
-> NB: Breaking change: `ConnectivityEnum.READY` added. See Commit b53a8eb
-  Previous code that assumed that `.CONNECTED` was the
-  terminal state should be modified to recognize `.READY`.
-
-Add
+One approach is
 
 ```
-    SCAN = 'scan'
-    SCAN_DEVICES = 'scan/devices'
-```
+sudo -u <user> sqlite3 /var/lib/pyDE1/pyDE1.sqlite3 \
+< path/to/pyDE1/src/pyDE1/database/schema/schema.001.sql 
 
 ```
-    LOG = 'log/{id}'
-    LOGS = 'logs'
-```
+
+The directory also needs to be writable by the user running the code 
+as the database is set for [WAL mode](https://sqlite.org/wal.html) 
+to permit concurrent access from multiple threads, processes and programs.
 
 ### Deprecated
 
-`stop_scanner_if_running()` in favor of just calling `scanner.stop()`
+`Profile.from_json_file()` as it is no longer needed with the API
+able to upload profiles. If needed within the code base, read
+the file, and pass to `Profile.from_json()` to ensure that
+the profile source and signatures are properly updated.
 
-`ugly_bits.py` for manual configuration now should be able to be
-handled through the API. See `examples/find_first_and_load.py`
-
-### Removed
-
-`READ_BACK_ON_PATCH` removed as PATCH operations now can return
-results themselves.
-
-`device_adv_is_recognized_by` class method on DE1 and Scale replaced
-by registered prefixes
-
-Removed `examples/test_first_find_and_load.py`, use
-`find_first_and_load.py`
+`DE1._recorder_active` and the contents of `shot_file.py` 
+have been superseded by database logging.
 
 
 ## Requirements
@@ -164,6 +149,7 @@ Available through `pip`:
 
 * `bleak`
 * `aiologger`
+* `aiosqlite`
 * `asyncio-mqtt`
 * `paho-mqtt`
 * `requests`
@@ -187,7 +173,7 @@ development has also been done under macOS.
 
 ## Short-Term Priorities
 
-* Profile and "history" database
+* API to query profile database and load DE1 directly with a former profile
 * Manage unexpected disconnects and reconnects
 * Abort long-running actions, such as uploading firmware
 * Daemonize and provide Debian-compatible service script
@@ -245,10 +231,12 @@ completeness.
 Both the inbound and outbound APIs run in separate *processes* to
 reduce the load on the controller itself.
 
-GET should be available for the registered resources. See, in `src/pyDE1/dispatcher`
+GET should be available for the registered resources. 
+See, in `src/pyDE1/dispatcher`
 
 * `resource.py` for the registered resources, and
-* `mapping.py` for the elements they contain, the expected value types, and how they nest.
+* `mapping.py` for the elements they contain, the expected value types, 
+  and how they nest.
 
 `None` or `null` are often used to me "no value", such as for stop-at
 limits. As a result, though similar, this is not an [RFC7368 JSON
@@ -393,8 +381,13 @@ from [bleak PR#565](https://github.com/hbldh/bleak/pull/565)
 * Enable/disable "shot" logging
 * Outbound API over MQTT
 * Basic connectivity tracking
+* Bleutooth scanning
 * Find and use first DE1 and Skale
 * Inbound control and query API over HTTP
+* Save profiles and real-time data into SQLite3 with concurrent access
+* Provide legacy-style, "shot file" data for Miha Rekar's
+  [Visualizer](https://visualizer.coffee)
+  and John Weiss' shot-plotting code 
 
 The main process runs under Python's native `asyncio` framework. There
 are many tutorials out there that make asynchronous programming *look*
