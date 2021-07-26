@@ -16,8 +16,10 @@ import threading
 import time
 from asyncio import Task
 
-from typing import Optional, NamedTuple, Dict, Deque
 from collections import deque
+from copy import deepcopy
+
+from typing import Optional, NamedTuple, Dict, Deque
 
 import aiosqlite
 
@@ -103,11 +105,17 @@ ROLLING_BUFFER_TIME_LIMITED = [
     'SequencerGateNotification',
 ]
 
+# This is probably superfluous, but safer
+rolling_buffers_lock = threading.Lock()
+
 
 # This will likely take a while, run as a task
 async def dump_rolling_buffers_to_database(rolling_buffers: Dict[str, Deque],
                                            sequence_id: str,
                                            db: aiosqlite.Connection):
+
+    with rolling_buffers_lock:
+        snapshot = deepcopy(rolling_buffers)
 
     # aiol = logging.getLogger('aiosqlite')
     # old_level = aiol.level
@@ -115,17 +123,18 @@ async def dump_rolling_buffers_to_database(rolling_buffers: Dict[str, Deque],
     t0 = time.time()
     count = 0
     async with db.cursor() as cur:
-        for rb_class, rb in rolling_buffers.items():
+        for rb_class, rb in snapshot.items():
             for notification in rb:
                 if rb_class == 'SequencerGateNotification' \
                         and notification['sequence_id'] != sequence_id:
                     pass
-                await db_insert.dict_notification_cursor_only(
-                    notification=notification,
-                    sequence_id=sequence_id,
-                    cur=cur
-                )
-                count += 1
+                else:
+                    await db_insert.dict_notification_cursor_only(
+                        notification=notification,
+                        sequence_id=sequence_id,
+                        cur=cur
+                    )
+                    count += 1
         await db.commit()
     t1 = time.time()
     logger.info(f"Dump of {count} notifications in {(t1-t0)*1000:.3f} ms")
@@ -155,8 +164,8 @@ async def record_data(incoming: multiprocessing.Queue):
             pass
 
     rolling_buffers = {}
-    for update, limit in ROLLING_BUFFER_SIZE.items():
-        rolling_buffers[update] = deque([], limit)
+    for rb_class, rb in ROLLING_BUFFER_SIZE.items():
+        rolling_buffers[rb_class] = deque([], rb)
 
     async with aiosqlite.connect(database_path) as db:
         try:
@@ -205,6 +214,18 @@ async def record_data(incoming: multiprocessing.Queue):
                         "Unrecognized data type passed for recording:"
                         f"{type(data)}")
 
+                # Always keep the rolling buffers populated
+                # this way there is always pre-history available
+                # and associated with the sequence_id
+
+                try:
+                    with rolling_buffers_lock:
+                        rolling_buffers[data_dict['class']].append(data_dict)
+                except KeyError:
+                    logger.info("No rolling buffer for "
+                                f"{data_dict['class']}")
+                pass
+
                 if recording or not consider_sequence_complete.is_set():
                     # The history record has already been created
                     # before the RecorderControl message is sent
@@ -226,16 +247,8 @@ async def record_data(incoming: multiprocessing.Queue):
                     except ValueError:
                         pass
 
-                else:   # Not recording, maintain rolling history
-                    try:
-                        rolling_buffers[data_dict['class']].append(data_dict)
-                    except KeyError:
-                        logger.info("No rolling buffer for "
-                                    f"{data_dict['class']}")
-                    pass
-
             if process_shutdown_event.is_set():
-                logger.info("Shut down try_it() loop")
+                logger.info("Shut down record_data() loop")
 
         except asyncio.CancelledError as e:
             logger.info(e)
