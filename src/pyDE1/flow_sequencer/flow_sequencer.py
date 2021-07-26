@@ -300,8 +300,6 @@ class FlowSequencer (Singleton, I_TargetSetter):
                 if su.previous_substate.flow_phase == 'during' \
                         and su.substate.flow_phase != 'during':
                     flow_sequencer._gate_flow_end.set()
-                    asyncio.create_task(self._wait_for_last_drops(),
-                                        name=self._sequence_task_name)
                     logger.info("Gate: Flow end")
 
             elif su.previous_state.is_flow_state:  # current is not a flow state
@@ -392,12 +390,6 @@ class FlowSequencer (Singleton, I_TargetSetter):
         self._gate_sequence_start.set()
         logger.info("Gate: Sequence start")
 
-    async def _wait_for_last_drops(self):
-        ldmt = self.active_control.last_drops_minimum_time
-        if ldmt:
-            await asyncio.sleep(ldmt)
-        self._gate_last_drops.set()
-        logger.info("Gate: Last drops")
 
     async def _sequence_end_sequence(self):
         """
