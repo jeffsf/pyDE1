@@ -412,6 +412,7 @@ class FlowSequencer (Singleton, I_TargetSetter):
                                   timeout=ldmt)
             except asyncio.exceptions.TimeoutError:
                 pass
+        self._gate_last_drops.set()
         await self._gate_flow_state_exit.wait()
         await self._end_sequence()
 
