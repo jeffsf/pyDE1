@@ -24,6 +24,7 @@ from typing import Optional, NamedTuple, Dict, Deque
 import aiosqlite
 
 from pyDE1.de1.c_api import API_MachineStates
+from pyDE1.event_manager.event_manager import EventNotificationAction
 from pyDE1.exceptions import DE1TypeError
 from pyDE1.signal_handlers import process_shutdown_event
 from pyDE1.dispatcher.dispatcher import QUEUE_TOO_DEEP
@@ -237,8 +238,10 @@ async def record_data(incoming: multiprocessing.Queue):
                         if (not consider_sequence_complete.is_set()
                                 and data_dict['class']
                                 == 'SequencerGateNotification'
-                                and data_dict['action']
+                                and data_dict['name']
                                 == SequencerGateName.GATE_SEQUENCE_COMPLETE.value
+                                and data_dict['action']
+                                == EventNotificationAction.SET.value
                                 and data_dict['sequence_id']
                                 == waiting_for_id):
                             waiting_for_id = None
