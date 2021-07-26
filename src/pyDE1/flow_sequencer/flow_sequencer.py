@@ -669,7 +669,10 @@ class FlowSequencer (Singleton, I_TargetSetter):
             logger.debug("Recorder: disable")
 
         except asyncio.CancelledError:
-            FlowSequencer.database_queue.put_nowait(False)
+            FlowSequencer.database_queue.put_nowait(
+                pyDE1.database.write_notifications.RecorderControl(
+                    recording = False,
+                    sequence_id=SequencerGateNotification.sequence_id))
             de1._recorder_active = False
             logger.info("Recorder: disable - on cancel")
             raise
