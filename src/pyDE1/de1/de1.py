@@ -576,9 +576,10 @@ class DE1 (Singleton):
                 wait_for = None
 
         elif cuuid.can_read and cuuid not in (
-                CUUID.WriteToMMR,   # Decode not implemented
-                CUUID.HeaderWrite,  # Decode not implemented
-                CUUID.FrameWrite):  # Decode not implemented
+                CUUID.RequestedState,   # Comes back in StateInfo
+                CUUID.WriteToMMR,       # Decode not implemented
+                CUUID.HeaderWrite,      # Decode not implemented
+                CUUID.FrameWrite):      # Decode not implemented
             wait_for = self.read_cuuid(cuuid)
 
         else:
