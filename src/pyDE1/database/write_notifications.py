@@ -14,6 +14,7 @@ import os.path
 import queue
 import threading
 import time
+from asyncio import Task
 
 from typing import Optional, NamedTuple, Dict, Deque
 from collections import deque
@@ -140,6 +141,19 @@ async def record_data(incoming: multiprocessing.Queue):
 
     WAIT_FOR_SEQUENCE_COMPLETE_TIME = 1.0
 
+    consider_sequence_complete = asyncio.Event()
+
+    # Callback on timeout for waiting for sequence complete packet
+    def wait_for_recording_stop_callback(task: Task):
+        if isinstance(task.exception(), asyncio.CancelledError):
+            logger.warning(
+                "Timeout waiting for sequence complete to stop recording")
+            consider_sequence_complete.set()
+            logger.info(
+                "Stopping recording with consider_sequence_complete.set()")
+        else:
+            pass
+
     rolling_buffers = {}
     for update, limit in ROLLING_BUFFER_SIZE.items():
         rolling_buffers[update] = deque([], limit)
@@ -149,7 +163,6 @@ async def record_data(incoming: multiprocessing.Queue):
             recording = False
             sequence_id = 'dummy'
             waiting_for_id = None
-            consider_sequence_complete = asyncio.Event()
             consider_sequence_complete.set()    # Previous sequence is "done"
 
             while not process_shutdown_event.is_set():
@@ -180,7 +193,7 @@ async def record_data(incoming: multiprocessing.Queue):
                                 WAIT_FOR_SEQUENCE_COMPLETE_TIME)
                         )
                         t_wait.add_done_callback(
-                            lambda task: consider_sequence_complete.set()
+                            wait_for_recording_stop_callback
                         )
                         logger.info("Waiting for sequence_complete packet")
 
@@ -228,6 +241,7 @@ async def record_data(incoming: multiprocessing.Queue):
             logger.info(e)
             await db.close()
             raise
+
 
 #
 # TODO: Where does this belong?
