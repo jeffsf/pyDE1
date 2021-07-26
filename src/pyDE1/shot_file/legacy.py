@@ -220,8 +220,13 @@ async def legacy_shot_file(sequence_id: str,
     contents.append("espresso_state_change "
                     f"{braced_list(espresso_state_change)}")
 
+    # About 2^-13 for a U16P12 value
+    MIN_FLOW_FOR_CALC = 0.0001
+
     espresso_resistance = [
-        '{:.2f}'.format(r.group_pressure / (r.group_flow**2)) for r in shot_rows
+        '{:.2f}'.format(r.group_pressure /
+                         max(r.group_flow, MIN_FLOW_FOR_CALC)**2)
+        for r in shot_rows
     ]
     contents.append("espresso_resistance "
                     f"{braced_list(espresso_resistance)}")
@@ -282,15 +287,15 @@ async def legacy_shot_file(sequence_id: str,
         retval_weight = []
         retval_flow = []
 
-        for tr in shot:
+        for sr in shot:
 
-            while weight[idx_weight].current_weight_time < tr.de1_time \
+            while weight[idx_weight].current_weight_time < sr.de1_time \
                     and idx_weight < last_w:
                 idx_weight += 1
             retval_weight.append(
                 '{:.2f}'.format(weight[idx_weight-1].current_weight))
 
-            while flow[idx_flow].average_flow_time < tr.de1_time \
+            while flow[idx_flow].average_flow_time < sr.de1_time \
                     and idx_flow < last_f:
                 idx_flow += 1
             retval_flow.append(
