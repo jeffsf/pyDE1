@@ -104,18 +104,23 @@ async def _request_queue_processor(request_queue: asyncio.Queue,
                 if (got.connectivity_required['DE1']
                         and not de1.is_connected):
                     raise DE1NotConnectedError("DE1 not connected")
-                if (got.connectivity_required[ 'Scale']
-                        and scale_processor.scale is not None
-                        and not scale_processor.scale.is_connected):
+                if (got.connectivity_required['Scale']
+                        and (scale_processor.scale is None
+                             or not scale_processor.scale.is_connected)):
                     raise DE1NotConnectedError("Scale not connected")
                 resource_dict = await get_resource_to_dict(got.resource)
             except Exception as e:
                 exception = e
                 tbe = TracebackException.from_exception(exception)
-                logger.error(
-                    f"Exception in processing {got.method} {got.resource}"
-                    f" {repr(exception)}")
-                traceback.print_tb(tbe)
+                if isinstance(exception, DE1NotConnectedError):
+                    level = logging.INFO
+                else:
+                    level = logging.ERROR
+                logger.log(level,
+                           f"Exception in processing {got.method} {got.resource}"
+                           f" {repr(exception)}")
+                logger.log(level,
+                           ''.join(tbe.format()))
             response = APIResponse(original_timestamp=got.timestamp,
                                    timestamp=time.time(),
                                    payload=resource_dict,
