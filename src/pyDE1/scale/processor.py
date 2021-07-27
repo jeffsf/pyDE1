@@ -17,6 +17,7 @@ from uuid import UUID
 from scanner import BleakScannerWrapped
 
 from pyDE1.config.bluetooth import CONNECT_TIMEOUT
+from pyDE1.dispatcher.resource import ConnectivityEnum
 from pyDE1.exceptions import DE1NoAddressError, DE1APIValueError
 from pyDE1.scale import Scale, ScaleError, scale_factory, \
     recognized_scale_prefixes
@@ -119,10 +120,35 @@ class ScaleProcessor (Singleton):
 
         return self
 
+    # Provide "null-safe" methods for API
+
     @property
     def scale_address(self):
         if self.scale is not None:
             return self.scale.address
+        else:
+            return None
+
+    @property
+    def scale_name(self):
+        if self.scale is not None:
+            return self.scale.name
+        else:
+            return None
+
+    @property
+    def scale_type(self):
+        if self.scale is not None:
+            return self.scale.type
+        else:
+            return None
+
+    @property
+    def scale_connectivity(self):
+        if self.scale is not None:
+            return self.scale.connectivity
+        else:
+            return ConnectivityEnum.NOT_CONNECTED
 
     #
     # Self-contained call for API

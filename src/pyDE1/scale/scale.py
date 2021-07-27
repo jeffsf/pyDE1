@@ -216,6 +216,10 @@ class Scale:
             ConnectivityChange(arrival_time=time.time(),
                                state=ConnectivityState.NOT_READY))
 
+    @property
+    def is_ready(self):
+        return self._ready.is_set()
+
     async def disconnect(self):
         class_name = type(self).__name__
         logger.info(f"Disconnecting from {class_name}")

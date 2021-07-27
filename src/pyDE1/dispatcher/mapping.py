@@ -14,6 +14,7 @@ Provide "mock" classes for use in inbound API process
 NB: Must be imported AFTER any imports of DE1, Scale, FlowSequencer, ...
 """
 import importlib.util
+import inspect
 import logging
 import multiprocessing
 import sys
@@ -71,6 +72,16 @@ from pyDE1.exceptions import DE1APIValueError
 
 MAPPING_VERSION = "3.1.0"
 
+# There are a handful of requests related to the DE1 and Scale
+# that can be or must be handled even if the device is not ready.
+# At this time, they include those in DE1_ID and SCALE_ID
+# Rather than introduce great complexity to accommodate those exceptions,
+#   * Move the remaining, related Scale access to ScaleProcessor
+#   * Ensure that the DE1 and ScaleProcessor return meaningful values
+#   * Ensure that if None is returned, that the IsAt indicates Optional[]
+#   * Add the "if_not_ready" element to IsAt and check in requires_*
+
+
 
 class IsAt (NamedTuple):
     target: Union[type(DE1),
@@ -83,24 +94,29 @@ class IsAt (NamedTuple):
     setter_path: Optional[str] = None   # If not a property and a different path
                                         # path of setter relative to target
     read_only: Optional[bool] = False
+    # write_only: attr_path=None and setter_path=setter_attribute_name
+    # internal_type used for conversion to enum
     internal_type: Optional[Union[type(DE1ModeEnum),
                                   type(ConnectivityEnum)]] = None
-    # write_only: attr_path=None and setter_path=setter_attribute_name
+    # A handful of things, such as connectivity, don't need "ready"
+    if_not_ready: bool = False
 
     @property
     def requires_connected_de1(self) -> bool:
-        return (
-            self.target in (PackedAttr, MMR0x80LowAddr) or
-            (self.target is DE1
-             and self.setter_path not in (None, 'connectivity_setter'))
+        retval = (
+            (self.target is DE1 and not self.if_not_ready)
+            or isinstance(self.target, MMR0x80LowAddr)
+            or (inspect.isclass(self.target)
+                and issubclass(self.target, PackedAttr))
         )
+        return retval
 
     @property
     def requires_connected_scale(self) -> bool:
-        return (
-                self.target is Scale
-                and self.setter_path not in (None, 'connectivity_setter')
+        retval = (
+            (self.target is Scale and not self.if_not_ready)
         )
+        return retval
 
 
 def mapping_requires(mapping: dict) -> dict:
@@ -130,6 +146,7 @@ def _mapping_requires_inner(mapping: dict, results: dict) -> dict:
     return results
 
 
+# Helper to populate an IsAt for a PackedAttr
 def from_packed_attr(packed_attr: PackedAttr, attr_path: str, v_type: type,
                      setter_path: Optional[str] = None):
     # get_cuuid will raise if not over-the-wire
@@ -151,6 +168,7 @@ def from_packed_attr(packed_attr: PackedAttr, attr_path: str, v_type: type,
     )
 
 
+# Helper to populate an IsAt for MMR
 def from_mmr(mmr: MMR0x80LowAddr, v_type: type):
     # This doesn't handle can't read and can't write
     return IsAt(
@@ -164,6 +182,7 @@ def from_mmr(mmr: MMR0x80LowAddr, v_type: type):
 MODULES_FOR_VERSIONS = (
     'pyDE1',
     'bleak',
+    'aiosqlite',
     'asyncio-mqtt',
     'paho-mqtt'
 )
@@ -181,7 +200,7 @@ def module_versions():
     return retval
 
 
-MAPPING = dict()
+MAPPING = {}
 
 MAPPING[Resource.VERSION] = {
     'resource_version': RESOURCE_VERSION,
@@ -223,14 +242,17 @@ MAPPING[Resource.SCAN_DEVICES] = {
 
 # For now, name is not writable
 MAPPING[Resource.DE1_ID] = {
-    'name': IsAt(target=DE1, attr_path='name', v_type=str,
-                 read_only=True),
+    'name': IsAt(target=DE1, attr_path='name', v_type=Optional[str],
+                 read_only=True,
+                 if_not_ready=True),
     'id': IsAt(target=DE1, attr_path='address', v_type=Optional[str],
-               setter_path='change_de1_to_id'),
+               setter_path='change_de1_to_id',
+               if_not_ready=True),
     # first_if_found, if true, will replace only if one is found
     # It is an error to be true if 'id' is present at this time
     'first_if_found': IsAt(target=DE1, attr_path=None,
-                        setter_path='first_if_found', v_type=bool),
+                        setter_path='first_if_found', v_type=bool,
+                           if_not_ready=True),
 }
 
 # NB: A single-entry tuple needs to end with a comma
@@ -241,18 +263,19 @@ MAPPING[Resource.DE1_MODE] = {
 }
 # TODO: de1.mode()
 
-DE1_PROFILE = 'de1/profile'
+# DE1_PROFILE = 'de1/profile'
+# DE1_PROFILE_ID = 'de1/profile/id'
 # DE1_PROFILES = 'de1/profiles'
-# DE1_PROFILE_UPLOAD = 'de1/profile/{id}/upload'
-
+#
 # DE1_FIRMWARE = 'de1/firmware'
+# DE1_FIRMWARE_ID = 'de1/firmware/id'
 # DE1_FIRMWARES = 'de1/firmwares'
-# DE1_FIRMWARE_UPLOAD = 'de1/firmware/{id}/upload'
 
 MAPPING[Resource.DE1_CONNECTIVITY] = {
     'mode': IsAt(target=DE1, attr_path='connectivity',
                  setter_path='connectivity_setter', v_type=str,
-                 internal_type=ConnectivityEnum),
+                 internal_type=ConnectivityEnum,
+                 if_not_ready=True),
 }
 
 # DE1_CONTROL = 'de1/control' -- aggregate
@@ -433,23 +456,30 @@ MAPPING[Resource.DE1_CALIBRATION_LINE_FREQUENCY] = {
 }
 
 MAPPING[Resource.SCALE_ID] = {
-    'name': IsAt(target=Scale, attr_path='name', v_type=str,
-                 read_only=True),
+    'name': IsAt(target=ScaleProcessor, attr_path='scale_name',
+                 v_type=Optional[str],
+                 read_only=True,
+                 if_not_ready=True),
     'id': IsAt(target=ScaleProcessor, attr_path='scale_address',
                v_type=Optional[str],
-               setter_path='change_scale_to_id'),
-    'type': IsAt(target=Scale, attr_path='type', v_type=str,
-                 read_only=True),
+               setter_path='change_scale_to_id',
+               if_not_ready=True),
+    'type': IsAt(target=ScaleProcessor, attr_path='scale_type',
+                 v_type=Optional[str],
+                 read_only=True,
+                 if_not_ready=True),
     # first_if_found, if true, will replace only if one is found
     # It is an error to be true if 'id' is present at this time
     'first_if_found': IsAt(target=ScaleProcessor, attr_path=None,
-                           setter_path='first_if_found', v_type=bool),
+                           setter_path='first_if_found', v_type=bool,
+                           if_not_ready=True),
 }
 
 MAPPING[Resource.SCALE_CONNECTIVITY] = {
-    'mode': IsAt(target=Scale, attr_path='connectivity',
+    'mode': IsAt(target=ScaleProcessor, attr_path='scale_connectivity',
                  setter_path="connectivity_setter", v_type=str,
-                 internal_type=ConnectivityEnum),
+                 internal_type=ConnectivityEnum,
+                 if_not_ready=True),
 }
 
 MAPPING[Resource.SCALE_TARE] = {

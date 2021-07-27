@@ -140,9 +140,9 @@ async def _request_queue_processor(request_queue: asyncio.Queue,
 
             results_list = None
             try:
-                # TODO: Should be "ready" and not just "connected"
-                if (got.connectivity_required['DE1'] and not de1.is_connected):
-                    # Need a pass for setting the DE1 id, as well as connecting
+                if (got.connectivity_required['DE1']
+                        and not de1.is_ready):
+                    # Need a pass for setting the DE1 id
                     if (got.resource is Resource.DE1_ID
                         and len(got.payload.keys()) == 1
                         and ('id' in got.payload
@@ -154,8 +154,8 @@ async def _request_queue_processor(request_queue: asyncio.Queue,
 
                 if (got.connectivity_required['Scale']
                         and (scale_processor.scale is None
-                             or not scale_processor.scale.is_connected)):
-                    # Need a pass for setting the scale, as well as connecting
+                             or not scale_processor.scale.is_ready)):
+                    # Need a pass for setting the scale
                     if (got.resource is Resource.SCALE_ID
                         and len(got.payload.keys()) == 1
                         and ('id' in got.payload

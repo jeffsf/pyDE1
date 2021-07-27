@@ -263,6 +263,10 @@ class DE1 (Singleton):
             ConnectivityChange(arrival_time=time.time(),
                                state=ConnectivityState.NOT_READY))
 
+    @property
+    def is_ready(self):
+        return self._ready.is_set()
+
     @classmethod
     def device_adv_is_recognized_by(cls, device: BLEDevice, adv: AdvertisementData):
         return adv.local_name == "DE1"

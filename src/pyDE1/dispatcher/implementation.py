@@ -36,7 +36,7 @@ from pyDE1.scanner import DiscoveredDevices, scan_from_api
 
 from pyDE1.de1.c_api import PackedAttr, MMR0x80LowAddr, pack_one_mmr0x80_write
 from pyDE1.exceptions import DE1APITypeError, DE1APIValueError, \
-    DE1APIAttributeError, DE1APIKeyError
+    DE1APIAttributeError, DE1APIKeyError, DE1NotConnectedError
 from pyDE1.dispatcher.mapping import IsAt
 
 logger = logging.getLogger('APIImpl')
@@ -125,6 +125,7 @@ async def _get_isat_value(isat: IsAt):
     flow_sequencer = FlowSequencer()
     scale_processor = ScaleProcessor()
     scale = scale_processor.scale
+    # TODO: Does calling DiscoveredDevices() freeze if no DE1?
     dd = DiscoveredDevices()
 
     retval = None
@@ -140,10 +141,7 @@ async def _get_isat_value(isat: IsAt):
         retval = rgetattr(flow_sequencer, attr_path)
 
     elif target is Scale:
-        if scale is None:
-            retval = None
-        else:
-            retval = rgetattr(scale, attr_path)
+        retval = rgetattr(scale, attr_path)
 
     elif target is ScaleProcessor:
         retval = rgetattr(scale_processor, attr_path)
@@ -155,6 +153,10 @@ async def _get_isat_value(isat: IsAt):
     elif isinstance(target, MMR0x80LowAddr):
         # NB: This assumes that the MMR and CUUID are kept up to date
         #     and that those that are read don't change on their own
+
+        if not de1.is_ready:
+            raise DE1NotConnectedError(
+                "DE1 is not connected at last-chance check")
 
         if attr_path != '':
             raise DE1APIAttributeError(
@@ -183,6 +185,11 @@ async def _get_isat_value(isat: IsAt):
     elif inspect.isclass(target) and issubclass(target, PackedAttr):
         # NB: This assumes that the MMR and CUUID are kept up to date
         #     and that those that are read don't change on their own
+
+        if not de1.is_ready:
+            raise DE1NotConnectedError(
+                "DE1 is not connected at last-chance check")
+
         try:
             obj = (de1._cuuid_dict[target.cuuid]).last_value
         except KeyError:
