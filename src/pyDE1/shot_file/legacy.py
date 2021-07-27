@@ -20,6 +20,8 @@ from typing import NamedTuple, List, Union, Tuple
 
 import aiosqlite
 
+from pyDE1.exceptions import DE1DBIncompleteSequenceRecord
+
 logger = logging.getLogger()
 format_string = "%(asctime)s %(levelname)s %(name)s: %(message)s"
 logging.basicConfig(level=logging.DEBUG, format=format_string)
@@ -126,6 +128,13 @@ async def legacy_shot_file(sequence_id: str,
     cur: aiosqlite.Cursor
     sequence_row: SequenceRow = await cur.fetchone()
     logger.debug(sequence_row)
+
+    if sequence_row is None or None in (sequence_row.start_sequence,
+                sequence_row.start_flow,
+                sequence_row.end_flow,
+                sequence_row.end_sequence):
+        raise DE1DBIncompleteSequenceRecord(
+            f"Whoa there, not ready? {sequence_row})")
 
     contents.append(f"clock {round(sequence_row.start_flow)}")
     formatted_start_time = email.utils.format_datetime(

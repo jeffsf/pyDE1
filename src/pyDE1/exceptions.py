@@ -130,3 +130,10 @@ class MMRAddressRangeError (MMRAddressError):
 
 class MMRAddressOffsetError (MMRAddressError):
     pass
+
+
+class DE1DBError (RuntimeError):
+    pass
+
+class DE1DBIncompleteSequenceRecord (DE1DBError):
+    pass
