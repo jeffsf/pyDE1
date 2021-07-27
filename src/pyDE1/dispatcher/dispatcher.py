@@ -152,9 +152,9 @@ async def _request_queue_processor(request_queue: asyncio.Queue,
                     else:
                         raise DE1NotConnectedError("DE1 not connected")
 
-                if (got.connectivity_required[ 'Scale']
-                        and scale_processor.scale is not None
-                        and not scale_processor.scale.is_connected):
+                if (got.connectivity_required['Scale']
+                        and (scale_processor.scale is None
+                             or not scale_processor.scale.is_connected)):
                     # Need a pass for setting the scale, as well as connecting
                     if (got.resource is Resource.SCALE_ID
                         and len(got.payload.keys()) == 1
@@ -187,9 +187,9 @@ async def _request_queue_processor(request_queue: asyncio.Queue,
                 # TODO: Should be "ready" and not just "connected"
                 if (got.connectivity_required['DE1'] and not de1.is_connected):
                     raise DE1NotConnectedError("DE1 not connected")
-                if (got.connectivity_required[ 'Scale']
-                        and scale_processor.scale is not None
-                        and not scale_processor.scale.is_connected):
+                if (got.connectivity_required['Scale']
+                        and (scale_processor.scale is None
+                             or not scale_processor.scale.is_connected)):
                     raise DE1NotConnectedError("Scale not connected")
 
                 # TODO: Implement PUT properly (check for completeness)
