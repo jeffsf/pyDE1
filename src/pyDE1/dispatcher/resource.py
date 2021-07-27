@@ -10,7 +10,8 @@ Enum that defines the recognized resources that the Dispatcher can access
 
 import enum
 
-RESOURCE_VERSION = '2.0.0'
+RESOURCE_VERSION = '3.0.0'
+
 
 class Resource (enum.Enum):
 
@@ -27,12 +28,12 @@ class Resource (enum.Enum):
     DE1_MODE = 'de1/mode'
 
     DE1_PROFILE = 'de1/profile'
+    DE1_PROFILE_ID = 'de1/profile/id'
     DE1_PROFILES = 'de1/profiles'
-    DE1_PROFILE_UPLOAD = 'de1/profile/{id}/upload'
 
     DE1_FIRMWARE = 'de1/firmware'
+    DE1_FIRMWARE_ID = 'de1/firmware/id'
     DE1_FIRMWARES = 'de1/firmwares'
-    DE1_FIRMWARE_UPLOAD = 'de1/firmware/{id}/upload'
 
     DE1_CONNECTIVITY = 'de1/connectivity'
 
@@ -85,11 +86,15 @@ class Resource (enum.Enum):
         # False if in
         if self in (
                 self.SCAN,
-                self.DE1_PROFILE,
-                self.DE1_FIRMWARE,
                 self.DE1_MODE,
                 self.SCALE_TARE,
                 self.SCALE_DISPLAY,
+                # unimplemented
+                self.DE1_PROFILE,
+                self.DE1_PROFILES,
+                self.DE1_FIRMWARE,
+                self.DE1_FIRMWARES,
+                self.DE1_DEPRECATED,
         ):
             retval = False
         return retval
@@ -104,6 +109,11 @@ class Resource (enum.Enum):
                 self.VERSION,
                 self.LOG,
                 self.LOGS,
+                self.DE1_PROFILES,
+                self.DE1_FIRMWARES,
+                # unimplemented
+                self.DE1_FIRMWARE,
+                self.DE1_DEPRECATED,
         ):
             retval = False
         return retval
@@ -115,7 +125,9 @@ class Resource (enum.Enum):
         # False if in
         if self in (
                 self.DE1_FIRMWARE,
+                self.DE1_FIRMWARE_ID,
                 self.DE1_PROFILE,
+                self.DE1_PROFILE_ID,
         ):
             retval = False
         return retval
@@ -124,12 +136,6 @@ class Resource (enum.Enum):
     def can_post(self):
         retval = False
         # No POST implemented
-        # # TRUE if in
-        # if self in (
-        #         self.DE1_FIRMWARE,
-        #         self.DE1_PROFILE,
-        # ):
-        #     retval = True
         return retval
 
     @property
