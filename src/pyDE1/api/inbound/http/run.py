@@ -247,13 +247,18 @@ def run_api_inbound(log_queue: multiprocessing.Queue,
         def get_content(self) -> Optional[Union[bytes, bytearray, str]]:
 
             content = None
-            content_length = int(self.headers.get('content-length'))
+            content_length = self.headers.get('content-length')
+
             if content_length is None:
                 self.send_error_response(
                     HTTPStatus.LENGTH_REQUIRED,
                     "Missing Content-Length header")
+                return None
 
-            elif content_length > PATCH_SIZE_LIMIT:
+            else:
+                content_length = int(content_length)
+
+            if content_length > PATCH_SIZE_LIMIT:
                 self.send_error_response(
                     HTTPStatus.REQUEST_ENTITY_TOO_LARGE,
                     "Patch is too large")
