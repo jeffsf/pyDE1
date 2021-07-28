@@ -137,3 +137,9 @@ class DE1DBError (RuntimeError):
 
 class DE1DBIncompleteSequenceRecord (DE1DBError):
     pass
+
+class DE1DBNoMatchingRecord (DE1DBError):
+    pass
+
+class DE1DBConsistencyError (DE1DBError):
+    pass

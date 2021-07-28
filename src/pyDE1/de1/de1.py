@@ -39,7 +39,7 @@ from pyDE1.de1.c_api import \
 from pyDE1.de1.ble import CUUID
 from pyDE1.de1.notifications import NotificationState, MMR0x80Data
 from pyDE1.de1.profile import Profile, ProfileByFrames, \
-    DE1ProfileValidationError
+    DE1ProfileValidationError, SourceFormat
 
 from pyDE1.i_target_setter import I_TargetSetter
 from pyDE1.event_manager.events import ConnectivityState, ConnectivityChange
@@ -1352,3 +1352,24 @@ class DE1 (Singleton):
             return self._latest_profile.id
         else:
             return None
+
+    async def set_profile_by_id(self, pid: str):
+
+        async with aiosqlite.connect('/var/lib/pyDE1/pyDE1.sqlite3') as db:
+            cur: aiosqlite.Cursor = await db.execute(
+                'SELECT source, source_format FROM profile '
+                'WHERE id == :id', (pid,)
+            )
+            row = await cur.fetchone()
+
+        if row is None:
+            raise DE1DBNoMatchingRecord(
+                f"No profile record for {pid}")
+        (source, source_format) = row
+        if source_format != SourceFormat.JSONv2.value:
+            raise DE1APITypeError(
+                f"Only JSONv2 profiles supported, not {source_format}"
+            )
+
+        await self.upload_json_v2_profile(source)
+

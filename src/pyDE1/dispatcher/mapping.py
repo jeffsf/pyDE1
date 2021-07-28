@@ -268,7 +268,7 @@ MAPPING[Resource.DE1_MODE] = {
 
 MAPPING[Resource.DE1_PROFILE_ID] = {
     'id': IsAt(target=DE1, attr_path='profile_id', v_type=str,
-               read_only=True)
+               setter_path='set_profile_by_id')
 }
 
 

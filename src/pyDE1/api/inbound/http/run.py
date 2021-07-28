@@ -320,6 +320,10 @@ def run_api_inbound(log_queue: multiprocessing.Queue,
                 body = ''.join(resp.tbe.format())
 
                 if isinstance(resp.exception,
+                              (DE1DBNoMatchingRecord,)):
+                    http_status = HTTPStatus.NOT_FOUND
+
+                elif isinstance(resp.exception,
                               (DE1APIUnsupportedStateTransitionError,
                                DE1NotConnectedError,
                                DE1IsConnectedError,
@@ -462,10 +466,11 @@ def run_api_inbound(log_queue: multiprocessing.Queue,
             if resource is None:
                 return
 
-            if resource is not Resource.DE1_PROFILE:
+            if resource not in (Resource.DE1_PROFILE,
+                                Resource.DE1_PROFILE_ID):
                 self.send_error_response(
                     HTTPStatus.NOT_IMPLEMENTED,
-                    f"PUT not yet supported beyond {Resource.DE1_PROFILE}"
+                    f"PUT not yet supported for {resource}"
                 )
                 return
 
