@@ -264,12 +264,23 @@ MAPPING[Resource.DE1_MODE] = {
 # TODO: de1.mode()
 
 # DE1_PROFILE = 'de1/profile'
-# DE1_PROFILE_ID = 'de1/profile/id'
 # DE1_PROFILES = 'de1/profiles'
-#
+
+MAPPING[Resource.DE1_PROFILE_ID] = {
+    'id': IsAt(target=DE1, attr_path='profile_id', v_type=str,
+               read_only=True)
+}
+
+
 # DE1_FIRMWARE = 'de1/firmware'
-# DE1_FIRMWARE_ID = 'de1/firmware/id'
 # DE1_FIRMWARES = 'de1/firmwares'
+
+MAPPING[Resource.DE1_FIRMWARE_ID] = {
+    'id': IsAt(target=MMR0x80LowAddr.FIRMWARE_BUILD_NUMBER,
+               attr_path='', v_type=int),
+}
+
+
 
 MAPPING[Resource.DE1_CONNECTIVITY] = {
     'mode': IsAt(target=DE1, attr_path='connectivity',

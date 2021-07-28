@@ -1346,3 +1346,9 @@ class DE1 (Singleton):
         else:
             raise DE1APIUnsupportedStateTransitionError(mode, cs, css)
 
+    @property
+    def profile_id(self):
+        if self._latest_profile is not None:
+            return self._latest_profile.id
+        else:
+            return None
