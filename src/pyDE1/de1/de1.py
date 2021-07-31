@@ -1256,7 +1256,7 @@ class DE1 (Singleton):
             await self.read_one_mmr0x80_and_wait(MMR0x80LowAddr.GHC_INFO)
 
         cs = self.current_state
-        if cs is API_MachineStates.NoRequest:
+        if cs == API_MachineStates.NoRequest:
             logger.warning(f"Refreshing current state as is NoRequest")
             await self.read_cuuid(CUUID.StateInfo)
             cs = self.current_state
@@ -1265,17 +1265,17 @@ class DE1 (Singleton):
                      f"while in {API_MachineStates(cs).name}")
 
         if mode is DE1ModeEnum.SLEEP:
-            if cs is API_MachineStates.Idle:
+            logger.debug(f"current state: {cs}, {type(cs)}")
+            if cs == API_MachineStates.Idle:
                 logger.debug("API triggered sleep()")
                 await self.sleep()
-            if self.current_state in (API_MachineStates.Sleep,
-                                      API_MachineStates.GoingToSleep):
+            elif self.current_state in (API_MachineStates.Sleep,
+                                        API_MachineStates.GoingToSleep):
                 pass
             else:
                 raise DE1APIUnsupportedStateTransitionError(mode, cs, css)
 
         elif mode is DE1ModeEnum.WAKE:
-            logger.debug(f"In WAKE, cs: {API_MachineStates(cs).name}")
             if cs in (API_MachineStates.Sleep,
                       API_MachineStates.GoingToSleep):
                 logger.debug("API triggered idle()")
@@ -1305,7 +1305,7 @@ class DE1 (Singleton):
 
         elif mode is DE1ModeEnum.SKIP_TO_NEXT:
 
-            if cs is API_MachineStates.Espresso \
+            if cs == API_MachineStates.Espresso \
                 and self.current_substate in (API_Substates.PreInfuse,
                                               API_Substates.Pour):
                 logger.debug("API triggered skip_to_next()")
@@ -1324,7 +1324,7 @@ class DE1 (Singleton):
                     f"DE1 does not permit {mode} unless GHC is not installed."
                 )
 
-            if cs is not API_MachineStates.Idle:
+            if cs != API_MachineStates.Idle:
                 raise DE1APIUnsupportedStateTransitionError(mode, cs, css)
 
             if mode is DE1ModeEnum.ESPRESSO:
