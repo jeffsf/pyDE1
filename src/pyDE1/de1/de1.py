@@ -393,56 +393,63 @@ class DE1 (Singleton):
         logger.info(f"Connecting to DE1 at {self.address}")
 
         assert self._bleak_client is not None
-        self._bleak_client.set_disconnected_callback(
-            self._create_disconnect_callback()
-        )
 
-        await asyncio.gather(self._event_connectivity.publish(
-            ConnectivityChange(arrival_time=time.time(),
-                               state=ConnectivityState.CONNECTING)),
-            self._bleak_client.connect(timeout=timeout),
-        )
+        if not self.is_connected:
 
-        if self.is_connected:
-            if self.name is None:
-                self._name = self._bleak_client.name
-            logger.info(f"Connected to DE1 at {self.address}")
-            await self._event_connectivity.publish(
+            self._bleak_client.set_disconnected_callback(
+                self._create_disconnect_callback()
+            )
+            await asyncio.gather(self._event_connectivity.publish(
                 ConnectivityChange(arrival_time=time.time(),
-                                   state=ConnectivityState.CONNECTED))
-            # This can take some time, potentially delaying scale connection
-            # At least BlueZ doesn't like concurrent connection requests
-            asyncio.create_task(self.initialize_after_connection())
+                                   state=ConnectivityState.CONNECTING)),
+                self._bleak_client.connect(timeout=timeout),
+            )
 
-        else:
-            logger.error(f"Connection failed to DE1 at {self.address}")
-            await self._notify_not_ready()
-            await self._event_connectivity.publish(
-                ConnectivityChange(arrival_time=time.time(),
-                                   state=ConnectivityState.DISCONNECTED))
+            if self.is_connected:
+                if self.name is None:
+                    self._name = self._bleak_client.name
+                logger.info(f"Connected to DE1 at {self.address}")
+                await self._event_connectivity.publish(
+                    ConnectivityChange(arrival_time=time.time(),
+                                       state=ConnectivityState.CONNECTED))
+                # This can take time, potentially delaying scale connection
+                # At least BlueZ doesn't like concurrent connection requests
+                asyncio.create_task(self.initialize_after_connection())
+
+            else:
+                logger.error(f"Connection failed to DE1 at {self.address}")
+                await self._notify_not_ready()
+                await self._event_connectivity.publish(
+                    ConnectivityChange(
+                        arrival_time=time.time(),
+                        state=ConnectivityState.DISCONNECTED))
 
     async def disconnect(self):
         logger.info(f"Disconnecting from DE1")
         if self._bleak_client is None:
             logger.info(f"Disconnecting from DE1, no client")
             return
-        await asyncio.gather(
-            self._notify_not_ready(),
-            self._bleak_client.disconnect(),
-            self._event_connectivity.publish(
-                ConnectivityChange(arrival_time=time.time(),
-                                   state=ConnectivityState.DISCONNECTING))
-        )
+
         if self.is_connected:
-            logger.error(f"Disconnect failed from DE1 at {self.address}")
-            await self._event_connectivity.publish(
-                ConnectivityChange(arrival_time=time.time(),
-                                   state=ConnectivityState.CONNECTED))
-        else:
-            logger.info(f"DE1.disconnect(): Disconnected from DE1 at {self.address}")
-            await self._event_connectivity.publish(
-                ConnectivityChange(arrival_time=time.time(),
-                                   state=ConnectivityState.DISCONNECTED))
+            await asyncio.gather(
+                self._notify_not_ready(),
+                self._bleak_client.disconnect(),
+                self._event_connectivity.publish(
+                    ConnectivityChange(arrival_time=time.time(),
+                                       state=ConnectivityState.DISCONNECTING))
+            )
+            if self.is_connected:
+                logger.error(
+                    f"Disconnect failed from DE1 at {self.address}")
+                await self._event_connectivity.publish(
+                    ConnectivityChange(arrival_time=time.time(),
+                                       state=ConnectivityState.CONNECTED))
+            else:
+                logger.info("DE1.disconnect(): Disconnected from DE1 at "
+                            f"{self.address}")
+                await self._event_connectivity.publish(
+                    ConnectivityChange(arrival_time=time.time(),
+                                       state=ConnectivityState.DISCONNECTED))
 
     # TODO: Decide how to handle  self._disconnected_callback
     #   disconnected_callback (callable): Callback that will be scheduled in the
@@ -1213,9 +1220,9 @@ class DE1 (Singleton):
     async def connectivity_setter(self, value):
         assert isinstance(value, ConnectivityEnum), \
             f"mode of {value} not a ConnectivityEnum "
-        if value is ConnectivityEnum.CONNECTED and not self.is_connected:
+        if value is ConnectivityEnum.CONNECTED:
             await self.connect()
-        elif value is ConnectivityEnum.NOT_CONNECTED and self.is_connected:
+        elif value is ConnectivityEnum.NOT_CONNECTED:
             await self.disconnect()
         else:
             raise DE1APIValueError(

@@ -223,6 +223,20 @@ class ScaleProcessor (Singleton):
                 old_scale.decommission()
                 del old_scale
 
+    async def connectivity_setter(self, value):
+        assert isinstance(value, ConnectivityEnum), \
+            f"mode of {value} not a ConnectivityEnum"
+        if value is ConnectivityEnum.NOT_CONNECTED:
+            if self.scale is not None:
+                await self.scale.disconnect()
+        elif value is ConnectivityEnum.CONNECTED:
+            if self.scale is not None:
+                await self.scale.connect()
+        else:
+            raise DE1APIValueError(
+                "Only CONNECTED and NOT_CONNECTED can be set, "
+                f"not {value}")
+
     @property
     def event_weight_and_flow_update(self):
         return self._event_weight_and_flow_update

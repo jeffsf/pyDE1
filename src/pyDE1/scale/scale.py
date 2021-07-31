@@ -157,39 +157,41 @@ class Scale:
         logger.info(f"Connecting to {class_name} at {self.address}")
 
         assert self._bleak_client is not None
-        self._bleak_client.set_disconnected_callback(
-            self._create_disconnect_callback()
-        )
 
-        await asyncio.gather(self._event_connectivity.publish(
-            ConnectivityChange(arrival_time=time.time(),
-                               state=ConnectivityState.CONNECTING)),
-            self._bleak_client.connect(timeout=timeout),
-        )
+        if not self.is_connected:
 
-        if self.is_connected:
-            self._address_or_bledevice = self._bleak_client.address
-            if self.name is None:
-                self._name = self._bleak_client.name
-            logger.info(f"Connected to {class_name} at {self.address}")
-            await self._event_connectivity.publish(
+            self._bleak_client.set_disconnected_callback(
+                self._create_disconnect_callback()
+            )
+
+            await asyncio.gather(self._event_connectivity.publish(
                 ConnectivityChange(arrival_time=time.time(),
-                                   state=ConnectivityState.CONNECTED))
-            # This can take some time, potentially delaying DE1 connection
-            # At least BlueZ doesn't like concurrent connection requests
-            asyncio.create_task(self.standard_initialization())
+                                   state=ConnectivityState.CONNECTING)),
+                self._bleak_client.connect(timeout=timeout),
+            )
 
-            # TODO: Does the ScaleProcessor get properly reset?
+            if self.is_connected:
+                self._address_or_bledevice = self._bleak_client.address
+                if self.name is None:
+                    self._name = self._bleak_client.name
+                logger.info(f"Connected to {class_name} at {self.address}")
+                await self._event_connectivity.publish(
+                    ConnectivityChange(arrival_time=time.time(),
+                                       state=ConnectivityState.CONNECTED))
+                # This can take some time, potentially delaying DE1 connection
+                # At least BlueZ doesn't like concurrent connection requests
+                asyncio.create_task(self.standard_initialization())
 
-        else:
-            logger.error(
-                f"Connection failed to {class_name} at {self.address}")
-            await asyncio.gather(self._notify_not_ready,
-                                 self._event_connectivity.publish(
-                                     ConnectivityChange(
-                                         arrival_time=time.time(),
-                                         state=ConnectivityState.DISCONNECTED))
-                                 )
+                # TODO: Does the ScaleProcessor get properly reset?
+
+            else:
+                logger.error(
+                    f"Connection failed to {class_name} at {self.address}")
+                await self._notify_not_ready()
+                await self._event_connectivity.publish(
+                    ConnectivityChange(
+                        arrival_time=time.time(),
+                        state=ConnectivityState.DISCONNECTED))
 
     async def standard_initialization(self, hold_notification=False):
         """
@@ -226,9 +228,9 @@ class Scale:
         if self._bleak_client is None:
             logger.info(f"Disconnecting from {class_name}, no client")
             return
+
         if self.is_connected:
-            logger.debug(f"await gather disconnect, not ready, disconnecting")
-            gr = await asyncio.gather(
+            await asyncio.gather(
                 self._bleak_client.disconnect(),
                 self._notify_not_ready(),
                 self._event_connectivity.publish(
@@ -508,18 +510,6 @@ class Scale:
             else:
                 retval = ConnectivityEnum.CONNECTED
         return retval
-
-    async def connectivity_setter(self, value):
-        assert isinstance(value, ConnectivityEnum), \
-            f"mode of {value} not a ConnectivityEnum"
-        if value is ConnectivityEnum.CONNECTED and not self.is_connected:
-            await self.connect()
-        elif value is ConnectivityEnum.NOT_CONNECTED and self.is_connected:
-            await self.disconnect()
-        else:
-            raise DE1APIValueError(
-                "Only CONNECTED and NOT_CONNECTED can be set, "
-                f"not {value}")
 
     @staticmethod
     def register_constructor(constructor: Callable, prefix: str):
