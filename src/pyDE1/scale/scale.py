@@ -86,8 +86,9 @@ class Scale:
 
         asyncio.get_event_loop().create_task(
             self._event_connectivity.publish(
-                ConnectivityChange(arrival_time=time.time(),
-                                   state=ConnectivityState.NOT_READY)))
+                self._connectivity_change(
+                    arrival_time=time.time(),
+                    state=ConnectivityState.NOT_READY)))
 
         self._estimated_period = self._nominal_period
         self._last_weight_update_received = 0
@@ -165,8 +166,9 @@ class Scale:
             )
 
             await asyncio.gather(self._event_connectivity.publish(
-                ConnectivityChange(arrival_time=time.time(),
-                                   state=ConnectivityState.CONNECTING)),
+                self._connectivity_change(
+                    arrival_time=time.time(),
+                    state=ConnectivityState.CONNECTING)),
                 self._bleak_client.connect(timeout=timeout),
             )
 
@@ -176,8 +178,9 @@ class Scale:
                     self._name = self._bleak_client.name
                 logger.info(f"Connected to {class_name} at {self.address}")
                 await self._event_connectivity.publish(
-                    ConnectivityChange(arrival_time=time.time(),
-                                       state=ConnectivityState.CONNECTED))
+                    self._connectivity_change(
+                        arrival_time=time.time(),
+                        state=ConnectivityState.CONNECTED))
                 # This can take some time, potentially delaying DE1 connection
                 # At least BlueZ doesn't like concurrent connection requests
                 asyncio.create_task(self.standard_initialization())
@@ -189,7 +192,7 @@ class Scale:
                     f"Connection failed to {class_name} at {self.address}")
                 await self._notify_not_ready()
                 await self._event_connectivity.publish(
-                    ConnectivityChange(
+                    self._connectivity_change(
                         arrival_time=time.time(),
                         state=ConnectivityState.DISCONNECTED))
 
@@ -208,19 +211,30 @@ class Scale:
     async def _notify_ready(self):
         self._ready.set()
         await self._event_connectivity.publish(
-            ConnectivityChange(arrival_time=time.time(),
-                               state=ConnectivityState.READY))
+            self._connectivity_change(
+                arrival_time=time.time(),
+                state=ConnectivityState.READY))
         logger.info("Ready")
 
     async def _notify_not_ready(self):
         self._ready.clear()
         await self._event_connectivity.publish(
-            ConnectivityChange(arrival_time=time.time(),
-                               state=ConnectivityState.NOT_READY))
+            self._connectivity_change(
+                arrival_time=time.time(),
+                state=ConnectivityState.NOT_READY))
 
     @property
     def is_ready(self):
         return self._ready.is_set()
+
+    # Helper method to populate a ConnectivityChange
+
+    def _connectivity_change(self, arrival_time: float,
+                             state: ConnectivityState):
+        return ConnectivityChange(arrival_time=arrival_time,
+                                  state=state,
+                                  id=self.address,
+                                  name=self.name)
 
     async def disconnect(self):
         class_name = type(self).__name__
@@ -234,23 +248,26 @@ class Scale:
                 self._bleak_client.disconnect(),
                 self._notify_not_ready(),
                 self._event_connectivity.publish(
-                    ConnectivityChange(arrival_time=time.time(),
-                                       state=ConnectivityState.DISCONNECTING))
+                    self._connectivity_change(
+                        arrival_time=time.time(),
+                        state=ConnectivityState.DISCONNECTING))
             )
 
         if self.is_connected:
             logger.error(
                 f"Disconnect failed from {class_name} at {self.address}")
             await self._event_connectivity.publish(
-                ConnectivityChange(arrival_time=time.time(),
-                                   state=ConnectivityState.CONNECTED))
+                self._connectivity_change(
+                    arrival_time=time.time(),
+                    state=ConnectivityState.CONNECTED))
         else:
             logger.info(
                 f"Scale.disconnect(): Disconnected from {class_name} "
                 f"at {self.address}")
             await self._event_connectivity.publish(
-                ConnectivityChange(arrival_time=time.time(),
-                                   state=ConnectivityState.DISCONNECTED))
+                self._connectivity_change(
+                    arrival_time=time.time(),
+                    state=ConnectivityState.DISCONNECTED))
 
     # TODO: Decide how to handle  self._disconnected_callback
 
@@ -433,8 +450,9 @@ class Scale:
             asyncio.ensure_future(asyncio.gather(
                 self._notify_not_ready(),
                 scale._event_connectivity.publish(
-                ConnectivityChange(arrival_time=time.time(),
-                                   state=ConnectivityState.DISCONNECTED)))
+                    self._connectivity_change(
+                        arrival_time=time.time(),
+                        state=ConnectivityState.DISCONNECTED)))
             )
 
         return disconnect_callback

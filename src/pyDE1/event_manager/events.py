@@ -13,6 +13,7 @@ See also:
 """
 
 import enum
+from typing import Optional
 
 from pyDE1.event_manager import EventPayload
 
@@ -31,10 +32,12 @@ class ConnectivityChange (EventPayload):
 
     def __init__(self,
                  arrival_time: float,
-                 state: ConnectivityState = ConnectivityState.UNKNOWN
+                 state: ConnectivityState = ConnectivityState.UNKNOWN,
+                 id: Optional[str] = None,
+                 name: Optional[str] = None,
                  ):
         super(ConnectivityChange, self).__init__(arrival_time=arrival_time)
-        self._version = "1.0.0"
+        self._version = "1.1.0"
         self.state = state
-
-
+        self.id = id
+        self.name = name

@@ -253,15 +253,15 @@ class DE1 (Singleton):
     async def _notify_ready(self):
         self._ready.set()
         await self._event_connectivity.publish(
-            ConnectivityChange(arrival_time=time.time(),
-                               state=ConnectivityState.READY))
+            self._connectivity_change(arrival_time=time.time(),
+                                      state=ConnectivityState.READY))
         logger.info("Ready")
 
     async def _notify_not_ready(self):
         self._ready.clear()
         await self._event_connectivity.publish(
-            ConnectivityChange(arrival_time=time.time(),
-                               state=ConnectivityState.NOT_READY))
+            self._connectivity_change(arrival_time=time.time(),
+                                      state=ConnectivityState.NOT_READY))
 
     @property
     def is_ready(self):
@@ -295,6 +295,15 @@ class DE1 (Singleton):
             if isinstance(address, BLEDevice):
                 self._name = address.name
             self._bleak_client = BleakClientWrapped(self._address_or_bledevice)
+
+    # Helper method to populate a ConnectivityChange
+
+    def _connectivity_change(self, arrival_time: float,
+                             state: ConnectivityState):
+        return ConnectivityChange(arrival_time=arrival_time,
+                                  state=state,
+                                  id=self.address,
+                                  name=self.name)
 
     #
     # Self-contained calls for API
@@ -400,8 +409,9 @@ class DE1 (Singleton):
                 self._create_disconnect_callback()
             )
             await asyncio.gather(self._event_connectivity.publish(
-                ConnectivityChange(arrival_time=time.time(),
-                                   state=ConnectivityState.CONNECTING)),
+                self._connectivity_change(
+                    arrival_time=time.time(),
+                    state=ConnectivityState.CONNECTING)),
                 self._bleak_client.connect(timeout=timeout),
             )
 
@@ -410,8 +420,9 @@ class DE1 (Singleton):
                     self._name = self._bleak_client.name
                 logger.info(f"Connected to DE1 at {self.address}")
                 await self._event_connectivity.publish(
-                    ConnectivityChange(arrival_time=time.time(),
-                                       state=ConnectivityState.CONNECTED))
+                    self._connectivity_change(
+                        arrival_time=time.time(),
+                        state=ConnectivityState.CONNECTED))
                 # This can take time, potentially delaying scale connection
                 # At least BlueZ doesn't like concurrent connection requests
                 asyncio.create_task(self.initialize_after_connection())
@@ -420,7 +431,7 @@ class DE1 (Singleton):
                 logger.error(f"Connection failed to DE1 at {self.address}")
                 await self._notify_not_ready()
                 await self._event_connectivity.publish(
-                    ConnectivityChange(
+                    self._connectivity_change(
                         arrival_time=time.time(),
                         state=ConnectivityState.DISCONNECTED))
 
@@ -435,21 +446,23 @@ class DE1 (Singleton):
                 self._notify_not_ready(),
                 self._bleak_client.disconnect(),
                 self._event_connectivity.publish(
-                    ConnectivityChange(arrival_time=time.time(),
-                                       state=ConnectivityState.DISCONNECTING))
+                    self._connectivity_change(
+                        arrival_time=time.time(),
+                        state=ConnectivityState.DISCONNECTING))
             )
             if self.is_connected:
                 logger.error(
                     f"Disconnect failed from DE1 at {self.address}")
                 await self._event_connectivity.publish(
-                    ConnectivityChange(arrival_time=time.time(),
-                                       state=ConnectivityState.CONNECTED))
+                    self._connectivity_change(
+                        arrival_time=time.time(),
+                        state=ConnectivityState.CONNECTED))
             else:
                 logger.info("DE1.disconnect(): Disconnected from DE1 at "
                             f"{self.address}")
                 await self._event_connectivity.publish(
-                    ConnectivityChange(arrival_time=time.time(),
-                                       state=ConnectivityState.DISCONNECTED))
+                    self._connectivity_change(arrival_time=time.time(),
+                                              state=ConnectivityState.DISCONNECTED))
 
     # TODO: Decide how to handle  self._disconnected_callback
     #   disconnected_callback (callable): Callback that will be scheduled in the
@@ -475,8 +488,9 @@ class DE1 (Singleton):
             asyncio.ensure_future(asyncio.gather(
                 self._notify_not_ready(),
                 de1._event_connectivity.publish(
-                    ConnectivityChange(arrival_time=time.time(),
-                                       state=ConnectivityState.DISCONNECTED)),
+                    self._connectivity_change(
+                        arrival_time=time.time(),
+                        state=ConnectivityState.DISCONNECTED)),
             ))
             # TODO: if not shutdown underway:
             de1.prepare_for_connection(wipe_address=client.willful_disconnect)
