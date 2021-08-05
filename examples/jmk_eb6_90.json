@@ -1,12 +1,12 @@
 {
-  "title": "jmk\/EB 6 @92",
+  "title": "jmk\/EB 6 @90",
   "author": "Jeff Kletsky",
   "notes": "Based on Luca's work based on Stéphane's work.",
   "beverage_type": "Espresso",
   "steps": [
     {
       "name": "preinfusion",
-      "temperature": "93.5",
+      "temperature": "92",
       "sensor": "coffee",
       "pump": "flow",
       "transition": "fast",
@@ -38,7 +38,7 @@
     },
     {
       "name": "ramp",
-      "temperature": "92.0",
+      "temperature": "90.0",
       "sensor": "coffee",
       "pump": "pressure",
       "transition": "smooth",
@@ -53,7 +53,7 @@
     },
     {
       "name": "flat flow",
-      "temperature": "92.0",
+      "temperature": "90.0",
       "sensor": "coffee",
       "pump": "pressure",
       "transition": "fast",
@@ -68,7 +68,7 @@
     },
     {
       "name": "decline",
-      "temperature": "92.0",
+      "temperature": "90.0",
       "sensor": "coffee",
       "pump": "pressure",
       "transition": "smooth",
