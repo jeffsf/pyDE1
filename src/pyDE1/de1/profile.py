@@ -19,11 +19,13 @@ import warnings
 from copy import deepcopy
 from typing import Any, Union, Optional, List
 
+import logging
+
 from pyDE1.de1.c_api import ShotDescHeader, ShotFrame, ShotExtFrame, ShotTail, \
     FrameFlags, ShotSettings, SteamSetting, HeaderWrite, \
     FrameWrite_ShotFrame, FrameWrite_ShotExtFrame, FrameWrite_ShotTail
 
-
+logger = logging.getLogger('Profile')
 
 class DE1ProfileValidationError (ValueError):
     def __init__(self, *args, **kwargs):
@@ -225,7 +227,21 @@ class ProfileByFrames (Profile):
         self.source = json_str_or_bytes     # This sets the id as well
                                             # Fingerprint is set on upload
 
-        json_dict = json.loads(json_str_or_bytes)
+        try:
+            json_dict = json.loads(json_str_or_bytes)
+        except json.decoder.JSONDecodeError as e:
+            if isinstance(e.doc, (bytes, bytearray, str)):
+                point_right = "\u27a7"
+                pos = e.pos
+                error_context = "{}{}{}{}".format(
+                    e.doc[pos-10:pos],
+                    point_right,
+                    e.doc[pos],
+                    e.doc[pos+1:pos+10],
+                )
+                e.args = (f"{', '.join(e.args)}: {error_context}",)
+            raise e
+
 
         try:
             if (v := int(json_dict['version'])) != 2:
