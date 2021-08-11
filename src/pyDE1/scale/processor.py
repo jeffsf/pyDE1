@@ -14,7 +14,7 @@ import logging
 from typing import Optional, List, Tuple, Coroutine, Callable
 from uuid import UUID
 
-from scanner import BleakScannerWrapped
+from pyDE1.scanner import BleakScannerWrapped
 
 from pyDE1.config.bluetooth import CONNECT_TIMEOUT
 from pyDE1.dispatcher.resource import ConnectivityEnum
