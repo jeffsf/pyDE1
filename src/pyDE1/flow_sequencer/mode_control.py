@@ -13,7 +13,9 @@ logger = logging.getLogger('FlowSequencer')
 
 # These apply to Espresso only, at this time. Others return 0
 LAST_DROPS_MINIMUM_TIME_DEFAULT = 3.0  # seconds
-FIRST_DROPS_THRESHOLD_DEFAULT = 2.0  # bar
+# Allow a grace period after flow begins during which scale continues to tare.
+# 1 or 2 bar OK for slower-flowing profiles. "Turbo" shots 0, or maybe 1 bar.
+FIRST_DROPS_THRESHOLD_DEFAULT = 0.0  # bar
 
 class ByModeControl:
     """
