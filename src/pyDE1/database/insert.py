@@ -242,9 +242,9 @@ async def connectivity_change(notification: dict,
                               cur: aiosqlite.Cursor):
     sql = "INSERT INTO connectivity_change " \
           "(sequence_id, version, sender, arrival_time, create_time, " \
-          "event_time, state) VALUES " \
+          "event_time, state, id, name) VALUES " \
           "(:sequence_id, :version, :sender, :arrival_time, :create_time, " \
-          ":event_time, :state)"
+          ":event_time, :state, :id, :name)"
     notification['sequence_id'] = sequence_id
     await cur.execute(sql, notification)
 
