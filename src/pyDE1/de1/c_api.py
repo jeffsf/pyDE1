@@ -594,7 +594,7 @@ class ShotSettings (PackedAttr):
 
     @TargetSteamTemp.setter
     def TargetSteamTemp(self, value):
-        if value is not None and not (140 >= value >= 160):
+        if value is not None and (value < 140 or 160 < value) :
             raise DE1APIValueError("TargetSteamTemp must be 140 - 160")
         self._TargetSteamTemp = validate_u_p_noneok(value, 8, 0)
 
