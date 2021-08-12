@@ -14,6 +14,8 @@ import logging
 from typing import Optional, List, Tuple, Coroutine, Callable
 from uuid import UUID
 
+from pyDE1.de1.c_api import API_MachineStates
+from pyDE1.de1.events import StateUpdate
 from pyDE1.scanner import BleakScannerWrapped
 
 from pyDE1.config.bluetooth import CONNECT_TIMEOUT
@@ -26,6 +28,8 @@ from pyDE1.scale.events import ScaleWeightUpdate, ScaleTareSeen, \
     WeightAndFlowUpdate
 from pyDE1.scanner import DiscoveredDevices, find_first_matching
 from pyDE1.singleton import Singleton
+
+from pyDE1.de1 import DE1
 
 logger = logging.getLogger('ScaleProcessor')
 
@@ -55,6 +59,7 @@ class ScaleProcessor (Singleton):
         self._scale: Optional[Scale] = None
         self._scale_weight_update_id: Optional[UUID] = None
         self._scale_tare_seen_id: Optional[UUID] = None
+        self._state_update_id: Optional[UUID] = None
         self._history_max = 10  # Will be extended if needed by Estimator
         self._history_time: List[float] = []
         self._history_weight: List[float] = []
@@ -96,23 +101,30 @@ class ScaleProcessor (Singleton):
                 ),
                 self._scale.event_tare_seen.unsubscribe(
                     self._scale_tare_seen_id
+                ),
+                DE1().event_state_update.unsubscribe(
+                    self._state_update_id
                 )
             )
 
         # Always set
         self._scale = scale
 
-        # TODO: Replace this with (a, b) = await asyncio.gather(ta, tb)
         if self._scale is not None:
             (
                 self._scale_weight_update_id,
-                self._scale_tare_seen_id
+                self._scale_tare_seen_id,
+                self._state_update_id,
+
             ) = await asyncio.gather(
                 self._scale.event_weight_update.subscribe(
                     self._create_scale_weight_update_subscriber()),
 
                 self._scale.event_tare_seen.subscribe(
                     self._create_scale_tare_seen_subscriber()),
+
+                DE1().event_state_update.subscribe(
+                    self._create_state_update_subscriber()),
 
                 return_exceptions=True
             )
@@ -304,6 +316,25 @@ class ScaleProcessor (Singleton):
                 )
 
         return scale_weight_update_subscriber
+
+    def _create_state_update_subscriber(self) -> Callable:
+        scale_processor = self
+
+        async def state_update_subscriber(su: StateUpdate):
+            nonlocal scale_processor
+            scale = scale_processor.scale
+            if (su.previous_state == API_MachineStates.Sleep
+                    and su.state != API_MachineStates.Sleep
+                    and scale.address is not None
+                    and not scale.is_connected):
+                logger.info(
+                    "Reconnecting to scale as DE1 left Sleep to "
+                    f"{API_MachineStates(su.state).name}")
+                scale._reset_reconnect()
+                await scale_processor.scale._reconnect()
+
+        return state_update_subscriber
+
 
 # Prevent dreaded "circular import" problems
 from pyDE1.scale.estimator import CurrentWeight, AverageFlow, \

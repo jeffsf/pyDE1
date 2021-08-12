@@ -19,6 +19,7 @@ from typing import Union, Dict, Coroutine, Optional, List, Callable
 
 from bleak.backends.device import BLEDevice
 from bleak.backends.scanner import AdvertisementData
+from bleak.backends.service import BleakGATTServiceCollection
 
 from pyDE1.bleak_client_wrapper import BleakClientWrapped
 
@@ -130,6 +131,9 @@ class DE1 (Singleton):
 
         # Internal flag
         self._recorder_active = False
+
+        self._reconnect_delay = 0
+        self._logging_reconnect = True
 
         # Used for volume estimation at this time
         asyncio.create_task(self._event_shot_sample.subscribe(
@@ -413,6 +417,7 @@ class DE1 (Singleton):
                     arrival_time=time.time(),
                     state=ConnectivityState.CONNECTING)),
                 self._bleak_client.connect(timeout=timeout),
+                return_exceptions=True
             )
 
             if self.is_connected:
@@ -448,7 +453,8 @@ class DE1 (Singleton):
                 self._event_connectivity.publish(
                     self._connectivity_change(
                         arrival_time=time.time(),
-                        state=ConnectivityState.DISCONNECTING))
+                        state=ConnectivityState.DISCONNECTING)),
+                return_exceptions=True
             )
             if self.is_connected:
                 logger.error(
@@ -491,12 +497,42 @@ class DE1 (Singleton):
                     self._connectivity_change(
                         arrival_time=time.time(),
                         state=ConnectivityState.DISCONNECTED)),
+                return_exceptions=True
             ))
             # TODO: if not shutdown underway:
             de1.prepare_for_connection(wipe_address=client.willful_disconnect)
+            if not client.willful_disconnect:
+                # await self._bleak_client.disconnect()
+                asyncio.get_event_loop().create_task(self._reconnect())
 
         return disconnect_callback
 
+    async def _reconnect(self):
+        """
+        Will try immediately, then 1, 2, 3, ..., 10, 10, ... seconds later
+        """
+        # Workaround for https://github.com/hbldh/bleak/issues/376
+        self._bleak_client.services = BleakGATTServiceCollection()
+        class_name = type(self).__name__
+        if self._logging_reconnect:
+            logger.info(
+                f"Will try reconnecting to {class_name} at {self.address} "
+                f"after waiting {self._reconnect_delay} seconds.")
+        await asyncio.sleep(self._reconnect_delay)
+
+        await self.connect()
+        if self.is_connected:
+            self._reconnect_delay = 0
+            self._logging_reconnect = True
+        else:
+            if self._reconnect_delay <= 10:
+                self._reconnect_delay = self._reconnect_delay +1
+            if self._reconnect_delay == 10:
+                logger.info("Suppressing further reconnect messages. "
+                            "Will keep trying at 10-second intervals.")
+                self._logging_reconnect = False
+            asyncio.get_event_loop().create_task(
+                self._reconnect(), name='ReconnectDE1')
 
     @property
     def is_connected(self):
