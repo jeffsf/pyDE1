@@ -115,8 +115,8 @@ def _validate_patch_inner(patch: dict, mapping: dict, path: str, targets: dict):
 
             if not isinstance(new_value, type_tuple):
                 raise DE1APITypeError(
-                    f"Expected {mapping_value.v_type} value at {this_path}:, "
-                    f"not {new_value}"
+                    f"Expected {mapping_value.v_type.__name__} value "
+                    f"at {this_path}:, not {new_value}"
                 )
 
             if mapping_value.requires_connected_de1:
