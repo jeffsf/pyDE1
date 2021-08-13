@@ -1,5 +1,81 @@
 # Changelog
 
+## 0.7.0 – 2021-08-12
+
+### Schema Upgrade Required
+
+> NB: Backup your database before updating the schema. 
+
+See SQLite `.backup` for details if you are not familiar.
+
+This adds columns for the `id` and `name` fields that are now being sent
+with `ConnectivityUpdate` 
+
+### New
+
+* Stand-alone app automatically uploads to Visualizer on shot completion
+* PUT and GET of DE1_PROFILE_ID allows setting of profile by ID
+* A stand-alone "replay" utility can be used to exercise clients, 
+	such as web apps
+* Both the DE1 and scale will try to reconnect on unexpected disconnect
+* Add `DE1IncompleteSequenceRecordError` for when write is not yet complete
+* Variants of the EB6 profile at different temperatures 
+
+### Fixed
+
+* Legacy "shot" files handle zero flow in "resistance" calculation
+* Properly end recording of a sequence if it is interrupted
+* FlowSequencer last-drops gate set during sequence
+* Correct logic error in stopping recorder at end of sequence
+* Correct reporting of not-connected conditions to HTTP API
+* Correct scale-presence checking for PUT and PATCH requests
+* Handle missing Content-Length header
+* Incorrect error message around API request for Sleep removed
+* `pyDE1.scanner` should now import properly into other code
+* Steam-temperature setter now can set 140-160 deg. C
+* Type errors in validation of API inputs properly report the expected type
+
+### Changed
+
+* Better logging when waiting for a sequence to complete times out
+* Capture pre-sequence history at all times so "sync" is possible on replay
+* Removed read-back of CUUID.RequestedState as StateInfo 
+  provides current state
+* Removed "extra" last-drops check
+* Allow more API requests when DE1 or scale is not ready
+* Use "ready" and not just "connected" to determine if the 
+	DE1 or scale can be queried
+* Allow [dis]connect while [dis]connected
+* `ConnectivityChange` notification includes `id` and `name` to remove 
+	the need to call the API for them
+* Improve error message on JSON decode by including a snippet 
+  around the error
+* Set the default first-drops threshold to 0.0 for fast-flowing shots
+
+
+#### Resource Version 3.0.0
+
+* Changes previously unimplemented _UPLOAD to _ID
+    
+        DE1_PROFILE_ID
+        DE1_FIRMWARE_ID
+
+#### Database Schema 2
+
+See `upgrade.001.002.sql`
+
+```
+PRAGMA user_version = 2;
+
+BEGIN TRANSACTION;
+
+ALTER TABLE connectivity_change ADD COLUMN id TEXT;
+ALTER TABLE connectivity_change ADD COLUMN name TEXT;
+
+END TRANSACTION;
+```
+
+
 ## 0.6.0 – 2021-07-25
 
 **The Mimoja Release**
@@ -21,7 +97,7 @@ a "fingerprint" that is common across all profiles that produce
 the same "program" for the DE1. Changing a profile's name alone 
 does not change this fingerprint. Changing the frames in a profile
 without changing the name changes both the ID of the profile,
-as well as its fingerprint. These both are calculated using SHA1
+as well as its fingerprint. These are both calculated using SHA1
 from the underlying data, so should be consistent across installs
 for the same source data or frame set. 
 
@@ -37,7 +113,7 @@ Profiles can also be searched by the customary metadata:
 `aiosqlite` and its dependencies are now required.
 
 Legacy-style shot data can be extracted from the database by an application
-other that that which is running the DE1. Creating a Visualizer-compatible 
+other than that which is running the DE1. Creating a Visualizer-compatible 
 "file" for upload can be done in around 80-100 ms on a RPi 3B. 
 If written to a physical file, it is also compatible with John Weiss' 
 shot-plotting programs. See `pyDE1/shot_file/legacy.py` 
@@ -102,7 +178,7 @@ The database name is hard-coded at this time.
 `Profile.regenerate_source()` is not implemented at this time.
 
 Occasionally, during shutdown, the database capture reports that
-it was passed `None` and an exception is raised. This may be due to shutdown,
+it was passed `None` and an exception is raised. This may be due to shut down,
 or may be due to failure to retrieve an earlier exception from the task.
 
 
@@ -238,7 +314,7 @@ negative impacts, but could be improved for the future.
 
 ### Fixed
 
-Import problems with `manual_setup` resolved with a explicit reference
+Import problems with `manual_setup` resolved with an explicit reference
 to the `pyDE1.ugly_bits` version. Local overrides that may have been
 in use prior will likely no longer used. TODO: Provide a more robust
 config system to replace this.
@@ -410,7 +486,7 @@ to its private internals.
 
 * Adds `IsAt.internal_type` to help validate the string values for
   `DE1ModeEnum` and `ConnectivityEnum`. JSON producers and consumers
-  should sill expect and provide `IsAt.v_type`
+  should still expect and provide `IsAt.v_type`
   
 * Enables `de1/profile` for PUT
 
@@ -473,7 +549,7 @@ enabled. PUT will be the appropriate verb for`DE1_PROFILE` and
 supported. The API mechanism for starting a firmware upload as not
 been determined, as it should be able to abort as it runs in the
 background, as well as notify when complete. Profile upload is likely
-to be similar, though it occurs on a much faster time scale.
+to be similar, though it occurs on a much faster timescale.
 
 If you'd like the convenience of a GET of the same resource after a
 PATCH, you can set `READ_BACK_ON_PATCH` to `True` in `dispacher.py`
