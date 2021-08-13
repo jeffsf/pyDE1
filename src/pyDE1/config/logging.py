@@ -8,6 +8,6 @@ SPDX-License-Identifier: GPL-3.0-only
 Collected configuration parameters
 """
 
-LOG_DIRECTORY = '/tmp/log/pyDE1/'
+LOG_DIRECTORY = '/var/log/pyDE1/'
 # NB: The log file name is matched against [a-zA-Z0-9._-]
 LOG_FILENAME = 'combined.log'
