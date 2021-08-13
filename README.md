@@ -16,26 +16,22 @@ SPDX-License-Identifier: GPL-3.0-only
 This represents work-in-progress to an API-first implementation of
 core software for a controller for the DE1.
 
-The extent of functionality is sufficient to upload profiles and pull
-shots, flush the group, steam, and draw hot water through the API,
-with stop-at-time, -volume, and -mass. Continuous updates of flow
-parameters, and state transitions are provided over MQTT. Firmware
-upload is supported, though not yet revealed in the API.
+A web app has been able to demonstrate sufficiency of the APIs 
+and functionality for the majority of day-to-day operations,
+including real-time graphing and history display. A running example 
+is available, linked from DecentForum.com. It uses the supplied,
+stand-alone "replay" application to play back a shot in real time. 
+This tool is also useful for development of companion applications.
 
 Profiles and real-time data are captured into a SQLite3 database 
-that allows multiple, concurrent access. An example program 
-is provided that generates legacy-style, "shot files" that 
-are compatible with Visualizer and John Weiss' shot-plotting programs. 
+that allows multiple, concurrent access. 
 
-A "worked example" is available at `examples/find_first_and_load.py` that
+A stand-alone program is provided that can automatically upload "shots"
+to Visualizer as soon as they complete. It can also notify consumers 
+of the URL returned.
 
-* Initializes and starts an MQTT listener, then, through the API
-* Determines if a DE1 and scale are connected
-* If not, connects to the first-found
-* Waits until the DE1 is "ready" (self-initializes without API intervention)
-* Uploads a profile
-* Sets the stop-at-weight target and disables stop-at-time and stop-at-volume
-* Optionally disconnects the DE1 and scale
+An example program is provided that generates legacy-style, "shot files" that 
+are compatible with Visualizer and John Weiss' shot-plotting programs.
 
 The APIs are under semantic versioning. The REST-like, HTTP-transport
 versions can be retrieved from `version` at the document root, and
@@ -48,10 +44,13 @@ actions, such as "Here is a profile blob, please load it." The
 operations and choice of connectivity to the devices is "hidden"
 behind the APIs.
 
+Firmware upload is supported, though not yet revealed in the API.
+
 ## Revision History
 
 See also CHANGELOG.md
 
+* 2021-08-12 – 0.7.0 sets profiles by ID, auto-reconnect, replay, uploader 
 * 2021-07-25 – 0.6.0 adds database store
 * 2021-07-14 – 0.5.0, "worked example" description
 * 2021-07-03 – Updated for release 0.4.0, see also CHANGELOG.md
@@ -78,68 +77,37 @@ where the *alpha* branch is current.
 
 _**Please see CHANGELOG.md for more details**_
 
+### Schema Upgrade Required
+
+> NB: Backup your database before updating the schema. 
+
+See SQLite `.backup` for details if you are not familiar.
+
+This adds columns for the `id` and `name` fields that are now being sent
+with `ConnectivityUpdate` 
+
 ### New
 
-A SQLite3 database now saves all profiles uploaded to the DE1, as well as 
-capturing virtually all real-time data during all flow sequences, 
-including a brief set of data from *before* the state transition.
+* Stand-alone app automatically uploads to Visualizer on shot completion
+* PUT and GET of DE1_PROFILE_ID allows setting of profile by ID
+* A stand-alone "replay" utility can be used to exercise clients, 
+    such as web apps
+* Both the DE1 and scale will try to reconnect on unexpected disconnect
+* Add `DE1IncompleteSequenceRecordError` for when write is not yet complete
+* Variants of the EB6 profile at different temperatures 
 
-Profiles are unique by the content of their "raw source" and also have 
-a "fingerprint" that is common across all profiles that produce 
-the same "program" for the DE1. Changing a profile's name alone 
-does not change this fingerprint. Changing the frames in a profile 
-without changing the name changes both the ID of the profile, 
-as well as its fingerprint. These both are calculated using SHA1 
-from the underlying data, so should be consistent across 
-installs for the same source data or frame set. 
+### Changed
 
-Profiles can also be searched by the customary metadata:
+#### Resource Version 3.0.0
 
-* Title
-* Author
-* Notes
-* Beverage type
-* Date added
+* Changes previously unimplemented _UPLOAD to _ID
+    
+        DE1_PROFILE_ID
+        DE1_FIRMWARE_ID
 
+#### Database Schema 2
 
-`aiosqlite` and its dependencies are now required.
-
-Legacy-style shot data can be extracted from the database by 
-an application other that that which is running the DE1. 
-Creating a Visualizer-compatible "file" for upload can be done 
-in around 80-100 ms on a RPi 3B. If written to a physical file, 
-it is also compatible with John Weiss' shot-plotting programs. 
-See `pyDE1/shot_file/legacy.py` 
-
-The database retains the last-known profile uploaded to the DE1. 
-If a flow sequence beings prior to uploading a profile, it is used 
-as the "most likely" profile and identified in the database 
-with the `profile_assumed` flag.
-
-**NB: The database needs to be manually initialized prior to use.**
-
-One approach is
-
-```
-sudo -u <user> sqlite3 /var/lib/pyDE1/pyDE1.sqlite3 \
-< path/to/pyDE1/src/pyDE1/database/schema/schema.001.sql 
-
-```
-
-The directory also needs to be writable by the user running the code 
-as the database is set for [WAL mode](https://sqlite.org/wal.html) 
-to permit concurrent access from multiple threads, processes and programs.
-
-### Deprecated
-
-`Profile.from_json_file()` as it is no longer needed with the API
-able to upload profiles. If needed within the code base, read
-the file, and pass to `Profile.from_json()` to ensure that
-the profile source and signatures are properly updated.
-
-`DE1._recorder_active` and the contents of `shot_file.py` 
-have been superseded by database logging.
-
+See `upgrade.001.002.sql`
 
 ## Requirements
 
@@ -173,8 +141,6 @@ development has also been done under macOS.
 
 ## Short-Term Priorities
 
-* API to query profile database and load DE1 directly with a former profile
-* Manage unexpected disconnects and reconnects
 * Abort long-running actions, such as uploading firmware
 * Daemonize and provide Debian-compatible service script
 
@@ -197,7 +163,7 @@ development has also been done under macOS.
 * MQTT will and MQTT 5 message expiry time
 
 
-## Status — Alpha
+## Status — Late Alpha
 
 This code is work in progress and is neither feature-complete nor fully tested.
 
@@ -259,7 +225,7 @@ enabled. PUT will be the appropriate verb for`DE1_PROFILE` and
 supported. The API mechanism for starting a firmware upload as not
 been determined, as it should be able to abort as it runs in the
 background, as well as notify when complete. Profile upload is likely
-to be similar, though it occurs on a much faster time scale.
+to be similar, though it occurs on a much faster timescale.
 
 > The Python `http.server` module is used. It is not appropriate for exposed use.
 > 
@@ -293,7 +259,7 @@ authentication, and authorization, as well as a more
 
 * Disabled reads of `CUUID.ReadFromMMR` as it returns the request
   itself (which is not easily distinguishable from the data
-  read. These two interpret their `Length` field differently, making
+  read). These two interpret their `Length` field differently, making
   it difficult to determine if `5` is an unexpected value or if it was
   just that 6 words were requested to be read.
 
@@ -413,7 +379,7 @@ this time.
 The example outbound API does not use encryption as it runs over a
 socket local to the host, the data is not considered "sensitive", and
 there is no control over the DE1. Token-based authentication, such as
-password, should be done over an encrypted channel if can be "snooped"
+password, should be done over an encrypted channel if it can be "snooped"
 by others.
 
 Mosquitto 2.0 is a MQTT broker that supports MQTT 5. Older
