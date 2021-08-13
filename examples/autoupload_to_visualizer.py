@@ -29,7 +29,7 @@ from requests.auth import HTTPBasicAuth, HTTPDigestAuth
 from pyDE1.de1.c_api import API_MachineStates, API_Substates
 from pyDE1.event_manager import SequencerGateName
 from pyDE1.event_manager.event_manager import EventNotificationAction
-from pyDE1.exceptions import DE1DBIncompleteSequenceRecord
+from pyDE1.exceptions import DE1IncompleteSequenceRecordError
 from pyDE1.shot_file.legacy import legacy_shot_file
 from pyDE1.database.write_notifications import async_queue_get
 
@@ -253,7 +253,7 @@ async def loop_on_queue(username: str, password: str,
                     await asyncio.sleep(0.100)  # 100 ms
                     contents = await legacy_shot_file(sequence_id=sid, db=db)
                     break
-                except DE1DBIncompleteSequenceRecord as e:
+                except DE1IncompleteSequenceRecordError as e:
                     logger.debug(e)
             if contents is None:
                 logger.error("Did not recover, aborting upload: {e}")

@@ -135,7 +135,7 @@ class MMRAddressOffsetError (MMRAddressError):
 class DE1DBError (RuntimeError):
     pass
 
-class DE1DBIncompleteSequenceRecord (DE1DBError):
+class DE1IncompleteSequenceRecordError (DE1DBError):
     pass
 
 class DE1DBNoMatchingRecord (DE1DBError):
