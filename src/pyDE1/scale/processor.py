@@ -80,9 +80,9 @@ class ScaleProcessor (Singleton):
         self._median_flow_time: float = 0
         self._estimators = [
             CurrentWeight(self, '_current_weight'),
-            AverageFlow(self, '_average_flow', 10),
-            MedianWeight(self, '_median_weight', 10),
-            MedianFlow(self, '_median_flow', 10, 5),
+            AverageFlow(self, '_average_flow', 11),
+            MedianWeight(self, '_median_weight', 11),
+            MedianFlow(self, '_median_flow', 11, 5),
         ]
 
     @property

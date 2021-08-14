@@ -118,7 +118,7 @@ class AverageFlow (Estimator):
 
     def _estimate_inner(self):
         # time data is jittery, use the best estimate
-        dt = self.samples * self._scale_processor.scale.estimated_period
+        dt = (self.samples - 1) * self._scale_processor.scale.estimated_period
         val = ((self._scale_processor._history_weight[-1]
                 - self._scale_processor._history_weight[-self.samples]) / dt)
         # (latest - dt/2) has a deviation of sigma + that of dt (small)
@@ -199,7 +199,7 @@ class MedianFlow (Estimator):
         p3 = -(self.samples + self.samples_for_medians)
         m0 = median(self._scale_processor._history_weight[p1:p0])
         m1 = median(self._scale_processor._history_weight[p3:p2])
-        dt = self.samples * self._scale_processor.scale.estimated_period
+        dt = (self.samples - 1) * self._scale_processor.scale.estimated_period
         val = (m0 - m1)/dt
         if _USE_MEAN_FOR_TIME:
             tval = mean(self._scale_processor._history_time[p3:p0])
