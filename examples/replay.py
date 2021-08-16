@@ -176,6 +176,7 @@ class SequencerGateNotificationRow (NamedTuple):
     name:           str
     action:         str
     active_state:   str
+    sequence_id:    str
 
     @property
     def class_str(self):
