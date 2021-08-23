@@ -22,8 +22,10 @@ from pyDE1.exceptions import *
 # might be a way to provide a timeout and prevent permanent blocking.
 from pyDE1.supervise import SupervisedTask, SupervisedExecutor
 
+import pyDE1.config
 
-def run_api_inbound(log_queue: multiprocessing.Queue,
+def run_api_inbound(config: pyDE1.config.Config,
+                    log_queue: multiprocessing.Queue,
                     api_pipe: mpc.Connection):
 
     import asyncio
@@ -41,13 +43,6 @@ def run_api_inbound(log_queue: multiprocessing.Queue,
     from traceback import TracebackException
     from typing import Optional, Union, NamedTuple, Dict, Pattern
 
-    from pyDE1.config.http import SERVER_HOST, SERVER_PORT, SERVER_ROOT, \
-        PATCH_SIZE_LIMIT
-
-    from pyDE1.config.logging import LOG_DIRECTORY
-
-    from pyDE1.config.http import RESPONSE_TIMEOUT
-
     from pyDE1.utils import timestamp_to_str_with_ms
 
     logger = logging.getLogger(multiprocessing.current_process().name)
@@ -57,6 +52,7 @@ def run_api_inbound(log_queue: multiprocessing.Queue,
 
     initialize_default_logger(log_queue)
     set_some_logging_levels()
+    config.set_logging()
 
     from pyDE1.dispatcher.mapping import MAPPING, mapping_requires
 
@@ -208,7 +204,7 @@ def run_api_inbound(log_queue: multiprocessing.Queue,
             parameter_dict = {}
             code = None
             resp_str = ''
-            root_relative = remove_prefix(self.path, SERVER_ROOT)
+            root_relative = remove_prefix(self.path, config.http.SERVER_ROOT)
             try:
                 # resource = Resource(self.path.removeprefix(SERVER_ROOT))
                 resource = Resource(root_relative)
@@ -258,7 +254,7 @@ def run_api_inbound(log_queue: multiprocessing.Queue,
             else:
                 content_length = int(content_length)
 
-            if content_length > PATCH_SIZE_LIMIT:
+            if content_length > config.http.PATCH_SIZE_LIMIT:
                 self.send_error_response(
                     HTTPStatus.REQUEST_ENTITY_TOO_LARGE,
                     "Patch is too large")
@@ -278,13 +274,13 @@ def run_api_inbound(log_queue: multiprocessing.Queue,
             # In the sync world, nothing in parallel in this process
             # so might as well just block, rather than craziness
 
-            readable = api_pipe.poll(timeout=RESPONSE_TIMEOUT)
+            readable = api_pipe.poll(timeout=config.http.RESPONSE_TIMEOUT)
             if readable:
                 resp = api_pipe.recv()
             else:
                 e = TimeoutError(
                     "Timeout waiting for response from controller, "
-                    f"over {RESPONSE_TIMEOUT} sec")
+                    f"over {config.http.RESPONSE_TIMEOUT} sec")
                 resp = APIResponse(
                     timestamp=time.time(),
                     original_timestamp=req.timestamp,
@@ -368,7 +364,7 @@ def run_api_inbound(log_queue: multiprocessing.Queue,
                 exc = None
                 tbe = None
                 try:
-                    payload = file_detail_list(LOG_DIRECTORY)
+                    payload = file_detail_list(config.logging.LOG_DIRECTORY)
                 except Exception as e:
                     exc = e
                     tbe = TracebackException.from_exception(e)
@@ -389,7 +385,8 @@ def run_api_inbound(log_queue: multiprocessing.Queue,
                 tbe = None
 
                 # TODO: Another ugly combination of id with filename
-                filename = os.path.join(LOG_DIRECTORY, parameter_dict['id'])
+                filename = os.path.join(config.logging.LOG_DIRECTORY,
+                                        parameter_dict['id'])
 
                 try:
                     with open(filename, 'rb') as log_file:
@@ -502,7 +499,8 @@ def run_api_inbound(log_queue: multiprocessing.Queue,
             self.queue_and_respond(req)
             return
 
-    server = http.server.HTTPServer((SERVER_HOST, SERVER_PORT),
+    server = http.server.HTTPServer((config.http.SERVER_HOST,
+                                     config.http.SERVER_PORT),
                                     RequestHandler)
 
     # As this may be a restart, ensure that there are not pending responses

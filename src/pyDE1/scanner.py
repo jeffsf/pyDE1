@@ -24,7 +24,7 @@ from pyDE1.singleton import Singleton
 from pyDE1.event_manager import EventPayload, send_to_outbound_pipes
 from pyDE1.supervise import SupervisedTask
 
-from pyDE1.config.bluetooth import *
+from pyDE1.config import config
 
 logger = logging.getLogger('Scanner')
 
@@ -143,8 +143,9 @@ class DiscoveredDevices (Singleton):
             now = time.time()
             pruned = dict()
             for addr, entry in self._devices_seen.items():
-                if SCAN_CACHE_EXPIRY is not None \
-                        and (now - entry.last_seen) > SCAN_CACHE_EXPIRY:
+                if config.bluetooth.SCAN_CACHE_EXPIRY is not None \
+                        and (now - entry.last_seen) \
+                            > config.bluetooth.SCAN_CACHE_EXPIRY:
                     pass  # Can't delete in place during iteration
                 else:
                     pruned[addr] = entry
@@ -234,7 +235,7 @@ async def find_first_matching(prefix_set: Iterable[str],
                               timeout=None) -> BLEDevice:
 
     if timeout is None:
-        timeout = SCAN_TIME
+        timeout = config.bluetooth.SCAN_TIME
 
     if isinstance(prefix_set, str):
         raise DE1TypeError(
@@ -282,7 +283,7 @@ async def scan_until_timeout(timeout=None) -> Tuple[BleakScannerWrapped,
     """
 
     if timeout is None:
-        timeout = SCAN_TIME
+        timeout = config.bluetooth.SCAN_TIME
 
     scanner = BleakScannerWrapped()
     event = asyncio.Event()

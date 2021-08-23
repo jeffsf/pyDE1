@@ -10,7 +10,6 @@ SPDX-License-Identifier: GPL-3.0-only
 
 import asyncio
 import hashlib
-import json
 import logging
 import time
 
@@ -27,6 +26,9 @@ from pyDE1.exceptions import *
 from pyDE1.de1.ble import UnsupportedBLEActionError
 
 import pyDE1.database.insert as db_insert
+
+from pyDE1.config import config
+
 import aiosqlite
 
 # general utilities
@@ -62,8 +64,6 @@ from pyDE1.utils import task_name_exists, cancel_tasks_by_name
 
 from pyDE1.dispatcher.resource import ConnectivityEnum, DE1ModeEnum
 
-from pyDE1.config.bluetooth import CONNECT_TIMEOUT
-
 from pyDE1.scanner import find_first_matching
 
 
@@ -84,8 +84,6 @@ class DE1 (Singleton):
     #
     # def __init__(self):
     #     pass
-
-    MAX_WAIT_FOR_READY_EVENTS = 3.0  # seconds, 1.5-2.5 seconds seems typical
 
     def _singleton_init(self):
         self._address_or_bledevice: Optional[Union[str, BLEDevice]] = None
@@ -116,7 +114,8 @@ class DE1 (Singleton):
         # Used to restrict multiple access to writing the active profile
         self._profile_lock = asyncio.Lock()
 
-        self._line_frequency = 60  # Hz TODO: Estimate or read this
+        # TODO: Estimate or read this from DE1 when available
+        self._line_frequency = config.de1.LINE_FREQUENCY  # Hz
 
         self._tracking_volume_dispensed = False
         self._volume_dispensed_total = 0
@@ -223,7 +222,7 @@ class DE1 (Singleton):
         logger.info(f"Waiting for {len(event_list)} responses")
         try:
             results = await asyncio.wait_for(asyncio.gather(*gather_list),
-                             self.MAX_WAIT_FOR_READY_EVENTS)
+                             config.de1.MAX_WAIT_FOR_READY_EVENTS)
             t1 = time.time()
             logger.info(
                 f"{len(event_list)} responses received in "
@@ -355,7 +354,7 @@ class DE1 (Singleton):
                 logger.warning(f"No record of {ble_device_id}, initiating scan")
                 # TODO: find_device_by_filter doesn't add to DiscoveredDevices
                 ble_device = await BleakScannerWrapped.find_device_by_address(
-                    ble_device_id, timeout=CONNECT_TIMEOUT)
+                    ble_device_id, timeout=config.bluetooth.CONNECT_TIMEOUT)
             if ble_device is None:
                 raise DE1NoAddressError(
                     f"Unable to find device with id: '{ble_device_id}'")
@@ -401,7 +400,7 @@ class DE1 (Singleton):
     async def connect(self, timeout: Optional[float] = None):
 
         if timeout is None:
-            timeout = CONNECT_TIMEOUT
+            timeout = config.bluetooth.CONNECT_TIMEOUT
 
         logger.info(f"Connecting to DE1 at {self.address}")
 
@@ -509,10 +508,15 @@ class DE1 (Singleton):
 
     async def _reconnect(self):
         """
-        Will try immediately, then 1, 2, 3, ..., 10, 10, ... seconds later
+        Will try immediately, then 1, 2, 3, ...,
+            config.bluetooth.RECONNECT_MAX_INTERVAL seconds later
+            in between CONNECT_TIMEOUT periods
         """
+        # TODO: Is there a better pattern?
+
         # Workaround for https://github.com/hbldh/bleak/issues/376
         self._bleak_client.services = BleakGATTServiceCollection()
+
         class_name = type(self).__name__
         if self._logging_reconnect:
             logger.info(
@@ -525,11 +529,13 @@ class DE1 (Singleton):
             self._reconnect_delay = 0
             self._logging_reconnect = True
         else:
-            if self._reconnect_delay <= 10:
+            if self._reconnect_delay <= config.bluetooth.RECONNECT_MAX_INTERVAL:
                 self._reconnect_delay = self._reconnect_delay +1
-            if self._reconnect_delay == 10:
+            if self._reconnect_delay == config.bluetooth.RECONNECT_MAX_INTERVAL:
                 logger.info("Suppressing further reconnect messages. "
-                            "Will keep trying at 10-second intervals.")
+                            "Will keep trying at {}-second intervals.".format(
+                    config.bluetooth.RECONNECT_MAX_INTERVAL)
+                )
                 self._logging_reconnect = False
             asyncio.get_event_loop().create_task(
                 self._reconnect(), name='ReconnectDE1')

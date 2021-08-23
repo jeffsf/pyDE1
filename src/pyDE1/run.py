@@ -37,7 +37,7 @@ from pyDE1.supervise import SupervisedExecutor, SupervisedProcess
 from pyDE1.signal_handlers import add_handler_sigchld_show_processes, \
     add_handler_shutdown_signals
 
-from pyDE1.config.logging import LOG_DIRECTORY, LOG_FILENAME
+from pyDE1.config import config
 
 
 def run():
@@ -54,14 +54,13 @@ def run():
     # If the controller is going to move into its own process
     # this process needs to handle the arrival of signals
 
-
-
     # Might be able to use SimpleQueue here,
     # at least until the queue gets joined at exit
     log_queue = multiprocessing.Queue()
 
     pyDE1.default_logger.initialize_default_logger(log_queue)
     pyDE1.default_logger.set_some_logging_levels()
+    config.set_logging()
 
     add_handler_sigchld_show_processes()
 
@@ -137,6 +136,7 @@ def run():
     supervised_outbound_api_process = SupervisedProcess(
         target=run_api_outbound,
         kwargs={
+            'config': config,
             'log_queue': log_queue,
             'outbound_pipe': outbound_pipe_read,
         },
@@ -148,6 +148,7 @@ def run():
     supervised_inbound_api_process = SupervisedProcess(
         target=run_api_inbound,
         kwargs={
+            'config': config,
             'log_queue': log_queue,
             'api_pipe': inbound_pipe_server,
         },
@@ -162,6 +163,7 @@ def run():
     supervised_database_logger_process = SupervisedProcess(
         target=run_database_logger,
         kwargs={
+            'config': config,
             'log_queue': log_queue,
             'notification_queue': database_queue,
         },
@@ -175,6 +177,7 @@ def run():
     supervised_controller_process = SupervisedProcess(
         target=run_controller,
         kwargs={
+            'config': config,
             'log_queue': log_queue,
             'inbound_pipe': inbound_pipe_controller,
             'outbound_pipe': outbound_pipe_write,
@@ -196,16 +199,17 @@ def run():
 
         import email.utils
 
-        if not os.path.exists(LOG_DIRECTORY):
+        if not os.path.exists(config.logging.LOG_DIRECTORY):
             logger.error(
                 "logfile_directory '{}' does not exist. Creating.".format(
-                    os.path.realpath(LOG_DIRECTORY)
+                    os.path.realpath(config.logging.LOG_DIRECTORY)
                 )
             )
             # Will create intermediate directories
             # Will not use "mode" on intermediates
-            os.makedirs(LOG_DIRECTORY)
-        fq_logfile = os.path.join(LOG_DIRECTORY, LOG_FILENAME)
+            os.makedirs(config.logging.LOG_DIRECTORY)
+        fq_logfile = os.path.join(config.logging.LOG_DIRECTORY,
+                                  config.logging.LOG_FILENAME)
         while not terminate_logging_event.is_set():
             with open(file=fq_logfile, mode='a', buffering=1) as fh:
                 logger.info(
@@ -256,4 +260,19 @@ def run():
 
 
 if __name__ == "__main__":
+
+    import argparse
+
+    ap = argparse.ArgumentParser(
+        description="""Main executable to start the pyDE1 core.
+
+        """
+        f"Default configuration file is at {pyDE1.config.DEFAULT_CONFIG_FILE}"
+    )
+    ap.add_argument('-c', type=str, help='Use as alternate config file')
+
+    args = ap.parse_args()
+
+    config.load_from_toml(args.c)
+
     run()

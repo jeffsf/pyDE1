@@ -39,11 +39,9 @@ from pyDE1.exceptions import DE1APITypeError, DE1APIValueError, \
     DE1APIAttributeError, DE1APIKeyError, DE1NotConnectedError
 from pyDE1.dispatcher.mapping import IsAt
 
-logger = logging.getLogger('APIImpl')
+from pyDE1.config import config
 
-from pyDE1.config.http import ASYNC_TIMEOUT, PRUNE_EMPTY_NODES, PROFILE_TIMEOUT
-from pyDE1.config.bluetooth import CONNECT_TIMEOUT, SCAN_TIME, \
-    DISCONNECT_TIMEOUT
+logger = logging.getLogger('APIImpl')
 
 """
 How this works:
@@ -66,18 +64,21 @@ within a nested dict, to a list and pass that back.
 def get_timeout(prop, value):
     bound_class = prop.__self__.__class__
     name = prop.__name__
-    timeout = ASYNC_TIMEOUT
+    timeout = config.http.ASYNC_TIMEOUT
     if name == 'connectivity_setter' and value:
-        timeout = CONNECT_TIMEOUT + 0.100
+        timeout = config.bluetooth.CONNECT_TIMEOUT + 0.100
     elif name in ('change_de1_to_id', 'change_scale_to_id'):
         if value is None:
-            timeout = DISCONNECT_TIMEOUT
+            timeout = config.bluetooth.DISCONNECT_TIMEOUT
         else:
-            timeout = CONNECT_TIMEOUT + ASYNC_TIMEOUT + 0.100
+            timeout = config.bluetooth.CONNECT_TIMEOUT \
+                      + config.http.ASYNC_TIMEOUT + 0.100
     elif name == 'first_if_found':
-        timeout = SCAN_TIME + CONNECT_TIMEOUT + ASYNC_TIMEOUT + 0.100
+        timeout = config.bluetooth.SCAN_TIME \
+                  + config.bluetooth.CONNECT_TIMEOUT \
+                  + config.http.ASYNC_TIMEOUT + 0.100
     elif name == 'upload_json_v2_profile':
-        timeout = PROFILE_TIMEOUT
+        timeout = config.http.PROFILE_TIMEOUT
     return timeout
 
 
@@ -235,14 +236,14 @@ async def _get_mapping_to_dict(partial_dict: dict) -> dict:
             try:
                 this_val = await _get_isat_value(v)
             except AttributeError:
-                if PRUNE_EMPTY_NODES:
+                if config.http.PRUNE_EMPTY_NODES:
                     continue # Don't write the key's entry
                 else:
                     this_val = math.nan
         elif isinstance(v, dict):
             this_val = await _get_mapping_to_dict(v)
             # Suppress aggregates with nothing to aggregate
-            if len(this_val) == 0 and PRUNE_EMPTY_NODES:
+            if len(this_val) == 0 and config.http.PRUNE_EMPTY_NODES:
                 continue
         else:
             this_val = v

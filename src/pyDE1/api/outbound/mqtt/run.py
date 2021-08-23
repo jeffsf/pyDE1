@@ -20,9 +20,14 @@ import multiprocessing.connection as mpc
 # TODO: look into how loggers here relate to the root logger from "main"
 
 # TODO: Look into or resolve processes' loggers writing over each other
+from socket import gethostname
 
+import os
 
-def run_api_outbound(log_queue: multiprocessing.Queue,
+import pyDE1.config
+
+def run_api_outbound(config: pyDE1.config.Config,
+                     log_queue: multiprocessing.Queue,
                      outbound_pipe: mpc.Connection):
 
     import logging
@@ -44,14 +49,11 @@ def run_api_outbound(log_queue: multiprocessing.Queue,
     from pyDE1.default_logger import initialize_default_logger, \
         set_some_logging_levels
 
-    from pyDE1.config.mqtt import MQTT_TOPIC_ROOT, MQTT_CLIENT_ID, \
-        MQTT_BROKER_HOSTNAME, MQTT_BROKER_PORT, MQTT_TRANSPORT, \
-        MQTT_TLS_CONTEXT, MQTT_KEEPALIVE, MQTT_USERNAME, MQTT_PASSWORD
-
     logger = logging.getLogger(multiprocessing.current_process().name)
 
     initialize_default_logger(log_queue)
     set_some_logging_levels()
+    config.set_logging()
 
     client_logger = logging.getLogger('MQTTClient')
     client_logger.level = logging.INFO
@@ -130,11 +132,15 @@ def run_api_outbound(log_queue: multiprocessing.Queue,
         client_logger.info(f"CB: Socket unregister write: socket: {socket}")
 
     mqtt_client = mqtt.Client(
-        client_id=MQTT_CLIENT_ID,
+        client_id="{}@{}[{}]".format(
+            config.mqtt.CLIENT_ID_PREFIX,
+            gethostname(),
+            os.getpid(),
+        ),
         clean_session=None,  # Required for MQTT5
         userdata=None,
         protocol=MQTTv5,
-        transport=MQTT_TRANSPORT,
+        transport=config.mqtt.TRANSPORT,
     )
 
     # mqtt_client.on_log = on_log_callback
@@ -148,9 +154,9 @@ def run_api_outbound(log_queue: multiprocessing.Queue,
 
     mqtt_client.enable_logger(client_logger)
 
-    mqtt_client.connect(host=MQTT_BROKER_HOSTNAME,
-                   port=MQTT_BROKER_PORT,
-                   keepalive=MQTT_KEEPALIVE,
+    mqtt_client.connect(host=config.mqtt.BROKER_HOSTNAME,
+                   port=config.mqtt.BROKER_PORT,
+                   keepalive=config.mqtt.KEEPALIVE,
                    bind_address="",
                    bind_port=0,
                    clean_start=MQTT_CLEAN_START_FIRST_ONLY,
@@ -171,7 +177,7 @@ def run_api_outbound(log_queue: multiprocessing.Queue,
 
             item_json = outbound_pipe.recv()
             item_as_dict = json.loads(item_json)
-            topic = f"{MQTT_TOPIC_ROOT}/{item_as_dict['class']}"
+            topic = f"{config.mqtt.TOPIC_ROOT}/{item_as_dict['class']}"
             mqtt_client.publish(
                 topic=topic,
                 payload=item_json,

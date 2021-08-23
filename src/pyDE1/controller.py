@@ -14,8 +14,10 @@ import multiprocessing.connection as mpc
 from pyDE1.flow_sequencer import FlowSequencer
 from pyDE1.scale.processor import ScaleProcessor
 
+import pyDE1.config
 
-def run_controller(log_queue: multiprocessing.Queue,
+def run_controller(config: pyDE1.config.Config,
+                   log_queue: multiprocessing.Queue,
                    inbound_pipe: mpc.Connection,
                    outbound_pipe: mpc.Connection,
                    database_queue: multiprocessing.Queue):
@@ -44,6 +46,7 @@ def run_controller(log_queue: multiprocessing.Queue,
 
     initialize_default_logger(log_queue)
     set_some_logging_levels()
+    config.set_logging()
 
     logger = logging.getLogger(multiprocessing.current_process().name)
 

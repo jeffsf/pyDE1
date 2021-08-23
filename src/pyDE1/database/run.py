@@ -19,8 +19,10 @@ from concurrent.futures import ThreadPoolExecutor
 from pyDE1.database.write_notifications import read_queue_to_queue, record_data
 from pyDE1.supervise import SupervisedExecutor
 
+import pyDE1.config
 
-def run_database_logger(log_queue: multiprocessing.Queue,
+def run_database_logger(config: pyDE1.config.Config,
+                        log_queue: multiprocessing.Queue,
                         notification_queue: multiprocessing.Queue):
 
     import logging
@@ -45,6 +47,7 @@ def run_database_logger(log_queue: multiprocessing.Queue,
 
     initialize_default_logger(log_queue)
     set_some_logging_levels()
+    config.set_logging()
 
     loop = asyncio.get_event_loop()
     loop.set_debug(True)

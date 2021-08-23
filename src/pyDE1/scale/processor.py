@@ -18,7 +18,6 @@ from pyDE1.de1.c_api import API_MachineStates
 from pyDE1.de1.events import StateUpdate
 from pyDE1.scanner import BleakScannerWrapped
 
-from pyDE1.config.bluetooth import CONNECT_TIMEOUT
 from pyDE1.dispatcher.resource import ConnectivityEnum
 from pyDE1.exceptions import DE1NoAddressError, DE1APIValueError
 from pyDE1.scale import Scale, ScaleError, scale_factory, \
@@ -30,6 +29,8 @@ from pyDE1.scanner import DiscoveredDevices, find_first_matching
 from pyDE1.singleton import Singleton
 
 from pyDE1.de1 import DE1
+
+from pyDE1.config import config
 
 logger = logging.getLogger('ScaleProcessor')
 
@@ -209,7 +210,8 @@ class ScaleProcessor (Singleton):
                     logger.warning(f"No record of {ble_device_id}, initiating scan")
                     # TODO: find_device_by_filter doesn't add to DiscoveredDevices
                     ble_device = await BleakScannerWrapped.find_device_by_address(
-                        ble_device_id, timeout=CONNECT_TIMEOUT)
+                        ble_device_id,
+                        timeout=config.bluetooth.CONNECT_TIMEOUT)
                 if ble_device is None:
                     raise DE1NoAddressError(
                         f"Unable to find device with id: '{ble_device_id}'")
