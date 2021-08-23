@@ -1,0 +1,29 @@
+[Unit]
+Description=Auto-upload to Visualizer
+After=syslog.target
+
+[Service]
+# This needs to be the same user that "owns" the database
+User=ble-remote
+Group=ble-remote
+
+# PYTHONPATH is likely only needed for development
+Environment="PYTHONPATH=/home/ble-remote/devel/pyDE1:/home/ble-remote/devel/pyDE1/src"
+
+# If needed, change the path to that of the venv's Python
+Environment="PYTHON_PROGRAM=/home/ble-remote/devel/pyDE1/services/runnable/pyde1-visualizer.py"
+
+# Can be used as $PROGRAM_ARG_LIST at the end of ExecStart to specify an alternate
+# Environment="PROGRAM_ARG_LIST=-c /usr/local/etc/pyde1-visualizer.conf"
+
+# If needed, change the path to that of the venv's Python
+# The executable name can't be a variable
+ExecStart=/home/ble-remote/venv/pyDE1_3.9/bin/python3 $PYTHON_PROGRAM
+
+Restart=always
+StandardError=syslog
+# Sets the process name to that of the service
+SyslogIdentifier=%N
+
+[Install]
+WantedBy=multi-user.target
