@@ -25,10 +25,6 @@ def run_controller(log_queue: multiprocessing.Queue,
     import signal
     import time
 
-    # Hopefully this allows using a "local" version
-    import inspect  # to determine the source file for manual_setup()
-    from pyDE1.ugly_bits import manual_setup
-
     from pyDE1.de1.c_api import API_MachineStates
 
     from pyDE1.de1 import DE1
@@ -119,14 +115,5 @@ def run_controller(log_queue: multiprocessing.Queue,
     SubscribedEvent.database_queue = database_queue
 
     FlowSequencer.database_queue = database_queue
-
-    # This needs to be scheduled as the loop isn't running yet
-    try:
-        SupervisedTask(manual_setup, disconnect_set=_disconnect_set)
-        logger.info("Scheduled task for manual_setup() from "
-                    f"{inspect.getfile(manual_setup)}")
-    except NameError:
-        logger.critical(
-            'No manual_setup() found. Right now, this is required')
 
     loop.run_forever()
