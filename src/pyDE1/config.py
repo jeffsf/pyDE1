@@ -197,6 +197,9 @@ class Config:
         def __init__(self):
             self.LINE_FREQUENCY = 60
             self.MAX_WAIT_FOR_READY_EVENTS = 3.0
+            # Do these "settings" belong here,
+            # or should they be separated from parameters?
+            self.DEFAULT_AUTO_OFF_TIME = None   # Minutes
 
 
     def load_from_toml(self, filename: Optional[str] = None):

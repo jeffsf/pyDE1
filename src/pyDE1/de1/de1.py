@@ -131,12 +131,19 @@ class DE1 (Singleton):
         # Internal flag
         self._recorder_active = False
 
+        # Internally in seconds
+        self._auto_off_time = None
+        # Externally in minutes
+        self.auto_off_time = config.de1.DEFAULT_AUTO_OFF_TIME
+
         self._reconnect_delay = 0
         self._logging_reconnect = True
 
         # Used for volume estimation at this time
         asyncio.create_task(self._event_shot_sample.subscribe(
             self._create_self_callback_ssu()))
+
+        asyncio.create_task(self._sleep_if_bored())
 
         self.prepare_for_connection(wipe_address=True)
 
@@ -1091,6 +1098,11 @@ class DE1 (Singleton):
         return self._cuuid_dict[CUUID.StateInfo].last_value.State
 
     @property
+    def state_last_updated(self) -> Optional[float]:
+        # Time in seconds
+        return self._cuuid_dict[CUUID.StateInfo].last_updated
+
+    @property
     def current_substate(self) -> API_Substates:
         return self._cuuid_dict[CUUID.StateInfo].last_value.SubState
 
@@ -1287,7 +1299,20 @@ class DE1 (Singleton):
 
     @property
     def auto_off_time(self):
-        return None
+        if self._auto_off_time:
+            return self._auto_off_time / 60
+        else:
+            return None
+
+    @auto_off_time.setter
+    def auto_off_time(self, t_minutes):
+        if not t_minutes:
+            self._auto_off_time = None
+        elif t_minutes < 0:
+            raise DE1APIValueError(
+                f"auto_off_time must be non-negative or None, not {t_minutes}")
+        else:
+            self._auto_off_time = t_minutes * 60
 
     # Non-GHC only -- no checking for GHC presence at this level
 
@@ -1435,4 +1460,24 @@ class DE1 (Singleton):
             )
 
         await self.upload_json_v2_profile(source)
+
+
+    async def _sleep_if_bored(self):
+        # TODO: Though an async task can be killed, be polite on shutdown
+        RECHECK_TIME = 30 # seconds
+        # NB: Internals are in seconds, auto_off_time is in minutes
+        while True:
+            if not self._auto_off_time \
+                    or not self.state_last_updated \
+                    or not self.is_ready:
+                pass
+            else:
+                now = time.time()
+                dt = now - self.state_last_updated
+                if dt > self._auto_off_time \
+                        and self.current_state != API_MachineStates.Sleep:
+                    logger.info(
+                        f"Sleeping with auto-off of {self._auto_off_time} sec")
+                    await self.sleep()
+            await asyncio.sleep(RECHECK_TIME)
 
