@@ -13,6 +13,7 @@ import gc
 
 from typing import Optional, Callable, Coroutine, Union
 
+import aiosqlite
 from bleak.backends.device import BLEDevice
 from bleak.backends.scanner import AdvertisementData
 from bleak.backends.service import BleakGATTServiceCollection
@@ -121,7 +122,7 @@ class Scale:
         #           else:
         #               do something else
         self._tare_requested = False
-        self._period_estimator = self.PeriodEstimator(self._nominal_period)
+        self._period_estimator = self.PeriodEstimator(self)
 
         # Don't need to await this on instantiation
         asyncio.get_event_loop().create_task(
@@ -214,6 +215,7 @@ class Scale:
         await self.start_sending_weight_updates()
         if self.supports_button_press:
             await self.start_sending_button_updates()
+        await self._restore_period_from_db()
         if not hold_notification:
             await self._notify_ready()
 
@@ -545,15 +547,17 @@ class Scale:
         Try 500 ms to be reasonable.
         """
 
-        def __init__(self, nominal_period: float):
+        def __init__(self, my_scale):
 
             # TODO: How to update this for subclass changes?
 
-            self._k = 1/10000
-            self._ma = nominal_period
+            self._scale = my_scale
+
+            self._k = 1/10000   # tau ~ 17 min at 10 samples/sec
+            self._ma = self._scale.nominal_period
             self._too_long = 0.5  # seconds before considered a gap
 
-            self._log_every_n = 1000
+            self._persist_every_n = 1000  # about 100 seconds
             self._n_counter = 0
 
         def reset(self, nominal_period: float):
@@ -564,11 +568,52 @@ class Scale:
             if delta_arrival_time < self._too_long:
                 self._ma = ((1 - self._k) * self._ma) \
                            + (self._k * delta_arrival_time)
+                self._scale.nominal_period = self._ma
                 self._n_counter += 1
-                if self._n_counter >= self._log_every_n:
+                if self._n_counter >= self._persist_every_n:
                     self._n_counter = 0
                     logger.debug(f"Scale period: {self._ma}")
+                    await self._scale._persist_period_to_db()
 
+    async def _persist_period_to_db(self):
+        if not self.address:
+            raise DE1NoAddressError(
+                "Can't persist scale period without a scale address")
+        async with aiosqlite.connect(config.database.FILENAME) as db:
+            sql = "INSERT OR REPLACE INTO persist_hkv " \
+                  "(header, key, value) " \
+                  "VALUES " \
+                  "(:header, :key, :value) "
+            await db.execute(sql, {
+                'header': 'scale.period',
+                'key': self.address,
+                'value': self.nominal_period,
+            })
+            await db.commit()
+
+    async def _restore_period_from_db(self):
+        if not self.address:
+            raise DE1NoAddressError(
+                "Can't restore scale period without a scale address")
+        async with aiosqlite.connect(config.database.FILENAME) as db:
+            sql = "SELECT value FROM persist_hkv " \
+                  "WHERE header = :header AND key = :key"
+            cur = await db.execute(sql, {
+                'header': 'scale.period',
+                'key': self.address,
+            })
+            row = await cur.fetchone()
+            if row and row[0]:
+                val = float(row[0])
+                logger.info(
+                    "Loading scale-period estimate of "
+                    f"{val:.5f} from database")
+                self._estimated_period = val
+                self._period_estimator.reset(val)
+            else:
+                logger.info(
+                    "No previous scale-period estimate for "
+                    f"{self.address} found")
 
     # TODO: Deal with connectivity as a mixin
 
