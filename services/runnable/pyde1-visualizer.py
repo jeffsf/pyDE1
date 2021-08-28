@@ -353,6 +353,7 @@ async def wait_then_cleanup(client: mqtt.Client):
     logger.info("mqtt.Client.loop_stop returned, setting cleanup_complete")
     sm.cleanup_complete.set()
 
+from pprint import pformat
 
 async def loop_on_queue(client: mqtt.Client):
 
@@ -401,7 +402,6 @@ async def loop_on_queue(client: mqtt.Client):
                     auth=HTTPBasicAuth(username=config.visualizer.USERNAME,
                                        password=config.visualizer.PASSWORD)
                 ))
-            f"Upload returned: {r.status_code} {r.reason} {r.text}"
             r: requests.Response
             if r.ok:
                 d = json.loads(r.text)
@@ -410,6 +410,9 @@ async def loop_on_queue(client: mqtt.Client):
                 report_upload(sci=got, url=url, success=True,
                               client=client)
             else:
+                logger_upload.error(
+                    f"Upload failed: {r.status_code} {r.reason} {r.text}")
+                logger_upload.debug(pformat(r))
                 report_upload(sci=got, url=None, success=False,
                               client=client)
 
