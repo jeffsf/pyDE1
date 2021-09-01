@@ -38,7 +38,7 @@ from pyDE1.signal_handlers import add_handler_sigchld_show_processes, \
     add_handler_shutdown_signals
 
 from pyDE1.config import config
-
+from pyDE1.database.manage import check_schema
 
 def run():
 
@@ -61,6 +61,8 @@ def run():
     pyDE1.default_logger.initialize_default_logger(log_queue)
     pyDE1.default_logger.set_some_logging_levels()
     config.set_logging()
+
+    check_schema(loop)
 
     add_handler_sigchld_show_processes()
 

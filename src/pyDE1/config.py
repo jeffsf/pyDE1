@@ -191,6 +191,8 @@ class Config:
     class _Database:
         def __init__(self):
             self.FILENAME = '/var/lib/pyDE1/pyDE1.sqlite3'
+            self.BACKUP_TIMEOUT = 60  # seconds
+            self.BACKUP_COMPRESSION_EXECUTABLE = 'xz'
 
 
     class _DE1:
