@@ -12,6 +12,7 @@ import subprocess
 import time
 
 from datetime import datetime
+from multiprocessing import cpu_count
 from pathlib import Path
 from typing import Union, Optional, Awaitable
 
@@ -150,24 +151,31 @@ def backup_db(db_filename: str, backup_filename: str,
     logger.info(f"Backed up to {backup_filename}")
 
     if loop is not None:
-        logger.info(f"Scheduling compression of {backup_filename}")
-        t_compress = loop.run_in_executor(
-            None,
-            subprocess.run,
-            [config.database.BACKUP_COMPRESSION_EXECUTABLE,
-             backup_filename],
-        )
+        cpu_min = 2
+        if cpu_count() >= cpu_min:
+            logger.info(f"Scheduling compression of {backup_filename}")
+            t_compress = loop.run_in_executor(
+                None,
+                subprocess.run,
+                [config.database.BACKUP_COMPRESSION_EXECUTABLE,
+                 backup_filename],
+            )
 
-        def tdc(fut: asyncio.Future):
-            if fut.exception():
-                logger.warning("Compression task failed")
-            else:
-                res: subprocess.CompletedProcess = fut.result()
-                if res.returncode:
-                    logger.warning(
-                        f"Compression execution error: {res.returncode}")
+            def tdc(fut: asyncio.Future):
+                if fut.exception():
+                    logger.warning("Compression task failed")
+                else:
+                    res: subprocess.CompletedProcess = fut.result()
+                    if res.returncode:
+                        logger.warning(
+                            f"Compression execution error: {res.returncode}")
 
-        t_compress.add_done_callback(tdc)
+            t_compress.add_done_callback(tdc)
+        else:
+            logger.warning(
+                f"NOT scheduling compression of {backup_filename} "
+                f"with less than {cpu_min} CPU(s)")
+
 
 if __name__ == '__main__':
     import pprint
