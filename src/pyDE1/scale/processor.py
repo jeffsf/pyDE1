@@ -9,13 +9,14 @@ SPDX-License-Identifier: GPL-3.0-only
 import asyncio
 import enum
 import logging
-
+import time
 
 from typing import Optional, List, Tuple, Coroutine, Callable
 from uuid import UUID
 
 from pyDE1.de1.c_api import API_MachineStates
 from pyDE1.de1.events import StateUpdate
+from pyDE1.event_manager.events import ConnectivityState
 from pyDE1.scanner import BleakScannerWrapped
 
 from pyDE1.dispatcher.resource import ConnectivityEnum
@@ -55,7 +56,7 @@ class ScaleProcessor (Singleton):
     # def __init__(self):
     #     pass
 
-    def _singleton_init(self, scale: Optional[Scale]=None):
+    def _singleton_init(self):
 
         self._scale: Optional[Scale] = None
         self._scale_weight_update_id: Optional[UUID] = None
@@ -66,7 +67,7 @@ class ScaleProcessor (Singleton):
         self._history_weight: List[float] = []
         self._history_lock = asyncio.Lock()
         # set_scale needs _history_lock
-        asyncio.create_task(self.set_scale(scale))
+        self._scale = None
         self._event_weight_and_flow_update = SubscribedEvent(self)
 
         # init of Estimator checks that the targets are present
@@ -85,6 +86,15 @@ class ScaleProcessor (Singleton):
             MedianWeight(self, '_median_weight', 11),
             MedianFlow(self, '_median_flow', 11, 5),
         ]
+
+        # This is a bit tricky, as self._scale is None
+        bare_scale = Scale()
+        asyncio.create_task(
+            bare_scale._event_connectivity.publish(
+                bare_scale._connectivity_change(
+                    arrival_time=time.time(),
+                    state=ConnectivityState.DISCONNECTED))
+        )
 
     @property
     def scale(self):
