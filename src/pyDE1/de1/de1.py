@@ -146,6 +146,11 @@ class DE1 (Singleton):
         asyncio.create_task(self._sleep_if_bored())
 
         self.prepare_for_connection(wipe_address=True)
+        asyncio.create_task(
+            self._event_connectivity.publish(
+                self._connectivity_change(arrival_time=time.time(),
+                                          state=ConnectivityState.DISCONNECTED))
+        )
 
     #
     # High-level initialization and re-initialization
