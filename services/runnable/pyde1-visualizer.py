@@ -77,7 +77,7 @@ class Config:
 
     class _Database:
         def __init__(self):
-            self.FILENAME = '/var/lib/pyDE1/pyDE1.sqlite3'
+            self.FILENAME = '/var/lib/pyde1/pyde1.sqlite3'
 
     def load_from_toml(self, filename: Optional[str] = None):
         if filename is None:

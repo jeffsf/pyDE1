@@ -23,6 +23,7 @@ from typing import Optional, NamedTuple, Dict, Deque
 
 import aiosqlite
 
+from pyDE1.config import config
 from pyDE1.de1.c_api import API_MachineStates
 from pyDE1.event_manager.event_manager import EventNotificationAction
 from pyDE1.exceptions import DE1TypeError
@@ -33,11 +34,6 @@ import pyDE1.database.insert as db_insert
 
 logger = logging.getLogger('DBNotifications')
 
-DB_DIR = '/var/lib/pyDE1'
-
-database_path = os.path.join(DB_DIR, 'pyDE1.sqlite3')
-
-# Don't worry about init for now
 
 def read_queue_to_queue(queue_to_get: multiprocessing.Queue,
                         queue_to_put: asyncio.Queue,
@@ -168,7 +164,7 @@ async def record_data(incoming: multiprocessing.Queue):
     for rb_class, rb in ROLLING_BUFFER_SIZE.items():
         rolling_buffers[rb_class] = deque([], rb)
 
-    async with aiosqlite.connect(database_path) as db:
+    async with aiosqlite.connect(config.database.FILENAME) as db:
         try:
             recording = False
             sequence_id = 'dummy'
@@ -302,7 +298,7 @@ async def create_history_record(flow_sequencer: FlowSequencer):
 
     t0 = time.time()
 
-    async with aiosqlite.connect(database_path) as db:
+    async with aiosqlite.connect(config.database.FILENAME) as db:
 
         profile_id = flow_sequencer.de1.latest_profile.id
 

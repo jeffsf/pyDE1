@@ -378,10 +378,25 @@ async def get_latest_espresso_id(db: aiosqlite.Connection) -> SequenceRow:
 
 if __name__ == '__main__':
 
-    db_file = '/var/lib/pyDE1/pyDE1.sqlite3'
+    import argparse
+
+    import pyDE1.config as config
+
+    ap = argparse.ArgumentParser(
+        description="""Main executable to start the pyDE1 core.
+
+        """
+        f"Default configuration file is at {config.DEFAULT_CONFIG_FILE}"
+    )
+    ap.add_argument('-c', type=str, help='Use as alternate config file')
+
+    args = ap.parse_args()
+
+    config.load_from_toml(args.c)
+
 
     async def run():
-        async with aiosqlite.connect(db_file) as db:
+        async with aiosqlite.connect(config.database.FILENAME) as db:
             t0 = time.time()
             sr: SequenceRow = await get_latest_espresso_id(db)
             lsf = await legacy_shot_file(sr.id, db)

@@ -167,7 +167,7 @@ class Config:
 
     class _Logging:
         def __init__(self):
-            self.LOG_DIRECTORY = '/var/log/pyDE1/'
+            self.LOG_DIRECTORY = '/var/log/pyde1/'
             # NB: The log file name is matched against [a-zA-Z0-9._-]
             self.LOG_FILENAME = 'combined.log'
             self.LEVEL_MAIN = logging.DEBUG
@@ -190,7 +190,7 @@ class Config:
 
     class _Database:
         def __init__(self):
-            self.FILENAME = '/var/lib/pyDE1/pyDE1.sqlite3'
+            self.FILENAME = '/var/lib/pyde1/pyde1.sqlite3'
             self.BACKUP_TIMEOUT = 60  # seconds
             self.BACKUP_COMPRESSION_EXECUTABLE = 'xz'
 

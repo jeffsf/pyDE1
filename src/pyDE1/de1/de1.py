@@ -807,7 +807,7 @@ class DE1 (Singleton):
                                                           str]):
         pbf = ProfileByFrames().from_json(profile)
         await self.upload_profile(pbf)
-        async with aiosqlite.connect('/var/lib/pyDE1/pyDE1.sqlite3') as db:
+        async with aiosqlite.connect(config.database.FILENAME) as db:
             await db_insert.profile(pbf, db, time.time())
             logger.info("Returned from db insert")
 
@@ -1448,7 +1448,7 @@ class DE1 (Singleton):
 
     async def set_profile_by_id(self, pid: str):
 
-        async with aiosqlite.connect('/var/lib/pyDE1/pyDE1.sqlite3') as db:
+        async with aiosqlite.connect(config.database.FILENAME) as db:
             cur: aiosqlite.Cursor = await db.execute(
                 'SELECT source, source_format FROM profile '
                 'WHERE id == :id', (pid,)

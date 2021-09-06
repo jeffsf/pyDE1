@@ -191,5 +191,5 @@ if __name__ == '__main__':
     #         '/home/ble-remote/devel/pyDE1/src/pyDE1/database/schema/schema.002.sql')
     # )
 
-    backup_db('/var/lib/pyDE1/pyDE1.sqlite3', '/home/ble-remote/bu.backup',
+    backup_db('/var/lib/pyde1/pyde1.sqlite3', '/home/ble-remote/bu.backup',
               asyncio.get_event_loop())

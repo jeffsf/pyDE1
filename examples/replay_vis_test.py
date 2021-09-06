@@ -28,9 +28,7 @@ from typing import NamedTuple, Union, List
 import paho.mqtt.client as mqtt
 from paho.mqtt.client import MQTTv5, MQTT_CLEAN_START_FIRST_ONLY
 
-from pyDE1.config import config
-
-MQTT_TOPIC_ROOT = 'KEpyDE1'
+MQTT_TOPIC_ROOT = 'vis_test'
 MQTT_CLIENT_ID = f"replay@{socket.gethostname()}[{os.getpid()}]"
 MQTT_BROKER_HOSTNAME = '::'
 MQTT_BROKER_PORT = 1883
@@ -39,6 +37,8 @@ MQTT_TLS_CONTEXT = None
 MQTT_KEEPALIVE = 60
 MQTT_USERNAME = None
 MQTT_PASSWORD = None
+
+from pyDE1.config import config
 
 database_uri = f"file:{config.database.FILENAME}?mode=ro"
 
@@ -167,11 +167,11 @@ def state_update_row_factory(cur: sqlite3.Cursor, row: sqlite3.Row):
 
 
 class SequencerGateNotificationRow (NamedTuple):
-    version:            str
-    sender:             str
-    arrival_time:       float
-    create_time:        float
-    event_time:         float
+    version:        str
+    sender:         str
+    arrival_time:   float
+    create_time:    float
+    event_time:     float
     #
     name:           str
     action:         str
@@ -427,23 +427,6 @@ mqtt_client.connect(host=MQTT_BROKER_HOSTNAME,
 if __name__ == '__main__':
 
     id = '87f17aa1-ea0a-41e7-aac0-fd042f9729db'
-
-    import argparse
-
-    from pyDE1.config import config
-
-    ap = argparse.ArgumentParser(
-        description="""Main executable to start the pyDE1 core.
-
-        """
-        f"Default configuration file is at {config.DEFAULT_CONFIG_FILE}"
-    )
-    ap.add_argument('-c', type=str, help='Use as alternate config file')
-
-    args = ap.parse_args()
-
-    config.load_from_toml(args.c)
-
 
     sst = get_sequence_start_time(id)
     now = time.time()
