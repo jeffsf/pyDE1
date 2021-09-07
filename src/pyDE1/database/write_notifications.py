@@ -207,9 +207,12 @@ async def record_data(incoming: multiprocessing.Queue):
                     data_dict = json.loads(data)
 
                 else:
-                    raise DE1TypeError(
-                        "Unrecognized data type passed for recording:"
-                        f"{type(data)}")
+                    if not process_shutdown_event.is_set():
+                        raise DE1TypeError(
+                            "Unrecognized data type passed for recording:"
+                            f"{type(data)}")
+                    else:
+                        continue
 
                 # Always keep the rolling buffers populated
                 # this way there is always pre-history available
