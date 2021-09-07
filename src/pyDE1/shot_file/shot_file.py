@@ -20,10 +20,7 @@ from pyDE1.event_manager import SubscribedEvent
 from pyDE1.de1.events import ShotSampleUpdate, ShotSampleWithVolumesUpdate
 from pyDE1.scale.events import WeightAndFlowUpdate
 
-# logger = logging.getLogger('ShotFile')
-
-import aiologger
-logger = aiologger.Logger.with_default_handlers()
+logger = logging.getLogger('ShotFile')
 
 
 async def basic_shot_sample_logger(ssu: ShotSampleWithVolumesUpdate):
