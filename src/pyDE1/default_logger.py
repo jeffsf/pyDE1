@@ -41,7 +41,8 @@ def initialize_default_logger(
 
     if log_queue is not None:
         lq = QueueHandler(log_queue)
-        lq.setFormatter(logging.Formatter(format_string))
+        # Formatting is done by the handler for QueueListener
+        # lq.setFormatter(logging.Formatter(format_string))
         lq.setLevel(logging.DEBUG)
         logging.getLogger('').addHandler(lq)
         logger.info(f"Enabled logging handler {lq}")

@@ -19,11 +19,15 @@ SPDX-License-Identifier: GPL-3.0-only
 import asyncio
 import atexit
 import logging
+import logging.handlers
 import multiprocessing
 import os
 import signal
 import threading
 import time
+import traceback
+
+from types import FrameType
 
 from pyDE1.api.outbound.mqtt import run_api_outbound
 from pyDE1.api.inbound.http import run_api_inbound
@@ -32,13 +36,13 @@ from pyDE1.controller import run_controller
 
 import pyDE1.default_logger
 
-from pyDE1.supervise import SupervisedExecutor, SupervisedProcess
+import pyDE1.shutdown_manager as sm
 
-from pyDE1.signal_handlers import add_handler_sigchld_show_processes, \
-    add_handler_shutdown_signals
+from pyDE1.supervise import SupervisedExecutor, SupervisedProcess
 
 from pyDE1.config import config
 from pyDE1.database.manage import check_schema
+
 
 def run():
 
@@ -46,7 +50,10 @@ def run():
 
     # NB: Can only be set once, make sure the top-level script uses
     # if __name__ == '__main__':
-    multiprocessing.set_start_method('spawn')
+    #   Not enough if importing something that imports multiprocessing
+    #   to avoid RuntimeError: context has already been set
+    # TODO: Replace this rather ugly hack
+    multiprocessing.set_start_method('spawn', force=True)
 
     loop = asyncio.get_event_loop()
     loop.set_debug(True)
@@ -62,71 +69,83 @@ def run():
     pyDE1.default_logger.set_some_logging_levels()
     config.set_logging()
 
-    check_schema(loop)
+    if not os.path.exists(config.logging.LOG_DIRECTORY):
+        logger.error(
+            "logfile_directory '{}' does not exist. Creating.".format(
+                os.path.realpath(config.logging.LOG_DIRECTORY)
+            )
+        )
+        # Will create intermediate directories
+        # Will not use "mode" on intermediates
+        os.makedirs(config.logging.LOG_DIRECTORY)
 
-    add_handler_sigchld_show_processes()
+    fq_logfile = os.path.join(config.logging.LOG_DIRECTORY,
+                              config.logging.LOG_FILENAME)
 
-    async def graceful_shutdown(signal: signal.Signals,
-                                loop: asyncio.AbstractEventLoop):
+    log_file_handler = logging.handlers.WatchedFileHandler(fq_logfile)
+    log_queue_listener = logging.handlers.QueueListener(log_queue,
+                                                        log_file_handler)
+    log_queue_formatter = logging.Formatter(
+        fmt="%(asctime)s %(levelname)s [%(processName)s] %(name)s: %(message)s"
+    )
+    log_file_handler.setFormatter(log_queue_formatter)
 
-        supervised_inbound_api_process.do_not_restart = True
-        supervised_outbound_api_process.do_not_restart = True
-        supervised_controller_process.do_not_restart = True
-        supervised_database_logger_process.do_not_restart = True
+    log_queue_listener.start()
 
-        t0 = time.time()
-        logger = logging.getLogger('Shutdown')
-        logger.info(f"{str(signal)} SHUTDOWN INITIATED "
-                    f"{multiprocessing.active_children()}")
-        logger.info("Terminate API processes")
-        for p in multiprocessing.active_children():
-            logger.info(f"Terminating {p}")
-            p.terminate()
-        logger.info("Waiting for processes to terminate")
-        again = True
-        while again:
-            t1 = time.time()
-            await asyncio.sleep(0.1)
-            ac = multiprocessing.active_children()
-            # logger.debug(ac)
-            again = len(ac) > 0 and (t1 - t0 < 5)
-            if not again:
-                logger.info(f"Elapsed: {t1 - t0:0.3f} sec")
-                if (t1 - t0 >= 5):
-                    print(f"timed out with active_children {ac}")
-                    for p in (ac):
-                        try:
-                            p.kill()
-                        except AttributeError:
-                            pass
-        logger.info("Terminating logging")
-        print("_terminate_logging.set()")
-        _terminate_logging.set()
-        print("loop.stop()")
-        loop.stop()
-        # print("loop.close()")
-        # loop.close()
+    def _sigchild_handler(signum: signal.Signals, frame: FrameType):
+        ac = multiprocessing.active_children()
+        logger.debug(
+            f"Active children: {ac}")
+        if sm.shutdown_underway.is_set() and len(ac) == 0:
+            logger.debug("Setting cleanup_complete")
+            sm.cleanup_complete.set()
 
-    add_handler_shutdown_signals(graceful_shutdown)
+    signal.signal(signal.SIGCHLD, _sigchild_handler)
+
+    def on_shutdown_underway_cleanup():
+        sm.shutdown_underway.wait()
+
+        # This is intentional as the .do_not_restart setter
+        # modifies the loop's readers
+        def _the_rest_sync():
+            logger.info("Setting do_not_restart")
+            for sp in (
+                    supervised_inbound_api_process,
+                    supervised_outbound_api_process,
+                    supervised_controller_process,
+                    supervised_database_logger_process,
+            ):
+                sp.do_not_restart = True
+
+            if sm.signal_rcvd is None:
+                sig = signal.SIGTERM
+            else:
+                sig = sm.signal_rcvd
+            for child in multiprocessing.active_children():
+                # sp.terminate() would work, but pass the signal received
+                logger.debug(f"os.kill {sig.name} {child.name}")
+                os.kill(child.pid, sig)
+
+        loop.call_soon_threadsafe(_the_rest_sync)
+
+    on_shutdown_wait_task = loop.run_in_executor(
+        None, on_shutdown_underway_cleanup)
+
+    sm.attach_signal_handler_to_loop(sm.shutdown, loop)
+
+    loop.set_exception_handler(sm.exception_handler)
 
     @atexit.register
     def kill_stragglers():
-        print("kill_stragglers()")
         procs = multiprocessing.active_children()
-        for p in procs:
-            print(f"Killing {p}")
-            p.kill()
-        print("buh-bye!")
+        if len(procs):
+            print(f"kill {len(procs)} stragglers")
+            for p in procs:
+                print(f"Killing {p}")
+                p.kill()
+            print("buh-bye!")
 
-    # These assume that the executor is threading
-    _rotate_logfile = threading.Event()
-    _terminate_logging = threading.Event()
-
-    def request_logfile_rotation(sig, frame):
-        logger.info("Request to rotate log received")
-        _rotate_logfile.set()
-
-    signal.signal(signal.SIGHUP, request_logfile_rotation)
+    check_schema(loop)
 
     inbound_pipe_controller, inbound_pipe_server = multiprocessing.Pipe()
 
@@ -190,75 +209,45 @@ def run():
     )
     supervised_controller_process.start()
 
-    #
-    # Now that the other processes are running, define the log handler
-    # this will eventually get moved out
-    #
-
-    def log_queue_reader_blocks(log_queue: multiprocessing.Queue,
-                                terminate_logging_event: threading.Event,
-                                rotate_log_event: threading.Event):
-
-        import email.utils
-
-        if not os.path.exists(config.logging.LOG_DIRECTORY):
-            logger.error(
-                "logfile_directory '{}' does not exist. Creating.".format(
-                    os.path.realpath(config.logging.LOG_DIRECTORY)
-                )
-            )
-            # Will create intermediate directories
-            # Will not use "mode" on intermediates
-            os.makedirs(config.logging.LOG_DIRECTORY)
-        fq_logfile = os.path.join(config.logging.LOG_DIRECTORY,
-                                  config.logging.LOG_FILENAME)
-        while not terminate_logging_event.is_set():
-            with open(file=fq_logfile, mode='a', buffering=1) as fh:
-                logger.info(
-                    f"Opening log file {email.utils.localtime().isoformat()}")
-                while not terminate_logging_event.is_set():
-                    record = log_queue.get()
-                    # LogRecord is what gets enqueued
-                    # TODO: Use QueueListener to further filter?
-                    fh.write(record.msg + "\n")
-                    try:
-                        log_queue.task_done()
-                    except AttributeError:
-                        # multiprocessing.Queue() does not have .task_done()
-                        pass
-
-                    if rotate_log_event.is_set():
-                        # TODO: Can this be formatted?
-                        fh.write(f"Rotating log file\n")
-                        fh.flush()
-                        fh.close()
-                        rotate_log_event.clear()
-                        break
-
-    # from pyDE1.watchdog import watchdog
-    # SupervisedTask(watchdog)
-
-    supervisor_lqr = SupervisedExecutor(None,
-                                        log_queue_reader_blocks,
-                                        log_queue,
-                                        _terminate_logging,
-                                        _rotate_logfile
-                                        )
-
     loop.run_forever()
 
-    print("after loop.run_forever()")
-    # explicit TPE shutdown hangs
+    logger.debug("After loop.run_forever()")
+    # explicit TPE (thread pool executor) shutdown hangs
     # print("shutdown TPE")
     # logging_tpe.shutdown(cancel_futures=True)
     # print("after shutdown TPE")
-    print(f"active_children: {multiprocessing.active_children()}")
-    print("loop.close()")
+    ac = multiprocessing.active_children()
+    if len(ac):
+        level = logging.ERROR
+    else:
+        level = logging.DEBUG
+    logger.log(level, f"Active_children: {multiprocessing.active_children()}")
 
-    loop.close()
+    # loop.close()
+    #
+    # # loop.close() seems to be the source of a kill-related exit code
+    # logger.debug("After loop.close()")
 
-    # loop.close() seems to be the source of a kill-related exit code
-    print("after loop.close()")
+    procs = multiprocessing.active_children()
+    if len(procs):
+        logger.error(f"Need to kill {len(procs)} stragglers")
+        for p in procs:
+            logger.warning(f"Killing {p}")
+            p.kill()
+
+    ev_str = ''
+    try:
+        ev_str = signal.Signals(-sm.exit_value).name
+    except ValueError:
+        if sm.exit_value == os.EX_SOFTWARE:
+            ev_str = 'os.EX_SOFTWARE'
+
+    logger.info(f"Will exit with {sm.exit_value} {ev_str}")
+    log_queue_listener.stop()
+    # Thread needs a bit to shut down
+    # TODO: Can/should this thread be joined?
+    time.sleep(1)
+    exit(sm.exit_value)
 
 
 if __name__ == "__main__":

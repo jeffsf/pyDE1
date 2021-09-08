@@ -29,24 +29,33 @@ import logging
 import os
 import pprint
 import signal
-import threading
+import multiprocessing
 import traceback
 
 from typing import Callable, Optional, Coroutine, Iterable, Union
 
 # Set when a shutdown is requested
 # Does not start a shutdown when set
-shutdown_underway = threading.Event()
+shutdown_underway = multiprocessing.Event()
 
 # Should be set by app-specific clean-up routines
-cleanup_complete = threading.Event()
+cleanup_complete = multiprocessing.Event()
 
 # Give up on waiting for cleanup_complete.is_set() after
 CLEANUP_WAIT = 5.0  # seconds
 
 exit_value = os.EX_OK
+signal_rcvd = None
 
 logger = logging.getLogger('shutdown')
+
+default_signal_set = (
+    signal.SIGHUP,
+    signal.SIGINT,
+    signal.SIGQUIT,
+    signal.SIGABRT,
+    signal.SIGTERM,
+)
 
 
 def task_to_string(t: asyncio.Task):
@@ -59,8 +68,10 @@ def exception_handler(loop: asyncio.AbstractEventLoop,
         level = logging.WARNING
     else:
         level = logging.CRITICAL
+    exc_class = context['exception'].__class__
     logger.log(level,
-        f"Uncaught exception: {pprint.pformat(context)}")
+        f"Uncaught exception {exc_class}:\n"
+        f"{pprint.pformat(context)}")
     if not shutdown_underway.is_set():
         shutdown_underway.set()
         loop.create_task(shutdown(None, loop))
@@ -69,14 +80,17 @@ def exception_handler(loop: asyncio.AbstractEventLoop,
 async def shutdown(sig: Optional[signal.Signals],
                    loop: asyncio.AbstractEventLoop):
     global exit_value
+    global signal_rcvd
+    signal_rcvd = sig
 
     if shutdown_underway.is_set():
         if sig is not None:
             name_str = f"from {sig.name}"
         else:
             name_str = " (no signal passed)"
-        logger.info(f"Ignoring request to shutdown {name_str}")
+        logger.info(f"Already shutting down, ignoring {name_str}")
         return
+
     shutdown_underway.set() # Cleanup should trigger off this
     graceful = (sig == signal.SIGTERM)
 
@@ -107,17 +121,24 @@ async def shutdown(sig: Optional[signal.Signals],
     me = asyncio.current_task(loop)
     tasks_to_cancel = [t for t in asyncio.all_tasks(loop)
                        if t is not me]
+    logger.info(f"Cancelling {len(tasks_to_cancel)} running tasks")
     for t in tasks_to_cancel:
         logger.info(f"Cancelling {task_to_string(t)}")
-        t.cancel()
+        try:
+            t.cancel("Shutdown underway")
+        except asyncio.exceptions.CancelledError:
+            pass
     await asyncio.gather(*tasks_to_cancel, return_exceptions=True)
 
-    logger.info("Stopping loop")
+    logger.info("Stopping asyncio loop")
+
     loop.stop()
     # .close() here raises RuntimeError('Cannot close a running event loop')
     # logger.info("Closing loop")
     # loop.close()
-    if sig:
+    if graceful:
+        exit_value = os.EX_OK
+    elif sig:
         exit_value = -sig.value
     else:
         exit_value = os.EX_SOFTWARE
@@ -128,27 +149,9 @@ def attach_signal_handler_to_loop(signal_handler: Callable[
                                   loop: asyncio.AbstractEventLoop,
                                   signals: Optional[Union[
                                       Iterable[signal.Signals],
-                                      signal.Signals]] = None):
-    """
-    if signals is None:
-        signals = (
-            signal.SIGHUP,
-            signal.SIGINT,
-            signal.SIGQUIT,
-            signal.SIGABRT,
-            signal.SIGTERM,
-        )
-    """
-    if signals is None:
-        signals = (
-            signal.SIGHUP,
-            signal.SIGINT,
-            signal.SIGQUIT,
-            signal.SIGABRT,
-            signal.SIGTERM,
-        )
+                                      signal.Signals]] = default_signal_set):
 
-    elif isinstance(signals, signal.Signals):
+    if isinstance(signals, signal.Signals):
         signals = (signals,)
 
     # See https://www.roguelynn.com/words/asyncio-graceful-shutdowns/

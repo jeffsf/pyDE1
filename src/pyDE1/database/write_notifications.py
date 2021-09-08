@@ -27,8 +27,9 @@ from pyDE1.config import config
 from pyDE1.de1.c_api import API_MachineStates
 from pyDE1.event_manager.event_manager import EventNotificationAction
 from pyDE1.exceptions import DE1TypeError
-from pyDE1.signal_handlers import process_shutdown_event
 from pyDE1.dispatcher.dispatcher import QUEUE_TOO_DEEP
+
+import pyDE1.shutdown_manager as sm
 
 import pyDE1.database.insert as db_insert
 
@@ -58,7 +59,7 @@ async def async_queue_get(from_queue: multiprocessing.Queue):
     loop = asyncio.get_running_loop()
     done = False
     data = None  # For exit on shutdown
-    while not done and not process_shutdown_event.is_set():
+    while not done and not sm.shutdown_underway.is_set():
         try:
             # t0 = time.time()
             data = await loop.run_in_executor(
@@ -70,7 +71,7 @@ async def async_queue_get(from_queue: multiprocessing.Queue):
             done = True
         except queue.Empty:
             pass
-    if process_shutdown_event.is_set():
+    if sm.shutdown_underway.is_set():
         logger.info("Shut down async_queue_get")
     return data
 
@@ -114,9 +115,6 @@ async def dump_rolling_buffers_to_database(rolling_buffers: Dict[str, Deque],
     with rolling_buffers_lock:
         snapshot = deepcopy(rolling_buffers)
 
-    # aiol = logging.getLogger('aiosqlite')
-    # old_level = aiol.level
-    # aiol.setLevel(logging.DEBUG)
     t0 = time.time()
     count = 0
     async with db.cursor() as cur:
@@ -135,7 +133,6 @@ async def dump_rolling_buffers_to_database(rolling_buffers: Dict[str, Deque],
         await db.commit()
     t1 = time.time()
     logger.info(f"Dump of {count} notifications in {(t1-t0)*1000:.3f} ms")
-    # aiol.setLevel(old_level)
 
 
 async def record_data(incoming: multiprocessing.Queue):
@@ -171,7 +168,7 @@ async def record_data(incoming: multiprocessing.Queue):
             waiting_for_id = None
             consider_sequence_complete.set()    # Previous sequence is "done"
 
-            while not process_shutdown_event.is_set():
+            while not sm.shutdown_underway.is_set():
                 data = await async_queue_get(incoming)
 
                 if isinstance(data, RecorderControl):
@@ -207,7 +204,7 @@ async def record_data(incoming: multiprocessing.Queue):
                     data_dict = json.loads(data)
 
                 else:
-                    if not process_shutdown_event.is_set():
+                    if not sm.shutdown_underway.is_set():
                         raise DE1TypeError(
                             "Unrecognized data type passed for recording:"
                             f"{type(data)}")
@@ -249,7 +246,7 @@ async def record_data(incoming: multiprocessing.Queue):
                     except ValueError:
                         pass
 
-            if process_shutdown_event.is_set():
+            if sm.shutdown_underway.is_set():
                 logger.info("Shut down record_data() loop")
 
         except asyncio.CancelledError as e:

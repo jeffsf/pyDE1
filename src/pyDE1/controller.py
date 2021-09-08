@@ -35,14 +35,12 @@ def run_controller(config: pyDE1.config.Config,
     from pyDE1.dispatcher.dispatcher import register_read_pipe_to_queue, \
         start_request_queue_processor, start_response_queue_processor
 
-    from pyDE1.supervise import SupervisedTask
-
     from pyDE1.event_manager import SubscribedEvent
 
     from pyDE1.default_logger import initialize_default_logger, \
         set_some_logging_levels
 
-    from pyDE1.signal_handlers import add_handler_shutdown_signals
+    import pyDE1.shutdown_manager as sm
 
     initialize_default_logger(log_queue)
     set_some_logging_levels()
@@ -56,44 +54,45 @@ def run_controller(config: pyDE1.config.Config,
     loop = asyncio.get_event_loop()
     loop.set_debug(True)
 
-    _shutting_down = False
-    _disconnect_set = set()
+    def on_shutdown_underway_cleanup():
+        logger.info("Shutdown wait beginning")
+        sm.shutdown_underway.wait()
 
-    signal.signal(signal.SIGHUP, signal.SIG_IGN)
+        async def _the_rest():
+            t0 = time.time()
+            de1 = DE1()
 
-    async def shutdown_signal_handler(signal: signal.Signals,
-                             loop: asyncio.AbstractEventLoop):
-        nonlocal _shutting_down
-        logger = logging.getLogger('ControllerShutdown')
-        if _shutting_down:
-            logger.info("Already shutting down")
-            return
-        _shutting_down = True
-        logger.info(f"{str(signal)} SHUTDOWN INITIATED")
-        logger.info("Terminate API processes")
-        t0 = time.time()
-        de1 = DE1()
+            logger.debug(
+                f"DE1 current state: {de1.current_state.__repr__()}")
+            if de1.current_state not in (
+                    API_MachineStates.Sleep,
+                    API_MachineStates.GoingToSleep,
+                    API_MachineStates.NoRequest,
+            ):
+                if de1.is_connected:
+                    logger.info("Sleep DE1")
+                    await de1.sleep()
+                else:
+                    logger.warning("Unable to sleep DE1, not connected")
+            logger.info(f"Disconnecting devices")
+            # for device in _disconnect_set:
+            #     await device.disconnect()
+            for device in [DE1(), ScaleProcessor().scale]:
+                if device is not None:
+                    await device.disconnect()
+            t1 = time.time()
+            logger.info(f"Controller elapsed: {t1 - t0:0.3f} sec")
+            logger.info("Setting cleanup_complete")
+            sm.cleanup_complete.set()
 
-        if de1.is_connected and de1.current_state not in (
-            API_MachineStates.Sleep,
-            API_MachineStates.GoingToSleep,
-            API_MachineStates.NoRequest,
-        ):
-            logger.info("Sleep DE1")
-            await de1.sleep()
-        logger.info(f"Disconnecting devices")
-        # for device in _disconnect_set:
-        #     await device.disconnect()
-        for device in [DE1(), ScaleProcessor().scale]:
-            if device is not None:
-                await device.disconnect()
-        t1 = time.time()
-        logger.info(f"Controller elapsed: {t1 - t0:0.3f} sec")
+        asyncio.run_coroutine_threadsafe(_the_rest(), loop)
 
-        # NB:
-        loop.stop()
+    on_shutdown_wait_task = loop.run_in_executor(
+        None, on_shutdown_underway_cleanup)
 
-    add_handler_shutdown_signals(shutdown_signal_handler)
+    sm.attach_signal_handler_to_loop(sm.shutdown, loop)
+
+    loop.set_exception_handler(sm.exception_handler)
 
     request_queue = asyncio.Queue()
     response_queue = asyncio.Queue()

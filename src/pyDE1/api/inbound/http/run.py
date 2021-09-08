@@ -24,6 +24,7 @@ from pyDE1.supervise import SupervisedTask, SupervisedExecutor
 
 import pyDE1.config
 
+
 def run_api_inbound(config: pyDE1.config.Config,
                     log_queue: multiprocessing.Queue,
                     api_pipe: mpc.Connection):
@@ -43,6 +44,7 @@ def run_api_inbound(config: pyDE1.config.Config,
     from traceback import TracebackException
     from typing import Optional, Union, NamedTuple, Dict, Pattern
 
+    import pyDE1.shutdown_manager as sm
     from pyDE1.utils import timestamp_to_str_with_ms
 
     logger = logging.getLogger(multiprocessing.current_process().name)
@@ -73,34 +75,25 @@ def run_api_inbound(config: pyDE1.config.Config,
     from pyDE1.dispatcher.payloads import APIRequest, APIResponse, HTTPMethod
     from pyDE1.dispatcher.validate import validate_patch_return_targets
 
-    from pyDE1.utils import cancel_tasks_by_name
-
-    from pyDE1.signal_handlers import add_handler_shutdown_signals
-
     logger = logging.getLogger(multiprocessing.current_process().name)
 
     loop = asyncio.get_event_loop()
     loop.set_debug(True)
 
-    signal.signal(signal.SIGHUP, signal.SIG_IGN)
-
-    async def shutdown_signal_handler(signal: signal.Signals,
-                                      loop: asyncio.AbstractEventLoop):
-        logger = logging.getLogger('HTTPShutdown')
-        logger.info(f"{str(signal)} SHUTDOWN INITIATED")
+    def on_shutdown_underway_cleanup():
+        logger.info("Shutdown wait beginning")
+        sm.shutdown_underway.wait()
         logger.info("Shutting down HTTP server")
         server.shutdown()
-        logger.info("Shutting down other tasks")
-        cancel_tasks_by_name('', starts_with=True)
-        logger.info("Stopping loop")
-        loop.stop()
-        logger.info("Loop stopped, closing this process")
-        # AttributeError: 'NoneType' object has no attribute 'kill'
-        # multiprocessing.current_process().kill()
-        multiprocessing.current_process().close()
-        logger.info("Process closed")
+        logger.info("Setting cleanup_complete")
+        sm.cleanup_complete.set()
 
-    add_handler_shutdown_signals(shutdown_signal_handler)
+    on_shutdown_wait_task = loop.run_in_executor(
+        None, on_shutdown_underway_cleanup)
+
+    sm.attach_signal_handler_to_loop(sm.shutdown, loop)
+
+    loop.set_exception_handler(sm.exception_handler)
 
     async def heartbeat():
         while True:

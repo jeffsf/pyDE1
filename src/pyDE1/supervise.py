@@ -42,6 +42,7 @@ class SupervisedWork:
         self._logger = logging.getLogger(
             f"{self.__class__.__name__}.{self._name}")
         self._work = None
+        self._cancelled_error: Optional[asyncio.CancelledError] = None
         self._restart_count = 0
         self._restart_count_limit = 2
 
@@ -51,15 +52,25 @@ class SupervisedWork:
             self._logger.info(f"Starting")
         else:
             exc = task.exception()
-            if exc is None:
-                self._logger.info(f"Completed without exception")
+            if exc is None \
+                    and not task.cancelled() \
+                    and not self._cancelled_error:
+                self._logger.info(
+                    f"Exiting as completed without exception")
                 return
-            elif isinstance(exc, asyncio.CancelledError):
-                self._logger.info(f"Exiting as cancelled {exc}")
+            # asyncio.CancelledError == asyncio.exceptions.CancelledError
+            # True
+            elif self._cancelled_error:
+                self._logger.info(
+                    f"Exiting as cancelled with '{self._cancelled_error}'")
+                return
+            elif task.cancelled():
+                self._logger.info(
+                    f"Exiting as task.cancelled()")
                 return
             else:
-                self._logger.exception(f"Task failed with exception:",
-                                       exc_info=exc)
+                self._logger.exception(
+                    f"Task failed with exception:", exc_info=exc)
                 self._restart_count += 1
                 if self._restart_count > self._restart_count_limit:
                     self._logger.critical("Too many restarts, abandoning")
@@ -87,8 +98,17 @@ class SupervisedTask (SupervisedWork):
 
     def _create_work(self) -> T_Work:
         loop = asyncio.get_event_loop()
+        async def wrapped(st: SupervisedTask):
+            inner_task = st._routine(*st._args, **st._kwargs)
+            try:
+                await inner_task
+            except asyncio.CancelledError as e:
+                st._logger.debug(
+                    f"{e}: {inner_task}")
+                st._cancelled_error = e
+
         work = loop.create_task(
-            self._routine(*self._args, **self._kwargs),
+            wrapped(self),
             name=camelcase(self._name)
         )
         return work
