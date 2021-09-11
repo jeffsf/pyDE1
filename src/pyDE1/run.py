@@ -85,10 +85,10 @@ def run():
     log_file_handler = logging.handlers.WatchedFileHandler(fq_logfile)
     log_queue_listener = logging.handlers.QueueListener(log_queue,
                                                         log_file_handler)
-    log_queue_formatter = logging.Formatter(
-        fmt="%(asctime)s %(levelname)s [%(processName)s] %(name)s: %(message)s"
+    log_file_formatter = logging.Formatter(
+        fmt=config.logging.FORMAT_MAIN
     )
-    log_file_handler.setFormatter(log_queue_formatter)
+    log_file_handler.setFormatter(log_file_formatter)
 
     log_queue_listener.start()
 

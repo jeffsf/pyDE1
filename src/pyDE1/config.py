@@ -170,14 +170,26 @@ class Config:
             self.LOG_DIRECTORY = '/var/log/pyde1/'
             # NB: The log file name is matched against [a-zA-Z0-9._-]
             self.LOG_FILENAME = 'combined.log'
+            self.FORMAT_MAIN = "%(asctime)s %(levelname)s [%(processName)s] " \
+                    "%(name)s: %(message)s"
+            self.FORMAT_STDERR = "%(levelname)s [%(processName)s] " \
+                    "%(name)s: %(message)s"
             self.LEVEL_MAIN = logging.DEBUG
+            self.LEVEL_STDERR = logging.WARNING
             self.LEVEL_MQTT = logging.INFO
             self.LEVEL_UPLOAD = logging.INFO
 
     def set_logging(self):
-        # TODO: Collect these together
-        logging.getLogger().setLevel(self.logging.LEVEL_MAIN)
-
+        # TODO: Clean up logging, in general
+        formatter_main = logging.Formatter(fmt=config.logging.FORMAT_MAIN)
+        formatter_stderr = logging.Formatter(fmt=config.logging.FORMAT_STDERR)
+        root_logger = logging.getLogger()
+        root_logger.setLevel(self.logging.LEVEL_MAIN)
+        for handler in root_logger.handlers:
+            if isinstance(handler, logging.StreamHandler) \
+                    and handler.stream.name == '<stderr>':
+                handler.setLevel(self.logging.LEVEL_STDERR)
+                handler.setFormatter(formatter_stderr)
 
     class _Bluetooth:
         def __init__(self):

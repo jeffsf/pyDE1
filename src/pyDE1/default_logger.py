@@ -15,11 +15,13 @@ from typing import Optional
 
 
 def set_some_logging_levels():
+    asyncio_logger = logging.getLogger('asyncio')
+    asyncio_logger.setLevel(logging.INFO)
+    bleak_logger = logging.getLogger('bleak')
+    bleak_logger.setLevel(logging.INFO)
     logging.getLogger(multiprocessing.current_process().name).info(
-        "Setting asyncio and bleak logging to INFO"
+        f"Levels: {asyncio_logger}, {bleak_logger}"
     )
-    logging.getLogger('asyncio').setLevel(logging.INFO)
-    logging.getLogger('bleak').setLevel(logging.INFO)
 
 
 def initialize_default_logger(
