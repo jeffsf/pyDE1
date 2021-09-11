@@ -22,6 +22,8 @@ from typing import Union, Callable
 from bleak import BleakClient
 from bleak.backends.device import BLEDevice
 
+from pyDE1.btcontrack import persist_connection_file, remove_connection_file
+
 logger = logging.getLogger('BCWrapper')
 
 
@@ -84,6 +86,7 @@ class BleakClientWrapped (BleakClient):
             #         f"Unable to disconnect {self.name} at {self.address}")
 
     async def connect(self, **kwargs) -> bool:
+        persist_connection_file(self.address)
         atexit.register(self.sync_disconnect)
         retval = await super(BleakClientWrapped, self).connect(**kwargs)
         if retval:
@@ -98,6 +101,7 @@ class BleakClientWrapped (BleakClient):
             logger.debug("Unregistering atexit disconnect "
                          f"{self.name} at {self.address}")
             atexit.unregister(self.sync_disconnect)
+            remove_connection_file(self.address)
         return retval
 
     # TODO: How to handle unexpected disconnects?

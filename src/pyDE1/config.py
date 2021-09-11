@@ -186,6 +186,10 @@ class Config:
             self.DISCONNECT_TIMEOUT = 5  # Seconds
             self.SCAN_CACHE_EXPIRY = 300  # Seconds, probably too long
             self.RECONNECT_MAX_INTERVAL = 10 # Seconds
+            # Files that hold the Bluetooth ID of connected devices
+            # for potential cleanup by supervisor scripts
+            self.ID_FILE_DIRECTORY = '/var/lib/pyde1/'
+            self.ID_FILE_SUFFIX = '.btid'
 
 
     class _Database:
