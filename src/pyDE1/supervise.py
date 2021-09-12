@@ -16,8 +16,12 @@ SPDX-License-Identifier: GPL-3.0-only
 import asyncio
 import logging
 import multiprocessing
+import time
+import traceback
 from concurrent.futures import Executor, ThreadPoolExecutor
 from typing import Union, Awaitable, Callable, Optional, Mapping
+
+import pyDE1.shutdown_manager as sm
 
 
 def camelcase(underscored: str):
@@ -43,8 +47,25 @@ class SupervisedWork:
             f"{self.__class__.__name__}.{self._name}")
         self._work = None
         self._cancelled_error: Optional[asyncio.CancelledError] = None
-        self._restart_count = 0
-        self._restart_count_limit = 2
+        self._start_time_list = []
+        self._restart_count_limit = 2   # No more than 2 restarts in
+        self._restart_count_window = 20 # seconds
+
+    def _too_many_restarts(self):
+        retval = False
+        if len(self._start_time_list) > self._restart_count_limit:
+            n_ago = self._start_time_list[-(self._restart_count_limit + 1)]
+            dt = time.time() - n_ago
+            retval = dt < self._restart_count_window
+        return retval
+
+    def _record_start(self):
+        # For now, just use a simple append
+        self._start_time_list.append(time.time())
+        # but check if it gets crazy long
+        if len(self._start_time_list) > 2 * self._restart_count_limit:
+            self._logger.warning(
+                f"Start-time list seems long: {len(self._start_time_list)}")
 
     # Subclasses should self-start to be consistent with unsupervised calls
     def _start(self, task: Optional[T_Work] = None):
@@ -71,13 +92,19 @@ class SupervisedWork:
             else:
                 self._logger.exception(
                     f"Task failed with exception:", exc_info=exc)
-                self._restart_count += 1
-                if self._restart_count > self._restart_count_limit:
+                if self._too_many_restarts():
                     self._logger.critical("Too many restarts, abandoning")
+                    self._logger.critical("Calling shutdown")
+                    loop = asyncio.get_event_loop()
+                    if loop.is_running():
+                        loop.create_task(sm.shutdown(None, loop))
+                    else:
+                        loop.run_until_complete(sm.shutdown(None, loop))
                     return
                 self._logger.info(f"Restarting")
 
         self._work = self._create_work()
+        self._record_start()
         self._work.add_done_callback(self._start)
 
         return self  # Allows sw = SupervisedWork(routine, arg_list).start()
@@ -178,13 +205,43 @@ class SupervisedProcess:
         self._do_not_restart = do_not_restart
         self._logger = logging.getLogger(f"SupervisedProcess.{self._name}")
         self._process: Optional[multiprocessing.Process] = None
-        self._restart_count = 0
-        self._restart_count_limit = 2
+        self._start_time_list = []
+        self._restart_count_limit = 2  # No more than 2 restarts in
+        self._restart_count_window = 20  # seconds
 
+    def _too_many_restarts(self):
+        retval = False
+        if len(self._start_time_list) > self._restart_count_limit:
+            n_ago = self._start_time_list[-(self._restart_count_limit + 1)]
+            dt = time.time() - n_ago
+            retval = dt < self._restart_count_window
+        return retval
+
+    def _record_start(self):
+        # For now, just use a simple append
+        self._start_time_list.append(time.time())
+        # but check if it gets crazy long
+        if len(self._start_time_list) > 2 * self._restart_count_limit:
+            self._logger.warning(
+                f"Start-time list seems long: {len(self._start_time_list)}")
+
+    def _wrap_target(self, *args, **kwargs):
+        try:
+            self._target(*args, **kwargs)
+        except Exception as exc:
+            tbe = traceback.TracebackException.from_exception(exc)
+            self._logger.error(
+                f"Shutting down on exception: {''.join(tbe.format())}")
+            if (loop := asyncio.get_event_loop()).is_running():
+                self._logger.debug(f"Have running loop: {loop}")
+                loop.create_task(sm.shutdown(None, loop))
+            else:
+                self._logger.debug("No running loop")
+                loop.run_until_complete(sm.shutdown(None, loop))
 
     def _create_process(self):
         self._process = multiprocessing.Process(
-            target=self._target,
+            target=self._wrap_target,
             name=self._name,
             args=self._args,
             kwargs=self._kwargs,
@@ -211,16 +268,22 @@ class SupervisedProcess:
         if self._process is None:
             self._logger.info(f"Starting")
         else:
-            self._restart_count += 1
-            if self._restart_count > self._restart_count_limit:
+            if self._too_many_restarts():
                 self._logger.critical("Too many restarts, abandoning")
                 self.do_not_restart = True
+                self._logger.critical("Calling shutdown")
+                loop = asyncio.get_event_loop()
+                if loop.is_running():
+                    loop.create_task(sm.shutdown(None, loop))
+                else:
+                    loop.run_until_complete(sm.shutdown(None, loop))
                 return
             else:
                 self._logger.info(f"Restarting")
 
         self._create_process()
         self._process.start()
+        self._record_start()
         self._logger.info(f"Started: {self._process}")
 
         if not self.do_not_restart:

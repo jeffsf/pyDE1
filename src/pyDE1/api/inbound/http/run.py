@@ -14,12 +14,17 @@ import multiprocessing
 import multiprocessing.connection as mpc
 
 # TODO: import * is only allowed at the  module level
+import asyncio
+import os
+import traceback
+
 from pyDE1.exceptions import *
 
 # Right now, this is all "sync" processing. As it is a benefit to only have
 # one request pending at a time, this shouldn't be a big problem.
 # Going to async for the "second half" of waiting for the response
 # might be a way to provide a timeout and prevent permanent blocking.
+
 from pyDE1.supervise import SupervisedTask, SupervisedExecutor
 
 import pyDE1.config
@@ -84,7 +89,10 @@ def run_api_inbound(config: pyDE1.config.Config,
         logger.info("Shutdown wait beginning")
         sm.shutdown_underway.wait()
         logger.info("Shutting down HTTP server")
-        server.shutdown()
+        try:
+            server.shutdown()
+        except (NameError, AttributeError):
+            pass
         logger.info("Setting cleanup_complete")
         sm.cleanup_complete.set()
 
@@ -492,9 +500,13 @@ def run_api_inbound(config: pyDE1.config.Config,
             self.queue_and_respond(req)
             return
 
+    # try:
     server = http.server.HTTPServer((config.http.SERVER_HOST,
                                      config.http.SERVER_PORT),
                                     RequestHandler)
+
+    # Not clear why execution continues even with
+    #   OSError: [Errno 98] Address already in use
 
     # As this may be a restart, ensure that there are not pending responses
     while api_pipe.poll():
