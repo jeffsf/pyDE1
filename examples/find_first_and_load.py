@@ -11,6 +11,10 @@ thread and run the MQTT client in its own thread.
 """
 from pyDE1.event_manager.events import ConnectivityState
 
+import warnings
+warnings.warn('find_first_and_load.py is deprecated, "overtaken by events"',
+              category=DeprecationWarning)
+
 DISCONNECT_AT_END = True
 
 
