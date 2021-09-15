@@ -148,13 +148,20 @@ def run_api_outbound(config: pyDE1.config.Config,
 
     mqtt_client.enable_logger(client_logger)
 
+    if config.mqtt.USERNAME is not None:
+        logger.info(f"Connecting with username '{config.mqtt.USERNAME}'")
+        mqtt_client.username_pw_set(
+            username=config.mqtt.USERNAME,
+            password=config.mqtt.PASSWORD
+        )
+
     mqtt_client.connect(host=config.mqtt.BROKER_HOSTNAME,
-                   port=config.mqtt.BROKER_PORT,
-                   keepalive=config.mqtt.KEEPALIVE,
-                   bind_address="",
-                   bind_port=0,
-                   clean_start=MQTT_CLEAN_START_FIRST_ONLY,
-                   properties=None)
+                        port=config.mqtt.BROKER_PORT,
+                        keepalive=config.mqtt.KEEPALIVE,
+                        bind_address="",
+                        bind_port=0,
+                        clean_start=MQTT_CLEAN_START_FIRST_ONLY,
+                        properties=None)
 
     mqtt_client.loop_start()
 
