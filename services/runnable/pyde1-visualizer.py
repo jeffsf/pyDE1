@@ -25,6 +25,7 @@ import requests
 from requests.auth import HTTPBasicAuth, HTTPDigestAuth
 
 import toml
+from pyDE1.config_toml import ConfigToml
 
 import pyDE1.shutdown_manager as sm
 from pyDE1.de1.c_api import API_MachineStates, API_Substates
@@ -36,11 +37,13 @@ from pyDE1.shot_file.legacy import legacy_shot_file
 
 # The default config file can be missing without error
 # If specified on the command line and missing is fatal
-DEFAULT_CONFIG_FILE = '/usr/local/etc/pyde1/pyde1-visualizer.conf'
 
-class Config:
+class Config (ConfigToml):
+
+    DEFAULT_CONFIG_FILE = '/usr/local/etc/pyde1/pyde1-visualizer.conf'
 
     def __init__(self):
+        super(Config, self).__init__()
         self.database = self._Database()
         self.logging = self._Logging()
         self.mqtt = self._MQTT()
@@ -49,7 +52,7 @@ class Config:
     # This craziness is so pyCharm autocompletes
     # Otherwise typing.SimpleNamespace() would be sufficient
 
-    class _MQTT:
+    class _MQTT (ConfigToml._Loadable):
         def __init__(self):
             self.TOPIC_ROOT = 'pyDE1'
             self.CLIENT_ID_PREFIX = 'pyde1-visualizer'
@@ -62,12 +65,12 @@ class Config:
             self.PASSWORD = None
             self.DEBUG = False
 
-    class _Visualizer:
+    class _Visualizer (ConfigToml._Loadable):
         def __init__(self):
             self.USERNAME = 'you@example.com'
             self.PASSWORD = 'your password or upload token here'
 
-    class _Logging:
+    class _Logging (ConfigToml._Loadable):
         def __init__(self):
             self.LEVEL_MAIN = logging.INFO
             self.LEVEL_MQTT = logging.INFO
@@ -75,52 +78,9 @@ class Config:
             self.SHOW_DATE = True  # Unimplemented
             self.SHOW_TIME = True  # Unimplemented
 
-    class _Database:
+    class _Database (ConfigToml._Loadable):
         def __init__(self):
             self.FILENAME = '/var/lib/pyde1/pyde1.sqlite3'
-
-    def load_from_toml(self, filename: Optional[str] = None):
-        if filename is None:
-            filename = DEFAULT_CONFIG_FILE
-        parsed = {}
-        try:
-            parsed = toml.load(filename)
-        except FileNotFoundError as e:
-            if filename != DEFAULT_CONFIG_FILE:
-                logger.critical(
-                    f"Unable to open config file '{filename}', exiting.")
-                raise e
-            else:
-                logger.warning(
-                    f"Could not find default config file {DEFAULT_CONFIG_FILE}")
-                return
-
-        except Exception as e:
-            logger.critical(
-                f"Error parsing config from '{filename}', exiting.")
-            raise e
-
-        for table, kv_dict in parsed.items():
-            lc_table = table.lower()
-            try:
-                section = getattr(self, lc_table)
-                for k,v in kv_dict.items():
-                    uc_key = k.upper()
-                    if hasattr(section, uc_key):
-                        if lc_table == 'logging':
-                            if uc_key.startswith('LEVEL_'):
-                                if isinstance(v, str):
-                                    v = logging._nameToLevel[
-                                        v.removeprefix('logging.')]
-                        setattr(section, uc_key, v)
-                    else:
-                        logger.warning(
-                            f"Config: '{k}' is not valid in [{table}], ignoring.")
-            except KeyError:
-                logger.warning(
-                    f"Config: '{table}' is not a valid config table, ignoring.")
-
-        logger.info(f"Config loaded from {filename}")
 
 
 config = Config()
@@ -443,7 +403,7 @@ if __name__ == '__main__':
         {config.mqtt.TOPIC_ROOT}/VisualizerUpload
         
         """
-        f"Default configuration file is at {DEFAULT_CONFIG_FILE}"
+        f"Default configuration file is at {config.DEFAULT_CONFIG_FILE}"
     )
     ap.add_argument('-c', type=str, help='Use as alternate config file')
 

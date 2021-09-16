@@ -82,22 +82,18 @@ from typing import Optional
 
 import toml
 
+from pyDE1.config_toml import ConfigToml
+
 DEFAULT_CONFIG_FILE = '/usr/local/etc/pyde1/pyde1.conf'
 
 logger = logging.getLogger('config')
 
-class Config:
+class Config (ConfigToml):
 
-    # Enumerate here to keep from loading "phantom" sections
-    sections = ('bluetooth',
-                'de1',
-                'database',
-                'http',
-                'logging',
-                'mqtt')
+    DEFAULT_CONFIG_FILE = '/usr/local/etc/pyde1/pyde1.conf'
 
     def __init__(self):
-
+        super(Config, self).__init__()
         self.bluetooth = self._Bluetooth()
         self.database = self._Database()
         self.de1 = self._DE1()
@@ -108,7 +104,7 @@ class Config:
     # This craziness is so pyCharm autocompletes
     # Otherwise typing.SimpleNamespace() would be sufficient
 
-    class _MQTT:
+    class _MQTT (ConfigToml._Loadable):
         def __init__(self):
             self.TOPIC_ROOT = 'pyDE1'
             self.CLIENT_ID_PREFIX = 'pyde1'
@@ -121,9 +117,7 @@ class Config:
             self.PASSWORD = None
             self.DEBUG = False
 
-
-
-    class _HTTP:
+    class _HTTP (ConfigToml._Loadable):
         def __init__(self, parent):
             self.SERVER_HOST = ''
             self.SERVER_PORT = 1234
@@ -164,8 +158,7 @@ class Config:
         def RESPONSE_TIMEOUT(self, value):
             self._response_timeout = value
 
-
-    class _Logging:
+    class _Logging (ConfigToml._Loadable):
         def __init__(self):
             self.LOG_DIRECTORY = '/var/log/pyde1/'
             # NB: The log file name is matched against [a-zA-Z0-9._-]
@@ -181,6 +174,7 @@ class Config:
 
     def set_logging(self):
         # TODO: Clean up logging, in general
+        # TODO: Consider replacing this with logging.config.fileConfig()
         formatter_main = logging.Formatter(fmt=config.logging.FORMAT_MAIN)
         formatter_stderr = logging.Formatter(fmt=config.logging.FORMAT_STDERR)
         root_logger = logging.getLogger()
@@ -191,7 +185,7 @@ class Config:
                 handler.setLevel(self.logging.LEVEL_STDERR)
                 handler.setFormatter(formatter_stderr)
 
-    class _Bluetooth:
+    class _Bluetooth (ConfigToml._Loadable):
         def __init__(self):
             self.SCAN_TIME = 5  # Seconds
             self.CONNECT_TIMEOUT = 10  # Seconds
@@ -203,67 +197,19 @@ class Config:
             self.ID_FILE_DIRECTORY = '/var/lib/pyde1/'
             self.ID_FILE_SUFFIX = '.btid'
 
-
-    class _Database:
+    class _Database (ConfigToml._Loadable):
         def __init__(self):
             self.FILENAME = '/var/lib/pyde1/pyde1.sqlite3'
             self.BACKUP_TIMEOUT = 60  # seconds
             self.BACKUP_COMPRESSION_EXECUTABLE = 'xz'
 
-
-    class _DE1:
+    class _DE1 (ConfigToml._Loadable):
         def __init__(self):
             self.LINE_FREQUENCY = 60
             self.MAX_WAIT_FOR_READY_EVENTS = 3.0
             # Do these "settings" belong here,
             # or should they be separated from parameters?
             self.DEFAULT_AUTO_OFF_TIME = None   # Minutes
-
-
-    def load_from_toml(self, filename: Optional[str] = None):
-        if filename is None:
-            filename = DEFAULT_CONFIG_FILE
-        parsed = {}
-        try:
-            parsed = toml.load(filename)
-        except FileNotFoundError as e:
-            if filename != DEFAULT_CONFIG_FILE:
-                logger.critical(
-                    f"Unable to open config file '{filename}', exiting.")
-                raise e
-            else:
-                logger.warning(
-                    f"Could not find default config file {DEFAULT_CONFIG_FILE}")
-                return
-
-        except Exception as e:
-            logger.critical(
-                f"Error parsing config from '{filename}', exiting.")
-            raise e
-
-        for table, kv_dict in parsed.items():
-            lc_table = table.lower()
-            try:
-                if lc_table not in self.sections:
-                    raise KeyError
-                section = getattr(self, lc_table)
-                for k,v in kv_dict.items():
-                    uc_key = k.upper()
-                    if hasattr(section, uc_key) and not uc_key.startswith('_'):
-                        if lc_table == 'logging':
-                            if uc_key.startswith('LEVEL_'):
-                                if isinstance(v, str):
-                                    v = logging._nameToLevel[
-                                        v.removeprefix('logging.')]
-                        setattr(section, uc_key, v)
-                    else:
-                        logger.warning(
-                            f"Config: '{k}' is not valid in [{table}], ignoring.")
-            except KeyError:
-                logger.warning(
-                    f"Config: '{table}' is not a valid config table, ignoring.")
-
-        logger.info(f"Config loaded from {filename}")
 
 
 config = Config()
