@@ -15,7 +15,6 @@ NB: Does _not_ modify the DB contents, so real-time pulls by the consumer
     as the sequence unfolds.
 """
 
-import asyncio
 import json
 import logging
 import os
@@ -23,31 +22,79 @@ import socket
 import sqlite3
 import time
 
-from typing import NamedTuple, Union, List
+from typing import NamedTuple, Union, List, Optional
 
 import paho.mqtt.client as mqtt
 from paho.mqtt.client import MQTTv5, MQTT_CLEAN_START_FIRST_ONLY
 
-from pyDE1.config import config
+from pyDE1.config_toml import ConfigToml
 
-MQTT_TOPIC_ROOT = 'KEpyDE1'
-MQTT_CLIENT_ID = f"replay@{socket.gethostname()}[{os.getpid()}]"
-MQTT_BROKER_HOSTNAME = '::'
-MQTT_BROKER_PORT = 1883
-MQTT_TRANSPORT = 'tcp'
-MQTT_TLS_CONTEXT = None
-MQTT_KEEPALIVE = 60
-MQTT_USERNAME = None
-MQTT_PASSWORD = None
 
-database_uri = f"file:{config.database.FILENAME}?mode=ro"
+class Config (ConfigToml):
 
-logger = logging.getLogger()
-format_string = "%(asctime)s %(levelname)s %(name)s: %(message)s"
-logging.basicConfig(level=logging.DEBUG, format=format_string)
+    DEFAULT_CONFIG_FILE = '/usr/local/etc/pyde1/pyde1-replay.conf'
 
-client_logger = logging.getLogger('MQTT')
-client_logger.level = logging.ERROR
+    def __init__(self):
+        super(Config, self).__init__()
+        self.database = self._Database()
+        self.logging = self._Logging()
+        self.mqtt = self._MQTT()
+        self.sequence = self._Sequence()
+
+    # This craziness is so pyCharm autocompletes
+    # Otherwise typing.SimpleNamespace() would be sufficient
+
+    class _MQTT (ConfigToml._Loadable):
+        def __init__(self):
+            self.TOPIC_ROOT = 'KEpyDE1'
+            self.CLIENT_ID_PREFIX = 'pyde1-replay'
+            self.BROKER_HOSTNAME = '::1'
+            self.BROKER_PORT = 1883
+            self.TRANSPORT = 'tcp'
+            self.TLS_CONTEXT = None
+            self.KEEPALIVE = 60
+            self.USERNAME = None
+            self.PASSWORD = None
+            self.DEBUG = False
+
+    class _Logging (ConfigToml._Loadable):
+        def __init__(self):
+            self.LOG_DIRECTORY = '/var/log/pyde1/'
+            # NB: The log file name is matched against [a-zA-Z0-9._-]
+            self.LOG_FILENAME = 'replay.log'
+            self.FORMAT_MAIN = "%(asctime)s %(levelname)s " \
+                               "%(name)s: %(message)s"
+            self.FORMAT_STDERR = self.FORMAT_MAIN
+            self.LEVEL_MAIN = logging.DEBUG
+            self.LEVEL_STDERR = logging.DEBUG
+            self.LEVEL_MQTT = logging.INFO
+
+    def set_logging(self):
+        # TODO: Clean up logging, in general
+        # TODO: Consider replacing this with logging.config.fileConfig()
+        formatter_main = logging.Formatter(fmt=config.logging.FORMAT_MAIN)
+        formatter_stderr = logging.Formatter(fmt=config.logging.FORMAT_STDERR)
+        root_logger = logging.getLogger()
+        root_logger.setLevel(self.logging.LEVEL_MAIN)
+        for handler in root_logger.handlers:
+            try:
+                if isinstance(handler, logging.StreamHandler) \
+                        and handler.stream.name == '<stderr>':
+                    handler.setLevel(self.logging.LEVEL_STDERR)
+                    handler.setFormatter(formatter_stderr)
+            except AttributeError:
+                pass
+
+    class _Database (ConfigToml._Loadable):
+        def __init__(self):
+            self.FILENAME = '/var/lib/pyde1/pyde1.sqlite3'
+
+    class _Sequence (ConfigToml._Loadable):
+        def __init__(self):
+            self.ID = None
+
+
+config = Config()
 
 
 # TODO: Figure out how not to duplicate this in so many places
@@ -289,7 +336,8 @@ def collect_send_list(sequence_id: str,
                       shift_time: float) -> List[SendListEntry]:
     send_list = []
 
-    with sqlite3.connect(database_uri, uri=True) as db:
+    with sqlite3.connect(f"file:{config.database.FILENAME}?mode=ro",
+                         uri=True) as db:
 
         db.row_factory = shot_sample_row_factory
         cur = db.execute(f"SELECT {' ,'.join(ShotSampleRow._fields)} "
@@ -354,7 +402,8 @@ def collect_send_list(sequence_id: str,
 
 def get_sequence_start_time(sequence_id: str) -> float:
 
-    with sqlite3.connect(database_uri, uri=True) as db:
+    with sqlite3.connect(f"file:{config.database.FILENAME}?mode=ro",
+                         uri=True) as db:
         db.row_factory = sequence_row_factory
         cur = db.execute(f"SELECT {', '.join(SequenceRow._fields)} "
                          "FROM sequence "
@@ -363,103 +412,130 @@ def get_sequence_start_time(sequence_id: str) -> float:
         row = cur.fetchone()
         return row.start_sequence
 
+
 # MQTT
 
+def setup_client(mqtt_client_logger: logging.Logger) -> mqtt.Client:
 
-def on_log_callback(client: mqtt.Client, userdata, level, buf):
-    client_logger.info(f"CB: Log: level: {level} '{buf}' ({type(buf)})")
+    def on_log_callback(client: mqtt.Client, userdata, level, buf):
+        mqtt_client_logger.info(f"CB: Log: level: {level} '{buf}' ({type(buf)})")
 
-def on_connect_callback(client, userdata, flags, reasonCode, properties):
-    client_logger.info(f"CB: Connect: flags: {flags}, reasonCode: {reasonCode}, "
-                f"properties {properties}")
+    def on_connect_callback(client, userdata, flags, reasonCode, properties):
+        mqtt_client_logger.info(
+            f"CB: Connect: flags: {flags}, reasonCode: {reasonCode}, "
+            f"properties {properties}")
 
-def on_publish_callback(client, userdata, mid):
-    client_logger.info(f"CB: Published: mid: {mid}")
+    def on_publish_callback(client, userdata, mid):
+        mqtt_client_logger.info(f"CB: Published: mid: {mid}")
 
-# Caught exception in on_disconnect:
-#     on_disconnect_callback() missing 1 required positional argument:
-#         'properties'
-def on_disconnect_callback(client, userdata, reasonCode, properties=None):
-    client_logger.info(f"CB: Disconnect: reasonCode: {reasonCode}, "
-                f"properties {properties}")
+    # Caught exception in on_disconnect:
+    #     on_disconnect_callback() missing 1 required positional argument:
+    #         'properties'
+    def on_disconnect_callback(client, userdata, reasonCode, properties=None):
+        mqtt_client_logger.info(f"CB: Disconnect: reasonCode: {reasonCode}, "
+                           f"properties {properties}")
 
-def on_socket_open_callback(client, userdata, socket):
-    client_logger.info(f"CB: Socket open: socket: {socket}")
+    def on_socket_open_callback(client, userdata, socket):
+        mqtt_client_logger.info(f"CB: Socket open: socket: {socket}")
 
-def on_socket_close_callback(client, userdata, socket):
-    client_logger.info(f"CB: Socket close: socket: {socket}")
+    def on_socket_close_callback(client, userdata, socket):
+        mqtt_client_logger.info(f"CB: Socket close: socket: {socket}")
 
-def on_socket_register_write_callback(client, userdata, socket):
-    client_logger.info(f"CB: Socket register write: socket: {socket}")
+    def on_socket_register_write_callback(client, userdata, socket):
+        mqtt_client_logger.info(f"CB: Socket register write: socket: {socket}")
 
-def on_socket_unregister_write_callback(client, userdata, socket):
-    client_logger.info(f"CB: Socket unregister write: socket: {socket}")
+    def on_socket_unregister_write_callback(client, userdata, socket):
+        mqtt_client_logger.info(f"CB: Socket unregister write: socket: {socket}")
 
-mqtt_client = mqtt.Client(
-    client_id=MQTT_CLIENT_ID,
-    clean_session=None,  # Required for MQTT5
-    userdata=None,
-    protocol=MQTTv5,
-    transport=MQTT_TRANSPORT,
-)
+    mqtt_client = mqtt.Client(
+        client_id="{}@{}[{}]".format(
+            config.mqtt.CLIENT_ID_PREFIX,
+            socket.gethostname(),
+            os.getpid(),
+        ),
+        clean_session=None,  # Required for MQTT5
+        userdata=None,
+        protocol=MQTTv5,
+        transport=config.mqtt.TRANSPORT,
+    )
 
-# mqtt_client.on_log = on_log_callback
-mqtt_client.on_connect = on_connect_callback
-# mqtt_client.on_publish = on_publish_callback
-mqtt_client.on_disconnect = on_disconnect_callback
-mqtt_client.on_socket_open = on_socket_open_callback
-mqtt_client.on_socket_close = on_socket_close_callback
-# mqtt_client.on_socket_register_write = on_socket_register_write_callback
-# mqtt_client.on_socket_unregister_write = on_socket_unregister_write_callback
+    if config.mqtt.USERNAME is not None:
+        mqtt_client_logger.info(
+            f"Connecting with username '{config.mqtt.USERNAME}'")
+        mqtt_client.username_pw_set(
+            username=config.mqtt.USERNAME,
+            password=config.mqtt.PASSWORD
+        )
 
-mqtt_client.enable_logger(client_logger)
+    # mqtt_client.on_log = on_log_callback
+    mqtt_client.on_connect = on_connect_callback
+    # mqtt_client.on_publish = on_publish_callback
+    mqtt_client.on_disconnect = on_disconnect_callback
+    mqtt_client.on_socket_open = on_socket_open_callback
+    mqtt_client.on_socket_close = on_socket_close_callback
+    # mqtt_client.on_socket_register_write = on_socket_register_write_callback
+    # mqtt_client.on_socket_unregister_write = on_socket_unregister_write_callback
 
-mqtt_client.connect(host=MQTT_BROKER_HOSTNAME,
-               port=MQTT_BROKER_PORT,
-               keepalive=MQTT_KEEPALIVE,
-               bind_address="",
-               bind_port=0,
-               clean_start=MQTT_CLEAN_START_FIRST_ONLY,
-               properties=None)
+    mqtt_client.enable_logger(mqtt_client_logger)
 
+    mqtt_client.connect(host=config.mqtt.BROKER_HOSTNAME,
+                   port=config.mqtt.BROKER_PORT,
+                   keepalive=config.mqtt.KEEPALIVE,
+                   bind_address="",
+                   bind_port=0,
+                   clean_start=MQTT_CLEAN_START_FIRST_ONLY,
+                   properties=None)
+
+    return mqtt_client
 
 
 if __name__ == '__main__':
 
-    id = '87f17aa1-ea0a-41e7-aac0-fd042f9729db'
-
     import argparse
 
-    from pyDE1.config import config
-
     ap = argparse.ArgumentParser(
-        description="""Main executable to start the pyDE1 core.
-
+        description=
+        """Replay a sequence from the database, time shifted to the present.
+        
         """
         f"Default configuration file is at {config.DEFAULT_CONFIG_FILE}"
     )
     ap.add_argument('-c', type=str, help='Use as alternate config file')
+    ap.add_argument('-s', type=str, help='Override for sequence ID')
+    ap.add_argument('-t', type=str, help='Override for MQTT topic')
 
     args = ap.parse_args()
 
     config.load_from_toml(args.c)
 
+    if args.s is not None:
+        config.sequence.ID = args.s
 
-    sst = get_sequence_start_time(id)
+    if args.t is not None:
+        config.mqtt.TOPIC_ROOT = args.t
+
+    config.set_logging()
+
+    client_logger = logging.getLogger('MQTT')
+    client_logger.level = logging.ERROR
+
+    sst = get_sequence_start_time(config.sequence.ID)
     now = time.time()
     start_sequence_at = now + 5
     shift_time = start_sequence_at - sst
-    send_list = collect_send_list(id, shift_time)
+    send_list = collect_send_list(config.sequence.ID, shift_time)
+    mqtt_client = setup_client(client_logger)
     mqtt_client.loop_start()
 
     MQTT_LEAD_TIME = 0.000  # seconds
+
     while len(send_list):
         next_to_send = send_list.pop(0)
         while next_to_send.send_at > time.time() + MQTT_LEAD_TIME:
             time.sleep(0.010)
         print(time.time(), next_to_send)
         item_as_dict = json.loads(next_to_send.payload)
-        topic = f"{MQTT_TOPIC_ROOT}/{item_as_dict['class']}"
+        topic = f"{config.mqtt.TOPIC_ROOT}/{item_as_dict['class']}"
         mqtt_client.publish(
             topic=topic,
             payload=next_to_send.payload,
