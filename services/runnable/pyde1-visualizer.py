@@ -13,8 +13,8 @@ import os
 import os.path
 import queue
 
+from pprint import pformat
 from socket import gethostname
-from types import SimpleNamespace
 from typing import Optional, NamedTuple, Callable
 
 import aiosqlite
@@ -24,7 +24,6 @@ from paho.mqtt.client import MQTTMessage, MQTTv5, MQTT_CLEAN_START_FIRST_ONLY
 import requests
 from requests.auth import HTTPBasicAuth, HTTPDigestAuth
 
-import toml
 from pyDE1.config_toml import ConfigToml
 
 import pyDE1.shutdown_manager as sm
@@ -37,6 +36,7 @@ from pyDE1.shot_file.legacy import legacy_shot_file
 
 # The default config file can be missing without error
 # If specified on the command line and missing is fatal
+
 
 class Config (ConfigToml):
 
@@ -313,7 +313,6 @@ async def wait_then_cleanup(client: mqtt.Client):
     logger.info("mqtt.Client.loop_stop returned, setting cleanup_complete")
     sm.cleanup_complete.set()
 
-from pprint import pformat
 
 async def loop_on_queue(client: mqtt.Client):
 
