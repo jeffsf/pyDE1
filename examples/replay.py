@@ -479,13 +479,14 @@ def setup_client(mqtt_client_logger: logging.Logger) -> mqtt.Client:
 
     mqtt_client.enable_logger(mqtt_client_logger)
 
-    mqtt_client.connect(host=config.mqtt.BROKER_HOSTNAME,
+    result = mqtt_client.connect(host=config.mqtt.BROKER_HOSTNAME,
                    port=config.mqtt.BROKER_PORT,
                    keepalive=config.mqtt.KEEPALIVE,
                    bind_address="",
                    bind_port=0,
                    clean_start=MQTT_CLEAN_START_FIRST_ONLY,
                    properties=None)
+    client_logger.info(f"connect returned {result}")
 
     return mqtt_client
 
@@ -515,10 +516,20 @@ if __name__ == '__main__':
     if args.t is not None:
         config.mqtt.TOPIC_ROOT = args.t
 
-    config.set_logging()
+    logger = logging.getLogger()
+    handler = logging.StreamHandler()
+    handler.setLevel(logging.DEBUG)
+    handler.setFormatter(logging.Formatter(
+        "%(asctime)s %(levelname)s [%(processName)s] %(name)s: "
+        "%(message)s"
+    ))
+    logger.addHandler(handler)
+    logger.setLevel(logging.DEBUG)
+
+    # config.set_logging()
 
     client_logger = logging.getLogger('MQTT')
-    client_logger.level = logging.ERROR
+    client_logger.level = logging.DEBUG
 
     sst = get_sequence_start_time(config.sequence.ID)
     now = time.time()
@@ -536,16 +547,18 @@ if __name__ == '__main__':
         next_to_send = send_list.pop(0)
         while next_to_send.send_at > time.time() + MQTT_LEAD_TIME:
             time.sleep(0.010)
-        print(time.time(), next_to_send)
+        # print(time.time(), next_to_send)
         item_as_dict = json.loads(next_to_send.payload)
         topic = f"{config.mqtt.TOPIC_ROOT}/{item_as_dict['class']}"
-        mqtt_client.publish(
+        result = mqtt_client.publish(
             topic=topic,
             payload=next_to_send.payload,
             qos=0,
             retain=False,
             properties=None
         )
+        client_logger.debug(
+            f"publish returned rc: {result.rc}")
 
     # Have to let the last message drain before existing
     if result is not None:
