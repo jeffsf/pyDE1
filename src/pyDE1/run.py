@@ -19,6 +19,7 @@ SPDX-License-Identifier: GPL-3.0-only
 import asyncio
 import atexit
 import logging
+import logging.config
 import logging.handlers
 import multiprocessing
 import os
@@ -26,6 +27,7 @@ import signal
 import threading
 import time
 import traceback
+import yaml
 
 from types import FrameType
 
@@ -253,6 +255,26 @@ def run():
 if __name__ == "__main__":
 
     import argparse
+
+    initial_log_config = """
+---
+version: 1
+formatters:
+    timestamped:
+        class: logging.Formatter
+        format: >-
+            %(asctime)s %(levelname)s [%(processName)s]
+            %(name)s: %(message)s
+handlers:
+    stderr:
+        class: logging.StreamHandler
+        formatter: timestamped
+        level: DEBUG
+root:
+    handlers: [stderr]
+    level: DEBUG
+"""
+    logging.config.dictConfig(yaml.safe_load(initial_log_config))
 
     ap = argparse.ArgumentParser(
         description="""Main executable to start the pyDE1 core.
