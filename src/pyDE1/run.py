@@ -286,6 +286,6 @@ root:
 
     args = ap.parse_args()
 
-    config.load_from_toml(args.c)
+    config.load_from_yaml(args.c)
 
     run()

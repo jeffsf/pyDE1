@@ -14,11 +14,12 @@ so that config success/errors get logged somewhere.
 import logging
 import os
 
-import toml
 from typing import Optional
 
+import yaml
 
-class ConfigToml:
+
+class ConfigYAML:
 
     # Override in implementations
     DEFAULT_CONFIG_FILE = None
@@ -62,7 +63,7 @@ class ConfigToml:
             self.logger.addHandler(handler)
         self.logger.setLevel(logging.DEBUG)
 
-    def load_from_toml(self, filename: Optional[str] = None):
+    def load_from_yaml(self, filename: Optional[str] = None):
         self.ensure_stderr_handler()
         if filename is None:
             filename = self.DEFAULT_CONFIG_FILE
@@ -70,9 +71,11 @@ class ConfigToml:
             self.logger.critical("No DEFAULT_CONFIG_FILE specified for "
                                  f"{self.__class__.__name__} exiting.")
             raise FileNotFoundError("Coding error - no DEFAULT_CONFIG_FILE")
+        self.logger.info(f"Loading config overrides from {filename}")
         parsed = {}
         try:
-            parsed = toml.load(filename)
+            with open(file=filename, mode='r') as fh:
+                parsed = yaml.safe_load(fh)
         except FileNotFoundError as e:
             if filename != self.DEFAULT_CONFIG_FILE:
                 self.logger.critical(
@@ -94,6 +97,10 @@ class ConfigToml:
                 section = getattr(self, lc_table)
                 if not isinstance(section, self._Loadable):
                     raise KeyError
+                if kv_dict is None:
+                    self.logger.info(
+                        f"No entries found for {table} (may be intentional)")
+                    continue
                 for k,v in kv_dict.items():
                     uc_key = k.upper()
                     if hasattr(section, uc_key):
@@ -111,4 +118,4 @@ class ConfigToml:
                 self.logger.warning(
                     f"Config: '{table}' is not a valid config table, ignoring.")
 
-        self.logger.info(f"Config loaded from {filename}")
+        self.logger.info(f"Config overrides loaded from {filename}")

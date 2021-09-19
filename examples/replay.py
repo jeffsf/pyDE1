@@ -28,10 +28,10 @@ from typing import NamedTuple, Union, List, Optional
 import paho.mqtt.client as mqtt
 from paho.mqtt.client import MQTTv5, MQTT_CLEAN_START_FIRST_ONLY
 
-from pyDE1.config_toml import ConfigToml
+from pyDE1.config_yaml import ConfigYAML
 
 
-class Config (ConfigToml):
+class Config (ConfigYAML):
 
     DEFAULT_CONFIG_FILE = '/usr/local/etc/pyde1/pyde1-replay.conf'
 
@@ -45,7 +45,7 @@ class Config (ConfigToml):
     # This craziness is so pyCharm autocompletes
     # Otherwise typing.SimpleNamespace() would be sufficient
 
-    class _MQTT (ConfigToml._Loadable):
+    class _MQTT (ConfigYAML._Loadable):
         def __init__(self):
             self.TOPIC_ROOT = 'KEpyDE1'
             self.CLIENT_ID_PREFIX = 'pyde1-replay'
@@ -58,7 +58,7 @@ class Config (ConfigToml):
             self.PASSWORD = None
             self.DEBUG = False
 
-    class _Logging (ConfigToml._Loadable):
+    class _Logging (ConfigYAML._Loadable):
         def __init__(self):
             self.LOG_DIRECTORY = '/var/log/pyde1/'
             # NB: The log file name is matched against [a-zA-Z0-9._-]
@@ -86,11 +86,11 @@ class Config (ConfigToml):
             except AttributeError:
                 pass
 
-    class _Database (ConfigToml._Loadable):
+    class _Database (ConfigYAML._Loadable):
         def __init__(self):
             self.FILENAME = '/var/lib/pyde1/pyde1.sqlite3'
 
-    class _Sequence (ConfigToml._Loadable):
+    class _Sequence (ConfigYAML._Loadable):
         def __init__(self):
             self.ID = None
 
@@ -508,7 +508,7 @@ if __name__ == '__main__':
 
     args = ap.parse_args()
 
-    config.load_from_toml(args.c)
+    config.load_from_yaml(args.c)
 
     if args.s is not None:
         config.sequence.ID = args.s

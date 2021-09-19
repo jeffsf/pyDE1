@@ -82,13 +82,13 @@ from typing import Optional
 
 import toml
 
-from pyDE1.config_toml import ConfigToml
+from pyDE1.config_yaml import ConfigYAML
 
 DEFAULT_CONFIG_FILE = '/usr/local/etc/pyde1/pyde1.conf'
 
 logger = logging.getLogger('config')
 
-class Config (ConfigToml):
+class Config (ConfigYAML):
 
     DEFAULT_CONFIG_FILE = '/usr/local/etc/pyde1/pyde1.conf'
 
@@ -104,7 +104,7 @@ class Config (ConfigToml):
     # This craziness is so pyCharm autocompletes
     # Otherwise typing.SimpleNamespace() would be sufficient
 
-    class _MQTT (ConfigToml._Loadable):
+    class _MQTT (ConfigYAML._Loadable):
         def __init__(self):
             self.TOPIC_ROOT = 'pyDE1'
             self.CLIENT_ID_PREFIX = 'pyde1'
@@ -117,7 +117,7 @@ class Config (ConfigToml):
             self.PASSWORD = None
             self.DEBUG = False
 
-    class _HTTP (ConfigToml._Loadable):
+    class _HTTP (ConfigYAML._Loadable):
         def __init__(self, parent):
             self.SERVER_HOST = ''
             self.SERVER_PORT = 1234
@@ -158,7 +158,7 @@ class Config (ConfigToml):
         def RESPONSE_TIMEOUT(self, value):
             self._response_timeout = value
 
-    class _Logging (ConfigToml._Loadable):
+    class _Logging (ConfigYAML._Loadable):
         def __init__(self):
             self.LOG_DIRECTORY = '/var/log/pyde1/'
             # NB: The log file name is matched against [a-zA-Z0-9._-]
@@ -185,7 +185,7 @@ class Config (ConfigToml):
                 handler.setLevel(self.logging.LEVEL_STDERR)
                 handler.setFormatter(formatter_stderr)
 
-    class _Bluetooth (ConfigToml._Loadable):
+    class _Bluetooth (ConfigYAML._Loadable):
         def __init__(self):
             self.SCAN_TIME = 5  # Seconds
             self.CONNECT_TIMEOUT = 10  # Seconds
@@ -197,13 +197,13 @@ class Config (ConfigToml):
             self.ID_FILE_DIRECTORY = '/var/lib/pyde1/'
             self.ID_FILE_SUFFIX = '.btid'
 
-    class _Database (ConfigToml._Loadable):
+    class _Database (ConfigYAML._Loadable):
         def __init__(self):
             self.FILENAME = '/var/lib/pyde1/pyde1.sqlite3'
             self.BACKUP_TIMEOUT = 60  # seconds
             self.BACKUP_COMPRESSION_EXECUTABLE = 'xz'
 
-    class _DE1 (ConfigToml._Loadable):
+    class _DE1 (ConfigYAML._Loadable):
         def __init__(self):
             self.LINE_FREQUENCY = 60
             self.MAX_WAIT_FOR_READY_EVENTS = 3.0

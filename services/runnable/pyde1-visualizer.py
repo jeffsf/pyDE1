@@ -24,7 +24,7 @@ from paho.mqtt.client import MQTTMessage, MQTTv5, MQTT_CLEAN_START_FIRST_ONLY
 import requests
 from requests.auth import HTTPBasicAuth, HTTPDigestAuth
 
-from pyDE1.config_toml import ConfigToml
+from pyDE1.config_yaml import ConfigYAML
 
 import pyDE1.shutdown_manager as sm
 from pyDE1.de1.c_api import API_MachineStates, API_Substates
@@ -38,7 +38,7 @@ from pyDE1.shot_file.legacy import legacy_shot_file
 # If specified on the command line and missing is fatal
 
 
-class Config (ConfigToml):
+class Config (ConfigYAML):
 
     DEFAULT_CONFIG_FILE = '/usr/local/etc/pyde1/pyde1-visualizer.conf'
 
@@ -52,7 +52,7 @@ class Config (ConfigToml):
     # This craziness is so pyCharm autocompletes
     # Otherwise typing.SimpleNamespace() would be sufficient
 
-    class _MQTT (ConfigToml._Loadable):
+    class _MQTT (ConfigYAML._Loadable):
         def __init__(self):
             self.TOPIC_ROOT = 'pyDE1'
             self.CLIENT_ID_PREFIX = 'pyde1-visualizer'
@@ -65,12 +65,12 @@ class Config (ConfigToml):
             self.PASSWORD = None
             self.DEBUG = False
 
-    class _Visualizer (ConfigToml._Loadable):
+    class _Visualizer (ConfigYAML._Loadable):
         def __init__(self):
             self.USERNAME = 'you@example.com'
             self.PASSWORD = 'your password or upload token here'
 
-    class _Logging (ConfigToml._Loadable):
+    class _Logging (ConfigYAML._Loadable):
         def __init__(self):
             self.LEVEL_MAIN = logging.INFO
             self.LEVEL_MQTT = logging.INFO
@@ -78,7 +78,7 @@ class Config (ConfigToml):
             self.SHOW_DATE = True  # Unimplemented
             self.SHOW_TIME = True  # Unimplemented
 
-    class _Database (ConfigToml._Loadable):
+    class _Database (ConfigYAML._Loadable):
         def __init__(self):
             self.FILENAME = '/var/lib/pyde1/pyde1.sqlite3'
 
@@ -408,7 +408,7 @@ if __name__ == '__main__':
 
     args = ap.parse_args()
 
-    config.load_from_toml(args.c)
+    config.load_from_yaml(args.c)
     set_logging_from_config()
 
     loop = asyncio.get_event_loop()
