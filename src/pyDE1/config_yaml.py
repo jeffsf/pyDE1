@@ -34,7 +34,7 @@ class ConfigYAML:
     def ensure_stderr_handler(self):
         # TODO: Consider replacing this with logging.config.fileConfig()
         root_logger = logging.getLogger()
-        self.logger = logging.getLogger('config_toml')
+        self.logger = logging.getLogger('config_yaml')
         need_stderr_handler = True
         for handler in root_logger.handlers:
             try:
