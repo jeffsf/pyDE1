@@ -99,9 +99,22 @@ def run_api_outbound(config: pyDE1.config.Config,
     def on_log_callback(client: mqtt.Client, userdata, level, buf):
         client_logger.info(f"CB: Log: level: {level} '{buf}' ({type(buf)})")
 
+    def _start_shutdown(sig = None):
+        loop.create_task(sm.shutdown(sig, loop))
+
     def on_connect_callback(client, userdata, flags, reasonCode, properties):
-        client_logger.info(f"CB: Connect: flags: {flags}, reasonCode: {reasonCode}, "
-                    f"properties {properties}")
+        if reasonCode == 0:
+            level = logging.INFO
+        else:
+            level = logging.ERROR
+        client_logger.log(level,
+            f"CB: Connect: flags: {flags}, reasonCode: {reasonCode}, "
+            f"properties {properties}")
+        if reasonCode != 0:
+            client_logger.critical(
+                f"Connection to MQTT broker failed: {str(reasonCode)}, "
+                "initiating process shutdown." )
+            loop.call_soon_threadsafe(_start_shutdown)
 
     def on_publish_callback(client, userdata, mid):
         client_logger.info(f"CB: Published: mid: {mid}")
