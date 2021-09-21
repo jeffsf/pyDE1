@@ -162,7 +162,7 @@ class Config (ConfigYAML):
         def __init__(self):
             self.LOG_DIRECTORY = '/var/log/pyde1/'
             # NB: The log file name is matched against [a-zA-Z0-9._-]
-            self.LOG_FILENAME = 'combined.log'
+            self.LOG_FILENAME = 'pyde1.log'
             self.FORMAT_MAIN = "%(asctime)s %(levelname)s [%(processName)s] " \
                     "%(name)s: %(message)s"
             self.FORMAT_STDERR = "%(levelname)s [%(processName)s] " \
