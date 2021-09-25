@@ -70,6 +70,7 @@ class Config (ConfigYAML):
         def __init__(self):
             self.USERNAME = 'you@example.com'
             self.PASSWORD = 'your password or upload token here'
+            self.MIN_FLOW_TIME = 10  # seconds, or not uploaded
 
     class _Logging (ConfigYAML._Loadable):
         def __init__(self):
@@ -348,6 +349,7 @@ async def loop_on_queue(client: mqtt.Client):
 
     async with aiosqlite.connect(config.database.FILENAME) as db:
         while not sm.shutdown_underway.is_set():
+            logger.info("Ready and waiting")
             got: ShotCompleteItem = await async_queue_get(
                 from_queue=shot_complete_queue)
             # None gets returned on termination of async_queue_get()
@@ -357,6 +359,14 @@ async def loop_on_queue(client: mqtt.Client):
                         "async_queue_get() unexpectedly returned None")
                 else:
                     break
+
+            if config.visualizer.MIN_FLOW_TIME \
+                    and (dt := got.flow_end - got.flow_start) \
+                            < config.visualizer.MIN_FLOW_TIME:
+                logger.info(f"Not uploading, too short {dt:.1f} < "
+                            f"{config.visualizer.MIN_FLOW_TIME} seconds")
+                continue
+
             sid = got.sequence_id
 
             # As the database is processing these packets real-time as well
