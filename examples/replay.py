@@ -21,6 +21,7 @@ import os
 import socket
 import sqlite3
 import time
+import asyncio
 
 from typing import NamedTuple, Union, List, Optional
 
@@ -529,6 +530,8 @@ if __name__ == '__main__':
 
     MQTT_LEAD_TIME = 0.000  # seconds
 
+    result = None
+
     while len(send_list):
         next_to_send = send_list.pop(0)
         while next_to_send.send_at > time.time() + MQTT_LEAD_TIME:
@@ -545,7 +548,13 @@ if __name__ == '__main__':
         )
 
     # Have to let the last message drain before existing
-    time.sleep(1)
+    if result is not None:
+        loop = asyncio.get_event_loop()
+        t = loop.call_later(1, exit, 1)
+        result.wait_for_publish()
+        logger.info("Published, bye!")
+        t.cancel()
+
 
 
 
