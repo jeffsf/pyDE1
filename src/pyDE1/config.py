@@ -175,8 +175,8 @@ class Config (ConfigYAML):
     def set_logging(self):
         # TODO: Clean up logging, in general
         # TODO: Consider replacing this with logging.config.fileConfig()
-        formatter_main = logging.Formatter(fmt=config.logging.FORMAT_MAIN)
-        formatter_stderr = logging.Formatter(fmt=config.logging.FORMAT_STDERR)
+        formatter_main = logging.Formatter(fmt=self.logging.FORMAT_MAIN)
+        formatter_stderr = logging.Formatter(fmt=self.logging.FORMAT_STDERR)
         root_logger = logging.getLogger()
         root_logger.setLevel(self.logging.LEVEL_MAIN)
         for handler in root_logger.handlers:
