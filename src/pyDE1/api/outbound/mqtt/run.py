@@ -91,7 +91,7 @@ def run_api_outbound(config: pyDE1.config.Config,
         import random
         while not sm.shutdown_underway.is_set():
             await asyncio.sleep(10)
-            logger.info("===== BEEP =====")
+            logger.debug("===== BEEP =====")
 
     heartbeat_task = SupervisedTask(heartbeat)
 
@@ -206,7 +206,7 @@ def run_api_outbound(config: pyDE1.config.Config,
             except KeyError:
                 counts[item_as_dict['class']] = 1
             if now - last_update > update_period:
-                logger.info(counts)
+                logger.debug(counts)
                 counts = {}
                 last_update = now
 

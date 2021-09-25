@@ -106,7 +106,7 @@ def run_api_inbound(config: pyDE1.config.Config,
     async def heartbeat():
         while True:
             await asyncio.sleep(10)
-            logger.info("===== BOOP =====")
+            logger.debug("===== BOOP =====")
 
     SupervisedTask(heartbeat)
 

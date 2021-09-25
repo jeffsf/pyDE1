@@ -71,7 +71,7 @@ def run_database_logger(config: pyDE1.config.Config,
     async def heartbeat():
         while True:
             await asyncio.sleep(10)
-            logger.info("===== BRAP =====")
+            logger.debug("===== BRAP =====")
 
     SupervisedTask(heartbeat)
 
