@@ -1,6 +1,7 @@
 [Unit]
 Description=Auto-upload to Visualizer
-After=syslog.target
+Wants=mosquitto.service
+After=syslog.target mosquitto.service
 
 [Service]
 # This needs to be the same user that "owns" the database

@@ -1,6 +1,7 @@
 [Unit]
 Description=Main controller processes for pyDE1
-After=syslog.target
+Wants=mosquitto.service
+After=syslog.target mosquitto.service
 
 [Service]
 # This needs to be the same user that "owns" the database
