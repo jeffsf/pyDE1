@@ -283,9 +283,16 @@ root:
         f"Default configuration file is at {pyDE1.config.DEFAULT_CONFIG_FILE}"
     )
     ap.add_argument('-c', type=str, help='Use as alternate config file')
+    ap.add_argument('--console', action='store_true',
+                    help='Timestamped, DEBUG level on stderr logging')
 
     args = ap.parse_args()
 
     config.load_from_yaml(args.c)
+
+    if args.console:
+        config.logging.LEVEL_STDERR = logging.DEBUG
+        config.logging.FORMAT_STDERR = \
+            '%(asctime)s %(levelname)s [%(processName)s] %(name)s: %(message)s'
 
     run()
