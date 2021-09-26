@@ -209,6 +209,7 @@ class Config (ConfigYAML):
             # Do these "settings" belong here,
             # or should they be separated from parameters?
             self.DEFAULT_AUTO_OFF_TIME = None   # Minutes
+            self.STOP_AT_WEIGHT_ADJUST = -0.07  # Secs, larger increases weight
 
 
 config = Config()

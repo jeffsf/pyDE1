@@ -285,7 +285,17 @@ class DE1 (Singleton):
 
     @property
     def stop_lead_time(self):
-        return 0.1  # seconds, TODO: Where does this belong?
+        """
+        Approximate time from initiation of command to stop flow
+        """
+        return 0.1  # seconds
+
+    @property
+    def fall_time(self):
+        """
+        Approximate, in-flight time -- 14 cm to cup, 1/2at^2, 170 ms
+        """
+        return 0.17    # seconds
 
     @property
     def address(self):

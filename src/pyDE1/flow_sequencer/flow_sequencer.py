@@ -41,6 +41,8 @@ from pyDE1.flow_sequencer.mode_control import ByModeControl, \
     StopAtTime, StopAtWeight, StopAtVolume,  \
     EspressoControl, SteamControl, HotWaterControl, HotWaterRinseControl
 
+from pyDE1.config import config
+
 # import pyDE1.database.write_notifications import create_history_record
 import pyDE1.database.write_notifications
 
@@ -202,6 +204,16 @@ class FlowSequencer (Singleton, I_TargetSetter):
         self._stop_at_time_active = False
 
         asyncio.create_task(self.set_up_subscribers())
+
+    @property
+    def stop_at_weight_adjust(self):
+        """
+        In seconds, larger increases weight in cup
+
+        Supply as a property to simplify the stop-at-weight closure
+        and allow the value to be changed after the closure is created
+        """
+        return config.de1.STOP_AT_WEIGHT_ADJUST
 
     @property
     def de1(self):
@@ -711,16 +723,16 @@ class FlowSequencer (Singleton, I_TargetSetter):
             if (flow_sequencer._stop_at_weight_active
                     and (target := flow_sequencer.active_control.stop_at_weight)
                     is not None):
-                # TODO: where does this belong?
-                adjust = -0.3  # seconds, larger means more in cup
-                # TODO: where does this belong?
                 stop_lag = flow_sequencer.de1.stop_lead_time
                 # TODO: Should this be switchable?
                 flow = wafu.average_flow
                 dw = target - wafu.current_weight
                 if flow > 0:
                     dt = dw / flow
-                    target_time = wafu.scale_time + dt + adjust - stop_lag
+                    target_time = wafu.scale_time + dt \
+                                  - flow_sequencer.de1.stop_lead_time \
+                                  - flow_sequencer.de1.fall_time \
+                                  + flow_sequencer.stop_at_weight_adjust
                     if time.time() >= target_time:
                         await flow_sequencer.de1.stop_flow()
                         saw_logger.info(
