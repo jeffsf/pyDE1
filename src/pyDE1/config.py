@@ -170,7 +170,6 @@ class Config (ConfigYAML):
             self.LEVEL_MAIN = logging.INFO
             self.LEVEL_STDERR = logging.WARNING
             self.LEVEL_MQTT = logging.INFO
-            self.LEVEL_UPLOAD = logging.INFO
 
     def set_logging(self):
         # TODO: Clean up logging, in general

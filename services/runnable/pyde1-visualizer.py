@@ -9,6 +9,7 @@ import asyncio
 import functools
 import json
 import logging
+import logging.handlers
 import os
 import os.path
 import queue
@@ -72,11 +73,15 @@ class Config (ConfigYAML):
 
     class _Logging (ConfigYAML._Loadable):
         def __init__(self):
+            self.LOG_DIRECTORY = '/var/log/pyde1/'
+            # NB: The log file name is matched against [a-zA-Z0-9._-]
+            self.LOG_FILENAME = 'pyde1.log'
+            self.FORMAT_MAIN = "%(asctime)s %(levelname)s %(name)s: %(message)s"
+            self.FORMAT_STDERR = "%(levelname)s %(name)s: %(message)s"
             self.LEVEL_MAIN = logging.INFO
+            self.LEVEL_STDERR = logging.WARNING
             self.LEVEL_MQTT = logging.INFO
             self.LEVEL_UPLOAD = logging.INFO
-            self.SHOW_DATE = True  # Unimplemented
-            self.SHOW_TIME = True  # Unimplemented
 
     class _Database (ConfigYAML._Loadable):
         def __init__(self):
@@ -85,21 +90,46 @@ class Config (ConfigYAML):
 
 config = Config()
 
-format_string = "%(asctime)s %(levelname)s %(name)s: %(message)s"
-logging.basicConfig(level=logging.DEBUG,
-                    format=format_string,
-                    )
+handler_stderr = logging.StreamHandler()
+handler_stderr.setFormatter(logging.Formatter(
+    fmt="%(asctime)s %(levelname)s %(name)s: %(message)s"))
+handler_stderr.setLevel(logging.DEBUG)
 
 logger = logging.getLogger()
+for h in logger.handlers: # There should only be the default handler for stderr
+    logger.removeHandler(h)
+logger.addHandler(handler_stderr)
+
 logger_mqtt = logging.getLogger('mqtt')
 logger_upload = logging.getLogger('upload')
 
 
 def set_logging_from_config():
-    logger.setLevel(config.logging.LEVEL_MAIN)
-    logger_upload.setLevel(config.logging.LEVEL_UPLOAD)
-    # If DEBUG, logs received packets
+    root_logger = logging.getLogger()
+    root_logger.setLevel(config.logging.LEVEL_MAIN)
+    handler_stderr.setFormatter(
+        logging.Formatter(config.logging.FORMAT_STDERR))
     logger_mqtt.setLevel(config.logging.LEVEL_MQTT)
+    logger_upload.setLevel(config.logging.LEVEL_UPLOAD)
+
+    if not os.path.exists(config.logging.LOG_DIRECTORY):
+        logger.error(
+            "logfile_directory '{}' does not exist. Creating.".format(
+                os.path.realpath(config.logging.LOG_DIRECTORY)
+            )
+        )
+        # Will create intermediate directories
+        # Will not use "mode" on intermediates
+        os.makedirs(config.logging.LOG_DIRECTORY)
+
+    fq_logfile = os.path.join(config.logging.LOG_DIRECTORY,
+                              config.logging.LOG_FILENAME)
+
+    log_file_handler = logging.handlers.WatchedFileHandler(fq_logfile)
+    log_file_handler.setFormatter(
+        logging.Formatter(fmt=config.logging.FORMAT_MAIN))
+
+    root_logger.addHandler(log_file_handler)
 
 
 #
