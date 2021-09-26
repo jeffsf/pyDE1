@@ -16,7 +16,6 @@ import time
 
 import asyncio
 import logging
-import warnings
 
 from typing import Optional, Callable, Coroutine, List
 
@@ -637,9 +636,6 @@ class FlowSequencer (Singleton, I_TargetSetter):
     async def _sequence_recorder(self):
         # Always enable recording, let the recorder decide
 
-        warnings.warn(
-            "de1._recorder_active will be removed shortly "
-            "in favor of database recording in another process.")
         de1 = self._de1
 
         try:
@@ -650,7 +646,6 @@ class FlowSequencer (Singleton, I_TargetSetter):
                 pyDE1.database.write_notifications.RecorderControl(
                     recording = True,
                     sequence_id=SequencerGateNotification.sequence_id))
-            de1._recorder_active = True
             logger.debug("Recorder: enable")
 
             await self._gate_sequence_complete.wait()
@@ -658,7 +653,6 @@ class FlowSequencer (Singleton, I_TargetSetter):
                 pyDE1.database.write_notifications.RecorderControl(
                     recording = False,
                     sequence_id=SequencerGateNotification.sequence_id))
-            de1._recorder_active = False
             logger.debug("Recorder: disable")
 
         except asyncio.CancelledError:
@@ -666,7 +660,6 @@ class FlowSequencer (Singleton, I_TargetSetter):
                 pyDE1.database.write_notifications.RecorderControl(
                     recording = False,
                     sequence_id=SequencerGateNotification.sequence_id))
-            de1._recorder_active = False
             logger.info("Recorder: disable - on cancel")
             raise
 

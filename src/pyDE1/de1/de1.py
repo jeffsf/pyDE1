@@ -128,9 +128,6 @@ class DE1 (Singleton):
 
         self._last_stop_requested = 0
 
-        # Internal flag
-        self._recorder_active = False
-
         # Internally in seconds
         self._auto_off_time = None
         # Externally in minutes

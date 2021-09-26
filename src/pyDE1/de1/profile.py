@@ -14,8 +14,6 @@ import io
 import json
 import uuid
 
-import warnings
-
 from copy import deepcopy
 from typing import Any, Union, Optional, List
 
@@ -102,21 +100,6 @@ class Profile:
         Should set self._source_format = SourceFormat.JSONv2
         """
         raise NotImplementedError
-
-    def from_json_file(self, file: Union[str,
-                                         io.TextIOBase,
-                                         io.BufferedIOBase]) -> Profile:
-        warnings.warn(
-            "Reading directly .from_json_file() will be removed, "
-            "use .from_json()", DeprecationWarning)
-
-        if isinstance(file, str):
-            with open(file, 'r') as profile_fh:
-                self.source = profile_fh.read()
-        else:
-            self.source = file.read()
-        self.from_json(json.loads(self._source))
-        return self
 
     def as_json(self) -> dict:
         raise NotImplementedError
