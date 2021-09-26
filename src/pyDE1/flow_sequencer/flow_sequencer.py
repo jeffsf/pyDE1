@@ -24,7 +24,7 @@ from pyDE1.de1.events import ShotSampleUpdate, StateUpdate, \
     ShotSampleWithVolumesUpdate
 from pyDE1.de1.c_api import API_MachineStates, API_Substates
 from pyDE1.exceptions import DE1APIValueError, \
-    DE1APIAttributeError
+    DE1APIAttributeError, DE1APINotManagedHereException
 
 from pyDE1.i_target_setter import I_TargetSetter
 
@@ -352,7 +352,8 @@ class FlowSequencer (Singleton, I_TargetSetter):
         self._active_state = state
 
         sequence_id = SequencerGateNotification.new_sequence()
-        logger.info(f"Starting sequence_id {sequence_id}")
+        logger.info(f"Starting {self.active_state.name}, "
+                    f"sequence_id {sequence_id}")
 
         # Can't really start the recorder here as it needs
         # to be able to create the sequence (history) record
@@ -585,6 +586,7 @@ class FlowSequencer (Singleton, I_TargetSetter):
                 stop_at=StopAtType.TIME,
                 action=StopAtNotificationAction.DISABLED)
             return
+
         try:
             await self._gate_sequence_start.wait()
             self._stop_at_time_active = False
@@ -596,7 +598,15 @@ class FlowSequencer (Singleton, I_TargetSetter):
             # NB: Changing the time after starting won't alter the duration
             #     at least as presently implemented
 
-            wait = self.active_control.stop_at_time
+            try:
+                wait = self.active_control.stop_at_time
+            except DE1APINotManagedHereException as e:
+                # Steam timeout is managed by the DE1 itself
+                # though shouldn't get here
+                logger.error(
+                    f"Unexpectedly getting through to {e}, "
+                    "check stop_at_time_states")
+                return
 
             if wait is None or wait <= 0:
                 return
@@ -727,7 +737,9 @@ class FlowSequencer (Singleton, I_TargetSetter):
                              action: StopAtNotificationAction,
                              current: Optional[float]=None):
 
-        if stop_at == StopAtType.TIME:
+        if action == StopAtNotificationAction.DISABLED:
+            target = None
+        elif stop_at == StopAtType.TIME:
             target = self.active_control.stop_at_time
         elif stop_at == StopAtType.VOLUME:
             target = self.active_control.stop_at_volume

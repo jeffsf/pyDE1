@@ -7,7 +7,8 @@ as they need to be "forward declared"
 import logging
 from typing import Optional
 
-from pyDE1.exceptions import DE1APIError, DE1APITypeError, DE1APIValueError
+from pyDE1.exceptions import DE1APIError, DE1APITypeError, DE1APIValueError, \
+    DE1APINotManagedHereException
 
 logger = logging.getLogger('FlowSequencer')
 
@@ -221,7 +222,7 @@ class SteamControl (ByModeControl):
         def stop_at_time(self):
             # This allows a try/except catch in FlowSequencer
             # as stop_at_time is implemented, but not here
-            raise DE1APIError(
+            raise DE1APINotManagedHereException(
                 "Steam time is set by the DE1, not SteamControl.stop_at_time"
             )
 

@@ -100,6 +100,14 @@ class DE1APIAttributeError (DE1APIError, AttributeError):
     pass
 
 
+class DE1APINotManagedHereException (DE1APIAttributeError):
+    """
+    Used to indicate to the FlowSequencer that a different parameter
+    is used to manage the behavior. Currently used for steam time.
+    """
+    pass
+
+
 class DE1APIKeyError(DE1APIError, KeyError):
     pass
 
