@@ -167,7 +167,7 @@ class Config (ConfigYAML):
                     "%(name)s: %(message)s"
             self.FORMAT_STDERR = "%(levelname)s [%(processName)s] " \
                     "%(name)s: %(message)s"
-            self.LEVEL_MAIN = logging.DEBUG
+            self.LEVEL_MAIN = logging.INFO
             self.LEVEL_STDERR = logging.WARNING
             self.LEVEL_MQTT = logging.INFO
             self.LEVEL_UPLOAD = logging.INFO
