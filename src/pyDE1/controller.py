@@ -48,9 +48,6 @@ def run_controller(config: pyDE1.config.Config,
 
     logger = logging.getLogger(multiprocessing.current_process().name)
 
-    logging.getLogger(
-        f"{CUUID.StateInfo.__str__()}.Notify").setLevel(logging.DEBUG)
-
     loop = asyncio.get_event_loop()
     loop.set_debug(True)
 
