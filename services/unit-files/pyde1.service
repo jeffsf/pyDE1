@@ -8,6 +8,11 @@ After=syslog.target mosquitto.service
 User=pyde1
 Group=pyde1
 
+Environment="SEARCH_DIR=/var/lib/pyde1"
+Environment="SUFFIX=.btid"
+ExecStartPre=/home/pyde1/deploy/pyde1-devel/services/runnable/disconnect-btid.sh
+ExecStopPost=/home/pyde1/deploy/pyde1-devel/services/runnable/disconnect-btid.sh
+
 # PYTHONPATH is likely only needed for development
 Environment="PYTHONPATH=/home/pyde1/deploy/pyde1-devel/src"
 
