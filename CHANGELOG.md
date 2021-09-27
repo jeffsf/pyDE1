@@ -1,5 +1,62 @@
 # Changelog
 
+## Pending
+
+### New
+
+* Services run under `systemd`
+	* Service ("unit") files for `pyde1.service` and `pyde1-visualizer.service`
+	* Config files in YAML form
+* Track the IDs of connected Bluetooth devices for cleanup under Linux **(TODO: Clean up with a post-run in the service definition)**
+* MQTT supports authorization and access-control lists
+* Visualizer: Don't upload short "shots", such as used for flushing (configurable)
+* Stop-at-weight offset configurable through `pyde1.conf`
+* Database:
+	* Self-initialize, if needed
+	* Check for the proper schema at start
+
+
+### Fixed
+
+* MQTT (outbound) API will now detect connection or authentication failures with the broker and terminate pyDE1
+* FlowSequencer no longer raises exception when trying to report that the steam time is not managed directly by the software. (It is managed by the DE1 firmware.)
+* Mass-flow estimates had an off-by-one error that was corrected
+* Replay now properly reports sequence_id on gate notifications
+
+
+### Changed
+
+* Paths changed to `/var/log/pyde1` and `/var/lib/pyde1/pyde1.sqlite` by default (configurable)
+* Refactored and unified shutdown processes
+	* **NB: SIGHUP is no longer used for log rotation, it is a termination signal.**
+* Refactored supervised processes to handle uncaught exceptions and properly terminate for automated restart
+* Replay: config file and command-line switches allow easier configuration, including sequence ID and MQTT topic root
+* Visualizer: log to `pyde1-visualizer.log` by default
+* Stop-at-weight internally includes 170 ms to account for the "fall-time" from the basket to the cup.
+* Logging:
+	* Switched to a file-watcher handler so that log rotation should be transparent, without the need of a signal
+	* Provide better control of formatting and level for use with `systemd` (service) infrastructure
+	* Change default file name to `pyde1.log`
+	* Add `--console` command-line flag to provide timestamped, DEBUG-level output to assist in development and debugging
+	* Adjust some log levels so that INFO-level logs are more meaningful 
+	* Removed last usages of `aiologger`
+* The outbound API reports "disconnected" for the DE1 and scale when initialized
+
+### Deprecated
+
+* `find_first_and_load.py` (Use the APIs. It would have already been removed if previously deprecated)
+
+### Removed
+
+* `try_de1.py` (previously deprecated)
+* `DE1._recorder_active` and dependencies, including `shot_file.py` (previously deprecated)
+* Profile `from_json_file()` (previously deprecated)
+* `replay_vis_test.py` -- Use `replay.py` with config or command-line options
+
+
+
+
+
 ## 0.7.0 – 2021-08-12
 
 ### Schema Upgrade Required
