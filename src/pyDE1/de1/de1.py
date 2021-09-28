@@ -644,7 +644,7 @@ class DE1 (Singleton):
 
     async def write_packed_attr(self, obj: PackedAttr):
         cuuid = get_cuuid(obj)
-        logging.getLogger(f"{cuuid.__str__()}.Write").debug(obj.log_string())
+        logging.getLogger(f"{cuuid.__str__()}.Write").info(obj.log_string())
 
         await self._bleak_client.write_gatt_char(cuuid.uuid,
                                                  obj.as_wire_bytes())
