@@ -1,60 +1,89 @@
+
 # Changelog
 
-## Pending
+## 0.8.0 – 2021-09-28
+
+### Overview
+
+This release focused on converting command-line executables to robust, 
+self-starting, and supervised services. Both the core pyDE1 controller 
+and the Visualizer uploader now can be started with `systemd` 
+automatically at boot. Configuration of many parameters can be done 
+through YAML files (simple, human-friendly syntax), by default in 
+`/usr/local/pyde1/`. Command-line parameters, usable by the service unit files, 
+can be used to override the config-file location.
+
+Logging configuration may change prior to "beta". At this time it is only 
+configurable in the output format and level for the *stderr* and *file* loggers.  
+By default, the *stderr* logger is at the WARNING level abd without timestamps, 
+as it is managed through `systemd` when being run as a service. A command-line 
+parameter allows for timestamped output at the DEBUG level for interactive use.
 
 ### New
 
 * Services run under `systemd`
-	* Service ("unit") files for `pyde1.service` and `pyde1-visualizer.service`
-	* Config files in YAML form
-* Track the IDs of connected Bluetooth devices for cleanup under Linux **(TODO: Clean up with a post-run in the service definition)**
+    * Service ("unit") files for `pyde1.service` and `pyde1-visualizer.service`
+    * Config files in YAML form
+* Auto-off, configurable
+* Track the IDs of connected Bluetooth devices for cleanup under Linux and 
+    disconnect them at the Bluez level in the case of a non-graceful exit
 * MQTT supports authorization and access-control lists
-* Visualizer: Don't upload short "shots", such as used for flushing (configurable)
+* Visualizer: Don't upload short "shots", such as for flushing (configurable)
 * Stop-at-weight offset configurable through `pyde1.conf`
 * Database:
-	* Self-initialize, if needed
-	* Check for the proper schema at start
+    * Self-initialize, if needed
+    * Check for the proper schema at start
+* Replay: config file and command-line switches allow easier configuration, 
+    including sequence ID and MQTT topic root
 
 
 ### Fixed
 
-* MQTT (outbound) API will now detect connection or authentication failures with the broker and terminate pyDE1
-* FlowSequencer no longer raises exception when trying to report that the steam time is not managed directly by the software. (It is managed by the DE1 firmware.)
+* MQTT (outbound) API will now detect connection or authentication failures 
+    with the broker and terminate pyDE1
+* FlowSequencer no longer raises exception when trying to report that 
+    the steam time is not managed directly by the software. 
+    (It is managed by the DE1 firmware.)
 * Mass-flow estimates had an off-by-one error that was corrected
 * Replay now properly reports sequence_id on gate notifications
 
 
 ### Changed
 
-* Paths changed to `/var/log/pyde1` and `/var/lib/pyde1/pyde1.sqlite` by default (configurable)
+* Paths changed to `/var/log/pyde1` and `/var/lib/pyde1/pyde1.sqlite`
+    by default (configurable)
 * Refactored and unified shutdown processes
-	* **NB: SIGHUP is no longer used for log rotation, it is a termination signal.**
-* Refactored supervised processes to handle uncaught exceptions and properly terminate for automated restart
-* Replay: config file and command-line switches allow easier configuration, including sequence ID and MQTT topic root
+    * **NB: SIGHUP is no longer used for log rotation. It is a termination signal.**
+* Refactored supervised processes to handle uncaught exceptions and 
+    properly terminate for automated restart
 * Visualizer: log to `pyde1-visualizer.log` by default
-* Stop-at-weight internally includes 170 ms to account for the "fall-time" from the basket to the cup.
+* Stop-at-weight internally includes 170 ms to account for the "fall-time" 
+    from the basket to the cup.
 * Logging:
-	* Switched to a file-watcher handler so that log rotation should be transparent, without the need of a signal
-	* Provide better control of formatting and level for use with `systemd` (service) infrastructure
-	* Change default file name to `pyde1.log`
-	* Add `--console` command-line flag to provide timestamped, DEBUG-level output to assist in development and debugging
-	* Adjust some log levels so that INFO-level logs are more meaningful 
-	* Removed last usages of `aiologger`
+    * Switched to a file-watcher handler so that log rotation should 
+        be transparent, without the need of a signal
+    * Provide better control of formatting and level for use with `systemd` 
+        (service) infrastructure
+    * Change default file name to `pyde1.log`
+    * Add `--console` command-line flag to provide timestamped, 
+        DEBUG-level output to assist in development and debugging
+    * Adjust some log levels so that INFO-level logs are more meaningful 
+    * Removed last usages of `aiologger`
 * The outbound API reports "disconnected" for the DE1 and scale when initialized
 
 ### Deprecated
 
-* `find_first_and_load.py` (Use the APIs. It would have already been removed if previously deprecated)
+* `find_first_and_load.py` (Use the APIs. It would have already been removed 
+    if previously deprecated)
 
 ### Removed
 
+* `ugly_bits.py` (previously deprecated)
 * `try_de1.py` (previously deprecated)
-* `DE1._recorder_active` and dependencies, including `shot_file.py` (previously deprecated)
+* `DE1._recorder_active` and dependencies, including `shot_file.py` 
+    (previously deprecated)
 * Profile `from_json_file()` (previously deprecated)
 * `replay_vis_test.py` -- Use `replay.py` with config or command-line options
-
-
-
 
 
 ## 0.7.0 – 2021-08-12
