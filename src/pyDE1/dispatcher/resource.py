@@ -10,7 +10,7 @@ Enum that defines the recognized resources that the Dispatcher can access
 
 import enum
 
-RESOURCE_VERSION = '3.0.0'
+RESOURCE_VERSION = '3.1.0'
 
 
 class Resource (enum.Enum):
@@ -26,6 +26,8 @@ class Resource (enum.Enum):
     DE1_ID = 'de1/id'
 
     DE1_MODE = 'de1/mode'
+
+    DE1_FEATURE_FLAGS = 'de1/feature_flags'
 
     DE1_PROFILE = 'de1/profile'
     DE1_PROFILE_ID = 'de1/profile/id'

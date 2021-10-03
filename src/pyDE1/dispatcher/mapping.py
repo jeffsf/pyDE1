@@ -64,13 +64,12 @@ else:
     logger.info("Using stub for DiscoveredDevices")
     from pyDE1.dispatcher.stubs import DiscoveredDevices
 
-
 from pyDE1.de1.c_api import PackedAttr, MMR0x80LowAddr, get_cuuid, \
     ShotSettings, SetTime, Versions, WaterLevels
 
 from pyDE1.exceptions import DE1APIValueError
 
-MAPPING_VERSION = "3.1.0"
+MAPPING_VERSION = "3.2.0"
 
 # There are a handful of requests related to the DE1 and Scale
 # that can be or must be handled even if the device is not ready.
@@ -82,8 +81,7 @@ MAPPING_VERSION = "3.1.0"
 #   * Add the "if_not_ready" element to IsAt and check in requires_*
 
 
-
-class IsAt (NamedTuple):
+class IsAt(NamedTuple):
     target: Union[type(DE1),
                   type(Scale),
                   type(FlowSequencer),
@@ -128,7 +126,6 @@ def mapping_requires(mapping: dict) -> dict:
 
 
 def _mapping_requires_inner(mapping: dict, results: dict) -> dict:
-
     for val in mapping.values():
         if isinstance(val, IsAt):
             if val.requires_connected_de1:
@@ -160,11 +157,11 @@ def from_packed_attr(packed_attr: PackedAttr, attr_path: str, v_type: type,
         )
 
     return IsAt(
-        target= packed_attr,
-        attr_path= attr_path,
-        v_type= v_type,
-        setter_path= setter_path,
-        read_only= not can_read,
+        target=packed_attr,
+        attr_path=attr_path,
+        v_type=v_type,
+        setter_path=setter_path,
+        read_only=not can_read,
     )
 
 
@@ -172,10 +169,10 @@ def from_packed_attr(packed_attr: PackedAttr, attr_path: str, v_type: type,
 def from_mmr(mmr: MMR0x80LowAddr, v_type: type):
     # This doesn't handle can't read and can't write
     return IsAt(
-        target= mmr,
-        attr_path= '',
-        v_type= v_type,
-        read_only= not mmr.can_read
+        target=mmr,
+        attr_path='',
+        v_type=v_type,
+        read_only=not mmr.can_read
     )
 
 
@@ -187,8 +184,8 @@ MODULES_FOR_VERSIONS = (
     'paho-mqtt'
 )
 
-
 import importlib.metadata  # Used for module-version lookup only
+
 
 def module_versions():
     retval = {}
@@ -251,7 +248,7 @@ MAPPING[Resource.DE1_ID] = {
     # first_if_found, if true, will replace only if one is found
     # It is an error to be true if 'id' is present at this time
     'first_if_found': IsAt(target=DE1, attr_path=None,
-                        setter_path='first_if_found', v_type=bool,
+                           setter_path='first_if_found', v_type=bool,
                            if_not_ready=True),
 }
 
@@ -261,7 +258,11 @@ MAPPING[Resource.DE1_MODE] = {
     'mode': IsAt(target=DE1, attr_path=None, setter_path='mode_setter',
                  v_type=str, internal_type=DE1ModeEnum),
 }
-# TODO: de1.mode()
+
+MAPPING[Resource.DE1_FEATURE_FLAGS] = {
+    'feature_flags': IsAt(target=DE1, attr_path='feature_flags',
+                          v_type=str, read_only=True),
+}
 
 # DE1_PROFILE = 'de1/profile'
 # DE1_PROFILES = 'de1/profiles'
@@ -271,7 +272,6 @@ MAPPING[Resource.DE1_PROFILE_ID] = {
                setter_path='set_profile_by_id')
 }
 
-
 # DE1_FIRMWARE = 'de1/firmware'
 # DE1_FIRMWARES = 'de1/firmwares'
 
@@ -279,8 +279,6 @@ MAPPING[Resource.DE1_FIRMWARE_ID] = {
     'id': IsAt(target=MMR0x80LowAddr.FIRMWARE_BUILD_NUMBER,
                attr_path='', v_type=int),
 }
-
-
 
 MAPPING[Resource.DE1_CONNECTIVITY] = {
     'mode': IsAt(target=DE1, attr_path='connectivity',
@@ -495,7 +493,7 @@ MAPPING[Resource.SCALE_CONNECTIVITY] = {
 
 MAPPING[Resource.SCALE_TARE] = {
     'tare': IsAt(target=Scale, attr_path='', setter_path='tare_with_bool',
-                 v_type=Optional[bool])     # Accommodate None as False
+                 v_type=Optional[bool])  # Accommodate None as False
 }
 
 MAPPING[Resource.SCALE_DISPLAY] = {
@@ -542,7 +540,6 @@ MAPPING[Resource.DE1] = {
     'parameter_set': MAPPING[Resource.DE1_PARAMETER_SET],
     'read_once': MAPPING[Resource.DE1_READ_ONCE],
 }
-
 
 MAPPING[Resource.SCALE] = {
     'id': MAPPING[Resource.SCALE_ID],

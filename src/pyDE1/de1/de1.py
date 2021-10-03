@@ -10,6 +10,7 @@ SPDX-License-Identifier: GPL-3.0-only
 
 import asyncio
 import hashlib
+import inspect
 import logging
 import time
 
@@ -102,6 +103,8 @@ class DE1 (Singleton):
         self._mmr_dict: Dict[Union[MMR0x80LowAddr, int], MMR0x80Data] = dict()
 
         self._latest_profile: Optional[Profile] = None
+
+        self._feature_flag = FeatureFlag(self)
 
         self._event_connectivity = SubscribedEvent(self)
         self._event_state_update = SubscribedEvent(self)
@@ -298,6 +301,14 @@ class DE1 (Singleton):
         return 0.17    # seconds
 
     @property
+    def feature_flag(self):
+        return self._feature_flag
+
+    @property
+    def feature_flags(self):
+        return self._feature_flag.as_dict()
+
+    @property
     def address(self):
         addr = self._address_or_bledevice
         if isinstance(addr, BLEDevice):
@@ -404,13 +415,10 @@ class DE1 (Singleton):
     def event_shot_sample_with_volumes_update(self):
         return self._event_shot_sample_with_volumes_update
 
+    # Deprecated
     @property
     def allow_flow_start_commands(self):
-        ghc_info = self._mmr_dict[MMR0x80LowAddr.GHC_INFO].data_decoded
-        if ghc_info is None or ghc_info & MMRGHCInfoBitMask.GHC_ACTIVE:
-            return False
-        else:
-            return True
+        return not self.feature_flag.ghc_active
 
     # NB: Linux apparently "needs" a scan when connecting by address
     #     It may be the case that this disconnects other devices
@@ -1419,7 +1427,7 @@ class DE1 (Singleton):
                       DE1ModeEnum.HOT_WATER,
                       ):
 
-            if not self.allow_flow_start_commands:
+            if self.feature_flag.ghc_active:
                 raise DE1APIUnsupportedFeatureError(
                     f"DE1 does not permit {mode} unless GHC is not installed."
                 )
@@ -1492,4 +1500,54 @@ class DE1 (Singleton):
                         f"Sleeping with auto-off of {self._auto_off_time} sec")
                     await self.sleep()
             await asyncio.sleep(RECHECK_TIME)
+
+
+class FeatureFlag:
+
+    def __init__(self, de1: DE1):
+        self._de1 = de1
+
+    def as_dict(self) -> dict:
+        filtered = {}
+        for name, value in inspect.getmembers(self):
+            if not name.startswith('_') and name != 'as_dict':
+                filtered[name] = value
+        return filtered
+
+    @property
+    def fw_version(self):
+        try:
+            return self._de1._mmr_dict[MMR0x80LowAddr.FIRMWARE_BUILD_NUMBER].data_decoded
+        except AttributeError:
+            return None
+
+    @property
+    def ghc_active(self):
+        try:
+            ghc_info = self._de1._mmr_dict[MMR0x80LowAddr.GHC_INFO].data_decoded
+        except AttributeError:
+            ghc_info = None
+        if ghc_info is None:
+            return None
+        elif ghc_info & MMRGHCInfoBitMask.GHC_ACTIVE:
+            return True
+        else:
+            return False
+
+    # Fails on 1260 and prior
+    @property
+    def mmr_ghc_preferred_info(self):
+        if self.fw_version is None:
+            return None
+        else:
+            return False
+
+    # Untested, but assumed to fail on 1260
+    @property
+    def mmr_maximum_pressure(self):
+        return self.mmr_ghc_preferred_info
+
+
+
+
 
