@@ -2596,14 +2596,14 @@ def decode_one_mmr(addr_high: int, addr_low: Union[MMR0x80LowAddr, int],
     elif addr_low in {
         MMR0x80LowAddr.GHC_PREFERRED_INTERFACE,
         MMR0x80LowAddr.MAXIMUM_PRESSURE,
-    }:
-        # These aren't implemented
-        logger.error(
+    } or addr_low > MMR0x80LowAddr.FLOW_CALIBRATION:
+        # These aren't implemented (fully)
+        retval = unpack('<I', mmr_bytes)[0]
+        logger.warning(
             "Unexpected decode requested for "
-            f"{addr_low}"
+            f"0x{addr_low:04x} {retval} 0x{retval:x} "
             "(unimplemented MMR)"
         )
-        retval = mmr_bytes
 
     else:
         retval = unpack('<I', mmr_bytes)[0]
