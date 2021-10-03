@@ -11,10 +11,10 @@ DE1 needs to know about the FlowSequencer to be able to set stop-at targets.
 
 Resolve by defining a restricted interface
 """
-
-from typing import Optional
+import logging
 
 from pyDE1.de1.c_api import API_MachineStates
+
 
 class I_TargetSetter:
 
@@ -31,4 +31,7 @@ class I_TargetSetter:
         raise NotImplementedError
 
     def profile_can_override_tank_temperature(self, state: API_MachineStates):
+        raise NotImplementedError
+
+    async def on_de1_nearly_ready(self):
         raise NotImplementedError

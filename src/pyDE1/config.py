@@ -205,7 +205,7 @@ class Config (ConfigYAML):
     class _DE1 (ConfigYAML._Loadable):
         def __init__(self):
             self.LINE_FREQUENCY = 60
-            self.MAX_WAIT_FOR_READY_EVENTS = 3.0
+            self.MAX_WAIT_FOR_READY_EVENTS = 3.5 # Seconds (25 at 0.1 each)
             # Do these "settings" belong here,
             # or should they be separated from parameters?
             self.DEFAULT_AUTO_OFF_TIME = None   # Minutes

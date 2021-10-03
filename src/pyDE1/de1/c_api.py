@@ -6,6 +6,9 @@ GNU General Public License v3.0 only
 SPDX-License-Identifier: GPL-3.0-only
 """
 
+# NB: can_read, can_write imply that *some* firmware versions support them.
+#     Checks with feature_flag are important, especially for earlier firmware.
+
 import asyncio
 import copy
 import enum
@@ -716,6 +719,9 @@ class API_Substates (enum.IntEnum):
     Error_Flash         = 211
     Error_OOM           = 212
     Error_Deadline      = 213
+    Error_HiCurrent     = 214
+    Error_LoCurrent     = 215
+    Error_BootFill      = 216
 
     @property
     def is_error(self):
@@ -2114,10 +2120,10 @@ class ReadFromMMR (MMRData):
         else:
             end = self.addr_low + 4 * self.Len - 1
         return (
-                (MMR0x80LowAddr.DEBUG_BUFFER_START
-                 <= self.addr_low < MMR0x80LowAddr.RESTART_DEBUG_LOG)
-                and (MMR0x80LowAddr.DEBUG_BUFFER_START
-                     <= end < MMR0x80LowAddr.RESTART_DEBUG_LOG)
+                (MMR0x80LowAddr.DEBUG_BUFFER
+                 <= self.addr_low < MMR0x80LowAddr.DEBUG_CONFIG)
+                and (MMR0x80LowAddr.DEBUG_BUFFER
+                     <= end < MMR0x80LowAddr.DEBUG_CONFIG)
                 and self.addr_high == 0x80
         )
 
@@ -2415,7 +2421,7 @@ class SetTime (PackedAttr):
 # From comments in APIDataTypes.hpp
 
 
-class MMRFirmwareModelCode (enum.IntEnum):
+class MMRV13ModelCode (enum.IntEnum):
     UNSET       =  0
     DE1         =  1
     DE1PLUS     =  2
@@ -2436,25 +2442,31 @@ class MMR0x80LowAddr (enum.IntEnum):
     HW_CONFIG               = 0x0000
     MODEL                   = 0x0004
     CPU_BOARD_MODEL         = 0x0008
-    FIRMWARE_MODEL          = 0x000c
-    FIRMWARE_BUILD_NUMBER   = 0x0010
-    DEBUG_BUFFER_BYTES      = 0x2800
-    DEBUG_BUFFER_START      = 0x2804
-    RESTART_DEBUG_LOG       = 0x3804
+    V13_MODEL               = 0x000c
+    CPU_FIRMWARE_BUILD      = 0x0010
+    DEBUG_LEN               = 0x2800
+    DEBUG_BUFFER            = 0x2804
+    DEBUG_CONFIG            = 0x3804
     FAN_THRESHOLD           = 0x3808
-    TANK_WATER_THRESHOLD    = 0x380c
-    HEATER_PHASE1_FLOW      = 0x3810
-    HEATER_PHASE2_FLOW      = 0x3814
-    HEATER_IDLE_TEMPERATURE = 0x3818
+    TANK_TEMP               = 0x380c
+    HEATER_UP1_FLOW         = 0x3810
+    HEATER_UP2_FLOW         = 0x3814
+    WATER_HEATER_IDLE_TEMP  = 0x3818
     GHC_INFO                = 0x381c
-    GHC_PREFERRED_INTERFACE = 0x3820
-    MAXIMUM_PRESSURE        = 0x3824
-    STEAM_FLOW_RATE         = 0x3828
-    HIGH_STEAM_FLOW_TIME    = 0x382c
+    PREF_GHC_MCI            = 0x3820
+    MAX_SHOT_PRESS          = 0x3824
+    TARGET_STEAM_FLOW       = 0x3828
+    STEAM_START_SECS        = 0x382c
     SERIAL_NUMBER           = 0x3830
-    HEATER_VOLTAGE          = 0x3834
-    HEATER_PHASE2_TIMEOUT   = 0x3838
-    FLOW_CALIBRATION        = 0x383c
+    HEATER_VOLTAGE          = 0x3834    # NB: +1000 if manually set
+    HEATER_UP2_TIMEOUT      = 0x3838
+    CAL_FLOW_EST            = 0x383c
+    FLUSH_FLOW_RATE         = 0x3840    # 60 default
+    FLUSH_TEMP              = 0x3844    # 850 default
+    FLUSH_TIMEOUT           = 0x3848    # 200 default
+    HOT_WATER_FLOW_RATE     = 0x384c
+
+    LAST_KNOWN              = 0x384c        # See also FeatureFlag
 
     #
     # Surprisingly, properties can be added with member data
@@ -2475,51 +2487,38 @@ class MMR0x80LowAddr (enum.IntEnum):
     @property
     def can_read(self):
         return self not in {
-            MMR0x80LowAddr.GHC_PREFERRED_INTERFACE,
-            MMR0x80LowAddr.MAXIMUM_PRESSURE,
+            MMR0x80LowAddr.PREF_GHC_MCI,
+            MMR0x80LowAddr.MAX_SHOT_PRESS,
         }
 
     @property
     def can_write(self):
         return self in {
             MMR0x80LowAddr.FAN_THRESHOLD,
-            MMR0x80LowAddr.TANK_WATER_THRESHOLD,
-            MMR0x80LowAddr.HEATER_PHASE1_FLOW,
-            MMR0x80LowAddr.HEATER_PHASE2_FLOW,
-            MMR0x80LowAddr.HEATER_IDLE_TEMPERATURE,
-            MMR0x80LowAddr.STEAM_FLOW_RATE,
-            MMR0x80LowAddr.HIGH_STEAM_FLOW_TIME,
-            # MMR0x80LowAddr.HEATER_VOLTAGE,   # Marked RW, seems unwise
-            MMR0x80LowAddr.HEATER_PHASE2_TIMEOUT,
-            MMR0x80LowAddr.FLOW_CALIBRATION,
+            MMR0x80LowAddr.TANK_TEMP,
+            MMR0x80LowAddr.HEATER_UP1_FLOW,
+            MMR0x80LowAddr.HEATER_UP2_FLOW,
+            MMR0x80LowAddr.WATER_HEATER_IDLE_TEMP,
+            MMR0x80LowAddr.TARGET_STEAM_FLOW,
+            MMR0x80LowAddr.STEAM_START_SECS,
+            MMR0x80LowAddr.HEATER_VOLTAGE,   # Needed for older machines
+            MMR0x80LowAddr.HEATER_UP2_TIMEOUT,
+            MMR0x80LowAddr.CAL_FLOW_EST,
+            MMR0x80LowAddr.FLUSH_FLOW_RATE,
+            MMR0x80LowAddr.FLUSH_TEMP,
+            MMR0x80LowAddr.FLUSH_TIMEOUT,
+            MMR0x80LowAddr.HOT_WATER_FLOW_RATE,
         }
 
     @classmethod
-    def will_hang(cls, addr_low, mmr_req_len):
-        """
-        Certain addresses will presently hang the DE1 on read
-            GHC_PREFERRED_INTERFACE = 0x3820
-            MAXIMUM_PRESSURE        = 0x3824
-        Returns True if the addr_low and length to read would overlap
-        """
-        addr_end = addr_low + 4 * (mmr_req_len + 1) - 1
-        if ( cls.GHC_PREFERRED_INTERFACE
-                < addr_low < (cls.MAXIMUM_PRESSURE + 3) ) \
-                or ( cls.GHC_PREFERRED_INTERFACE
-                < addr_end < (cls.MAXIMUM_PRESSURE + 3) ):
-            return True
-        else:
-            return False
-
-    @classmethod
     def in_debug_buffer(cls, addr_low):
-        return cls.DEBUG_BUFFER_START.value <= addr_low < cls.RESTART_DEBUG_LOG.value
+        return cls.DEBUG_BUFFER.value <= addr_low < cls.DEBUG_CONFIG.value
 
     @property
     def read_once(self) -> bool:
         return self.can_read and not self.can_write \
             and not MMR0x80LowAddr.in_debug_buffer(self.value) \
-            and self != MMR0x80LowAddr.FIRMWARE_BUILD_NUMBER
+            and self != MMR0x80LowAddr.CPU_FIRMWARE_BUILD
 
     @classmethod
     def for_logging(cls, addr_low):
@@ -2529,8 +2528,8 @@ class MMR0x80LowAddr (enum.IntEnum):
         except ValueError:
             if cls.in_debug_buffer(addr_low):
                 addr_name = "{}+0x{:03x}".format(
-                    cls.DEBUG_BUFFER_START.name.title(),
-                    addr_low - cls.DEBUG_BUFFER_START.value,
+                    cls.DEBUG_BUFFER.name.title(),
+                    addr_low - cls.DEBUG_BUFFER.value,
                 )
             else:
                 addr_name = ""
@@ -2552,30 +2551,34 @@ def decode_one_mmr(addr_high: int, addr_low: Union[MMR0x80LowAddr, int],
         MMR0x80LowAddr.HW_CONFIG,
         MMR0x80LowAddr.MODEL,
         MMR0x80LowAddr.SERIAL_NUMBER,
-        MMR0x80LowAddr.RESTART_DEBUG_LOG,
+        MMR0x80LowAddr.DEBUG_CONFIG,
     }:
         # Unknown how to decode
         retval = mmr_bytes
 
     elif addr_low in {
         MMR0x80LowAddr.CPU_BOARD_MODEL,
-        MMR0x80LowAddr.FLOW_CALIBRATION,
+        MMR0x80LowAddr.CAL_FLOW_EST,
     }:
         val = unpack('<I', mmr_bytes)[0]
         retval = val / 1000
 
     elif addr_low in {
-        MMR0x80LowAddr.STEAM_FLOW_RATE,
-        MMR0x80LowAddr.HIGH_STEAM_FLOW_TIME,
+        MMR0x80LowAddr.TARGET_STEAM_FLOW,
+        MMR0x80LowAddr.STEAM_START_SECS,
     }:
         val = unpack('<I', mmr_bytes)[0]
         retval = val / 100
 
     elif addr_low in {
-        MMR0x80LowAddr.HEATER_PHASE1_FLOW,
-        MMR0x80LowAddr.HEATER_PHASE2_FLOW,
-        MMR0x80LowAddr.HEATER_IDLE_TEMPERATURE,
-        MMR0x80LowAddr.HEATER_PHASE2_TIMEOUT,
+        MMR0x80LowAddr.HEATER_UP1_FLOW,
+        MMR0x80LowAddr.HEATER_UP2_FLOW,
+        MMR0x80LowAddr.WATER_HEATER_IDLE_TEMP,
+        MMR0x80LowAddr.HEATER_UP2_TIMEOUT,
+        MMR0x80LowAddr.FLUSH_FLOW_RATE,
+        MMR0x80LowAddr.FLUSH_TEMP,
+        MMR0x80LowAddr.FLUSH_TIMEOUT,
+        MMR0x80LowAddr.HOT_WATER_FLOW_RATE,
     }:
         val = unpack('<I', mmr_bytes)[0]
         retval = val / 10
@@ -2583,8 +2586,8 @@ def decode_one_mmr(addr_high: int, addr_low: Union[MMR0x80LowAddr, int],
     elif MMR0x80LowAddr.in_debug_buffer(addr_low):
         retval = mmr_bytes.decode('utf-8')
 
-    elif addr_low == MMR0x80LowAddr.FIRMWARE_MODEL:
-        retval = MMRFirmwareModelCode(unpack('<I', mmr_bytes)[0])
+    elif addr_low == MMR0x80LowAddr.V13_MODEL:
+        retval = MMRV13ModelCode(unpack('<I', mmr_bytes)[0])
 
     elif addr_low == MMR0x80LowAddr.GHC_INFO:
         val = unpack('<I', mmr_bytes)[0]
@@ -2594,9 +2597,9 @@ def decode_one_mmr(addr_high: int, addr_low: Union[MMR0x80LowAddr, int],
         retval = MMRGHCInfoBitMask(val)
 
     elif addr_low in {
-        MMR0x80LowAddr.GHC_PREFERRED_INTERFACE,
-        MMR0x80LowAddr.MAXIMUM_PRESSURE,
-    } or addr_low > MMR0x80LowAddr.FLOW_CALIBRATION:
+        MMR0x80LowAddr.PREF_GHC_MCI,
+        MMR0x80LowAddr.MAX_SHOT_PRESS,
+    } or addr_low > MMR0x80LowAddr.LAST_KNOWN:
         # These aren't implemented (fully)
         retval = unpack('<I', mmr_bytes)[0]
         logger.warning(
@@ -2619,28 +2622,31 @@ def pack_one_mmr0x80_write(addr_low: MMR0x80LowAddr,
         raise DE1APIValueError(
             f"Not encoding a non-writable MMR target address: {addr_low}")
 
-    if addr_low == MMR0x80LowAddr.FLOW_CALIBRATION:
+    if addr_low == MMR0x80LowAddr.CAL_FLOW_EST:
         binval = pack('<I', int(round(value * 1000)))
 
-    elif addr_low == MMR0x80LowAddr.STEAM_FLOW_RATE:
+    elif addr_low == MMR0x80LowAddr.TARGET_STEAM_FLOW:
         # Check for 0.6 to 0.8
         binval = pack('<I', int(round(value * 100)))
 
-    elif addr_low == MMR0x80LowAddr.HIGH_STEAM_FLOW_TIME:
+    elif addr_low == MMR0x80LowAddr.STEAM_START_SECS:
         # Check for 0 to 4
         binval = pack('<I', int(round(value * 100)))
 
     elif addr_low in (
-        MMR0x80LowAddr.HEATER_PHASE1_FLOW,
-        MMR0x80LowAddr.HEATER_PHASE2_FLOW,
-        MMR0x80LowAddr.HEATER_IDLE_TEMPERATURE,
-        MMR0x80LowAddr.HEATER_PHASE2_TIMEOUT,
+        MMR0x80LowAddr.HEATER_UP1_FLOW,
+        MMR0x80LowAddr.HEATER_UP2_FLOW,
+        MMR0x80LowAddr.WATER_HEATER_IDLE_TEMP,
+        MMR0x80LowAddr.HEATER_UP2_TIMEOUT,
+        MMR0x80LowAddr.FLUSH_FLOW_RATE,
+        MMR0x80LowAddr.FLUSH_TEMP,
+        MMR0x80LowAddr.FLUSH_TIMEOUT,
     ):
         binval = pack('<I', int(round(value * 10)))
 
     elif addr_low in (
-        MMR0x80LowAddr.TANK_WATER_THRESHOLD,  # 0-60°C ?
-        MMR0x80LowAddr.FAN_THRESHOLD,
+            MMR0x80LowAddr.TANK_TEMP,  # 0-60°C ?
+            MMR0x80LowAddr.FAN_THRESHOLD,
     ):
         binval = pack('<I', int(round(value)))
 

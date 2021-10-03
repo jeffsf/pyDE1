@@ -260,6 +260,7 @@ class DE1 (Singleton):
                 idx += 1
             logger.error("Stupidly continuing anyway after re-requesting")
 
+        await self._flow_sequencer.on_de1_nearly_ready()
         # NB: This gets sent if all there or not
         await self._notify_ready()
 
@@ -283,7 +284,8 @@ class DE1 (Singleton):
         return self._ready.is_set()
 
     @classmethod
-    def device_adv_is_recognized_by(cls, device: BLEDevice, adv: AdvertisementData):
+    def device_adv_is_recognized_by(cls, device: BLEDevice,
+                                    adv: AdvertisementData):
         return adv.local_name == "DE1"
 
     @property
@@ -658,7 +660,7 @@ class DE1 (Singleton):
                                                  obj.as_wire_bytes())
 
         # Read-back ensures that local cache is consistent
-        if isinstance(obj, WriteToMMR):
+        if isinstance(obj, WriteToMMR) and obj.addr_high == 0x80:
             try:
                 addr = MMR0x80LowAddr(obj.addr_low)
                 if addr.can_read:
@@ -762,6 +764,11 @@ class DE1 (Singleton):
         ready_event = await self.read_one_mmr0x80(mmr0x80)
         await ready_event.wait()
 
+    async def write_one_mmr0x80(self, mmr0x80: MMR0x80LowAddr,
+                                value: Union[int, float]):
+        await self.write_packed_attr(pack_one_mmr0x80_write(
+            MMR0x80LowAddr.FLUSH_TIMEOUT, value))
+
 #
 # MMR-based properties
 #
@@ -770,19 +777,41 @@ class DE1 (Singleton):
                                                     List[MMR0x80LowAddr]):
         """
         Request a read of the readable MMR registers, in bulk
-        :return:
+
+        Read and wait for MMR0x80LowAddr.CPU_FIRMWARE_BUILD so that
+        feature_flag can be used to determine "safe" reads
         """
+
+        await self.read_one_mmr0x80_and_wait(MMR0x80LowAddr.CPU_FIRMWARE_BUILD)
+
         start_block_1 = MMR0x80LowAddr.HW_CONFIG
-        end_block_1 = MMR0x80LowAddr.FIRMWARE_BUILD_NUMBER
+        end_block_1 = MMR0x80LowAddr.V13_MODEL
         words_block_1 = int((end_block_1 - start_block_1) / 4)
 
-        start_block_2 = MMR0x80LowAddr.FAN_THRESHOLD
-        end_block_2 = MMR0x80LowAddr.GHC_INFO
-        words_block_2 = int((end_block_2 - start_block_2) / 4)
+        # Always skip the debug log region
 
-        start_block_3 = MMR0x80LowAddr.STEAM_FLOW_RATE
-        end_block_3 = MMR0x80LowAddr.FLOW_CALIBRATION
-        words_block_3 = int((end_block_3 - start_block_3) / 4)
+        if self.feature_flag.safe_to_read_mmr_continuous:
+
+            start_block_2 = MMR0x80LowAddr.FAN_THRESHOLD
+            end_block_2 = self.feature_flag.last_mmr0x80
+            words_block_2 = int((end_block_2 - start_block_2) / 4)
+
+            start_block_3 = None
+            end_block_3 = None
+            words_block_3 = 0
+
+        else:
+
+            # Certain firmware versions will hang if an attempt is made
+            # to read PREF_GHC_MCI or MAX_SHOT_PRESS
+
+            start_block_2 = MMR0x80LowAddr.FAN_THRESHOLD
+            end_block_2 = MMR0x80LowAddr.GHC_INFO
+            words_block_2 = int((end_block_2 - start_block_2) / 4)
+
+            start_block_3 = MMR0x80LowAddr.TARGET_STEAM_FLOW
+            end_block_3 = self.feature_flag.last_mmr0x80
+            words_block_3 = int((end_block_3 - start_block_3) / 4)
 
         # Generated "bleak.exc.BleakDBusError: org.bluez.Error.InProgress"
         # from assert_reply in write_gatt_char in block_3 write
@@ -799,13 +828,15 @@ class DE1 (Singleton):
             words_block_1, 0x80, start_block_1)
         event_list.extend(await self.read_mmr(
             words_block_2, 0x80, start_block_2))
-        event_list.extend(await self.read_mmr(
-            words_block_3, 0x80, start_block_3))
+        if words_block_3:
+            event_list.extend(await self.read_mmr(
+                words_block_3, 0x80, start_block_3))
 
         addr_low_list = []
         addr_low_list.extend(range(start_block_1, end_block_1 + 4, 4))
         addr_low_list.extend(range(start_block_2, end_block_2 + 4, 4))
-        addr_low_list.extend(range(start_block_3, end_block_3 + 4, 4))
+        if words_block_3:
+            addr_low_list.extend(range(start_block_3, end_block_3 + 4, 4))
 
         return event_list, addr_low_list
 
@@ -910,7 +941,7 @@ class DE1 (Singleton):
                 if profile.tank_temperature is not None \
                     and override_tank_temperature:
                     await self.write_and_read_back_mmr0x80(
-                        addr_low=MMR0x80LowAddr.TANK_WATER_THRESHOLD,
+                        addr_low=MMR0x80LowAddr.TANK_TEMP,
                         value=profile.tank_temperature
                     )
 
@@ -982,7 +1013,11 @@ class DE1 (Singleton):
                 await self.cancel_firmware_upload()
             else:
                 raise DE1OperationInProgressError
-        await asyncio.create_task(self._upload_firmware(fw))
+        t = asyncio.create_task(self._upload_firmware(fw),
+                                name='upload_firmware')
+        # t.add_done_callback()
+        logger.info(f"Firmware upload started for {fw.filename}")
+        await t
 
     @staticmethod
     async def cancel_firmware_upload():
@@ -1008,12 +1043,7 @@ class DE1 (Singleton):
 
         # Intentionally "fail" the upload
 
-        for offset in offsets[0:10]:
-            if _TEST_BLE_LOSS_DURING_FW_UPLOAD \
-                    and random.choices((True, False),
-                                       cum_weights=(0.001, 1))[0]:
-                logger.info(f"Randomly skipping 0x{offset:06x}")
-                continue
+        for offset in offsets:
             data = fw.file_contents[offset:(offset + write_size)]
             await self.write_packed_attr(
                 WriteToMMR(
@@ -1503,6 +1533,11 @@ class DE1 (Singleton):
 
 
 class FeatureFlag:
+    """
+    Tests for DE1/firmware variants' capabilities
+    True/False if known
+    None if unknown (typically firmware version or CUUID not yet read)
+    """
 
     def __init__(self, de1: DE1):
         self._de1 = de1
@@ -1514,17 +1549,29 @@ class FeatureFlag:
                 filtered[name] = value
         return filtered
 
+    # Known, recent versions:
+    # 1238  7252229 2021-02-02
+    # 1246  b80dc98 2021-03-25
+    # 1250  3bf4bc9 2021-03-30
+    # 1255  a03eeec 2021-04-08
+    #       48cc5e1 2021-05-04
+    # 1260  2eae3cc 2021-05-06  Skip-to-next
+    # 1265  224a312 2021-06-30
+    # 1283  d8e169b 2021-09-30  Rinse (flush) control, Hot water flow (?)
+
     @property
     def fw_version(self):
         try:
-            return self._de1._mmr_dict[MMR0x80LowAddr.FIRMWARE_BUILD_NUMBER].data_decoded
+            return self._de1._mmr_dict[
+                MMR0x80LowAddr.CPU_FIRMWARE_BUILD].data_decoded
         except AttributeError:
             return None
 
     @property
     def ghc_active(self):
         try:
-            ghc_info = self._de1._mmr_dict[MMR0x80LowAddr.GHC_INFO].data_decoded
+            ghc_info = self._de1._mmr_dict[
+                MMR0x80LowAddr.GHC_INFO].data_decoded
         except AttributeError:
             ghc_info = None
         if ghc_info is None:
@@ -1534,20 +1581,65 @@ class FeatureFlag:
         else:
             return False
 
-    # Fails on 1260 and prior
     @property
-    def mmr_ghc_preferred_info(self):
+    def last_mmr0x80(self):
+
+        if self.fw_version < 1250:
+            # CAL_FLOW_EST was probably in 1246, but be conservative
+            logger.warning(
+                f"Firmware {self.fw_version} is 'ancient', update suggested.")
+            retval = MMR0x80LowAddr.HEATER_UP2_FLOW
+
+        elif self.fw_version < 1283:
+            retval = MMR0x80LowAddr.CAL_FLOW_EST
+            
+        else:
+            retval = MMR0x80LowAddr.LAST_KNOWN
+
+        return retval
+
+    @property
+    def safe_to_read_mmr_continuous(self):
+        # FW 1260 and prior would freeze if an attempt was made to read
+        # GHC_INFO or PREF_GHC_MCI
+        if self.fw_version is None:
+            return None
+        else:
+            return self.fw_version >= 1265
+
+    # Fails on 1260 and prior
+    # Readable on 1265, though returns 0 decoded as '<I'
+    @property
+    def mmr_pref_ghc_mci(self):
         if self.fw_version is None:
             return None
         else:
             return False
 
     # Untested, but assumed to fail on 1260
+    # Readable on 1265, though returns 0 decoded as '<I'
     @property
-    def mmr_maximum_pressure(self):
-        return self.mmr_ghc_preferred_info
+    def max_shot_press(self):
+        return self.mmr_pref_ghc_mci
 
+    @property
+    def skip_to_next(self):
+        if self.fw_version is None:
+            return None
+        else:
+            return self.fw_version >= 1260
 
+    @property
+    def rinse_control(self):
+        if self.fw_version is None:
+            return None
+        else:
+            return self.fw_version >= 1283
 
-
+    @property
+    def hot_water_flow_control(self):
+        if self.fw_version is None:
+            return None
+        else:
+            return False    # Seemingly not supported in 1283
 

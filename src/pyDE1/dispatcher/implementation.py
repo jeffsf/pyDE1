@@ -79,6 +79,8 @@ def get_timeout(prop, value):
                   + config.http.ASYNC_TIMEOUT + 0.100
     elif name == 'upload_json_v2_profile':
         timeout = config.http.PROFILE_TIMEOUT
+    elif name == 'stop_at_time_set_async':
+        timeout = config.http.ASYNC_TIMEOUT * 2
     return timeout
 
 
@@ -168,20 +170,26 @@ async def _get_isat_value(isat: IsAt):
 
         # TODO: Unify with replication in PATCH operation
 
-        try:
-            retval = de1._mmr_dict[target].data_decoded
-        except KeyError:
+        if target.value > de1.feature_flag.last_mmr0x80:
             retval = None
-        if retval is None:
-            t0 = time.time()
-            ready = await de1.read_one_mmr0x80(target)
-            await ready.wait()
-            retval = de1._mmr_dict[target].data_decoded
-            t1 = time.time()
-            logger.debug(
-                f"Read of {target.__repr__()} took \t"
-                f"{(t1 - t0) * 1000:6.1f} ms"
-            )
+            logger.info(
+                f"Skipping (not in FW) {target.name}, "
+                f"0x{target.value:04x} > 0x{de1.feature_flag.last_mmr0x80:04x}")
+        else:
+            try:
+                retval = de1._mmr_dict[target].data_decoded
+            except KeyError:
+                retval = None
+            if retval is None:
+                t0 = time.time()
+                ready = await de1.read_one_mmr0x80(target)
+                await ready.wait()
+                retval = de1._mmr_dict[target].data_decoded
+                t1 = time.time()
+                logger.debug(
+                    f"Read of {target.__repr__()} took \t"
+                    f"{(t1 - t0) * 1000:6.1f} ms"
+                )
 
     elif inspect.isclass(target) and issubclass(target, PackedAttr):
         # NB: This assumes that the MMR and CUUID are kept up to date

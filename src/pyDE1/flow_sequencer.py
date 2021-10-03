@@ -20,11 +20,12 @@ import logging
 from typing import Optional, Callable, Coroutine, List
 
 from pyDE1.de1 import DE1
+from pyDE1.de1.ble import CUUID
 from pyDE1.de1.events import ShotSampleUpdate, StateUpdate, \
     ShotSampleWithVolumesUpdate
-from pyDE1.de1.c_api import API_MachineStates, API_Substates
+from pyDE1.de1.c_api import API_MachineStates, API_Substates, MMR0x80LowAddr
 from pyDE1.exceptions import DE1APIValueError, \
-    DE1APIAttributeError, DE1APINotManagedHereException
+    DE1APIAttributeError, DE1APINotManagedHereException, DE1APITypeError
 
 from pyDE1.i_target_setter import I_TargetSetter
 
@@ -37,16 +38,18 @@ from pyDE1.singleton import Singleton
 
 from pyDE1.utils import cancel_tasks_by_name
 
-from pyDE1.flow_sequencer.mode_control import ByModeControl, \
-    StopAtTime, StopAtWeight, StopAtVolume,  \
-    EspressoControl, SteamControl, HotWaterControl, HotWaterRinseControl
-
 from pyDE1.config import config
 
 # import pyDE1.database.write_notifications import create_history_record
 import pyDE1.database.write_notifications
 
 logger = logging.getLogger('FlowSequencer')
+
+# These apply to Espresso only, at this time. Others return 0
+LAST_DROPS_MINIMUM_TIME_DEFAULT = 3.0  # seconds
+# Allow a grace period after flow begins during which scale continues to tare.
+# 1 or 2 bar OK for slower-flowing profiles. "Turbo" shots 0, or maybe 1 bar.
+FIRST_DROPS_THRESHOLD_DEFAULT = 0.0  # bar
 
 
 # TODO: These didn't neatly become inner classes
@@ -55,6 +58,7 @@ class StopAtNotificationAction (enum.Enum):
     ENABLED = 'enabled'
     TRIGGERED = 'triggered'
     DISABLED = 'disabled'
+    DE1CONTROLLED = 'de1 controlled'
 
 
 class StopAtType (enum.Enum):
@@ -249,7 +253,7 @@ class FlowSequencer (Singleton, I_TargetSetter):
         return self._active_state
 
     def active_control_for_state(self, state: API_MachineStates) \
-            -> ByModeControl:
+            -> 'ByModeControl':
         retval = None
         if state is API_MachineStates.Espresso:
             retval = self.espresso_control
@@ -262,7 +266,7 @@ class FlowSequencer (Singleton, I_TargetSetter):
         return retval
 
     @property
-    def active_control(self) -> ByModeControl:
+    def active_control(self) -> 'ByModeControl':
         return self.active_control_for_state(self.active_state)
 
     @property
@@ -594,6 +598,19 @@ class FlowSequencer (Singleton, I_TargetSetter):
             raise
 
     async def _sequence_stop_at_time(self):
+        if ((self.active_state == API_MachineStates.Steam)
+                or (self.active_state == API_MachineStates.HotWaterRinse
+                    and self.de1.feature_flag.rinse_control)):
+            self._stop_at_time_active = False
+            logger.info(
+                "StopAtTime: DE1 controlled for "
+                f"{self.active_state.name}  "
+                f"({self.active_control.stop_at_time:.1f} seconds)")
+            await self.stop_at_notify(
+                stop_at=StopAtType.TIME,
+                action=StopAtNotificationAction.DE1CONTROLLED)
+            return
+
         if self.active_state not in self.stop_at_time_states:
             self._stop_at_time_active = False
             logger.info(f"StopAtTime: disable - {self.active_state.name}")
@@ -841,3 +858,337 @@ class FlowSequencer (Singleton, I_TargetSetter):
             return bmc.profile_can_override_tank_temperature
         except AttributeError:
             return True
+
+    async def on_de1_nearly_ready(self):
+        await self.hot_water_rinse_control.on_de1_nearly_ready()
+
+
+class ByModeControl:
+    """
+    Generic holder for stop-at values and other "in-the-moment" parameters
+    that are related to flow sequence
+
+    As stop-at-time is handled for steam by the DE1 and that is an async call
+    will have to figure out how to manage that at this level. The API already
+    directs to the DE1.
+
+    stop_at_time: Steam (DE1), HotWaterRinse, Espresso desirable to add
+    stop_at_volume: Espresso, HotWater
+    stop_at_weight: Espresso, HotWater
+    disable_auto_tare: All
+
+    specials: Espresso only
+    """
+
+    def __init__(self, disable_auto_tare: bool = False):
+        self._disable_auto_tare = None
+        self.disable_auto_tare = disable_auto_tare
+
+    @property
+    def disable_auto_tare(self):
+        return self._disable_auto_tare
+
+    @disable_auto_tare.setter
+    def disable_auto_tare(self, value):
+        if not isinstance(value, bool):
+            raise DE1APITypeError(
+                f"disable_auto_tare must be a bool, not {value}"
+            )
+        self._disable_auto_tare = value
+
+    @property
+    def stop_at_time(self):
+        return None
+
+    @property
+    def stop_at_weight(self):
+        return None
+
+    @property
+    def stop_at_volume(self):
+        return None
+
+    @property
+    def last_drops_minimum_time(self):
+        return 0
+
+    @property
+    def first_drops_threshold(self):
+        return 0
+
+    # Validate these, as they will be coming from the API
+    # The API should have already done type validation
+    # Though not used by the base class, lowers repetition
+
+    @staticmethod
+    def _validate_stop_at(value):
+        if value is not None:
+            if value == 0:
+                value = None
+                logger.info(
+                    "Deprecated use of 0 for stop-at, replaced by None")
+            elif value < 0:
+                raise DE1APIValueError(
+                    f"Stop-at values need to be non-negative ({value})")
+        return value
+
+
+class StopAtTime (ByModeControl):
+
+    def __init__(self, stop_at_time: Optional[float] = None):
+        # Mix-in, call super from concrete instance
+        self._stop_at_time = None
+        try:
+            self.stop_at_time = stop_at_time
+        except DE1APINotManagedHereException:
+            self._stop_at_time = stop_at_time
+
+    @property
+    def stop_at_time(self):
+        return self._stop_at_time
+
+    @stop_at_time.setter
+    def stop_at_time(self, value):
+        self._stop_at_time = self._validate_stop_at(value)
+
+
+class StopAtVolume (ByModeControl):
+
+    def __init__(self, stop_at_volume: Optional[float] = None):
+        # Mix-in, call super from concrete instance
+        self._stop_at_volume = None
+        self.stop_at_volume = stop_at_volume
+
+    @property
+    def stop_at_volume(self):
+        return self._stop_at_volume
+
+    @stop_at_volume.setter
+    def stop_at_volume(self, value):
+        self._stop_at_volume = self._validate_stop_at(value)
+
+
+class StopAtWeight (ByModeControl):
+
+    def __init__(self, stop_at_weight: Optional[float] = None):
+        # Mix-in, call super from concrete instance
+        self._stop_at_weight = None
+        self.stop_at_weight = stop_at_weight
+
+    @property
+    def stop_at_weight(self):
+        return self._stop_at_weight
+
+    @stop_at_weight.setter
+    def stop_at_weight(self, value):
+        self._stop_at_weight = self._validate_stop_at(value)
+
+
+class EspressoControl (StopAtTime, StopAtVolume, StopAtWeight, ByModeControl):
+
+    def __init__(self, disable_auto_tare: bool = False,
+                 stop_at_time: Optional[float] = None,
+                 stop_at_volume: Optional[float] = None,
+                 stop_at_weight: Optional[float] = None,
+                 profile_can_override_stop_limits: bool = True,
+                 profile_can_override_tank_temperature: bool = True,
+                 first_drops_threshold: Optional[float] = \
+                         FIRST_DROPS_THRESHOLD_DEFAULT,
+                 last_drops_minimum_time: float = \
+                         LAST_DROPS_MINIMUM_TIME_DEFAULT,
+                 ):
+        self._profile_can_override_stop_limits = True
+        self._profile_can_override_tank_temperature = True
+        self._first_drops_threshold = None
+        ByModeControl.__init__(self, disable_auto_tare=disable_auto_tare)
+        StopAtTime.__init__(self, stop_at_time=stop_at_time)
+        StopAtVolume.__init__(self, stop_at_volume=stop_at_volume)
+        StopAtWeight.__init__(self, stop_at_weight=stop_at_weight)
+        self._profile_can_override_stop_limits \
+            = profile_can_override_stop_limits
+        self._profile_can_override_tank_temperature \
+            = profile_can_override_tank_temperature
+        self.first_drops_threshold = first_drops_threshold
+        self.last_drops_minimum_time = last_drops_minimum_time
+
+    @property
+    def profile_can_override_stop_limits(self):
+        return self._profile_can_override_stop_limits
+
+    @profile_can_override_stop_limits.setter
+    def profile_can_override_stop_limits(self, value):
+        if not isinstance(value, bool):
+            raise DE1APITypeError(
+                "profile_can_override_stop_limits must be a bool, "
+                f"not {value}"
+            )
+        self._profile_can_override_stop_limits = value
+
+    @property
+    def profile_can_override_tank_temperature(self):
+        return self._profile_can_override_tank_temperature
+
+    @profile_can_override_tank_temperature.setter
+    def profile_can_override_tank_temperature(self, value):
+        if not isinstance(value, bool):
+            raise DE1APITypeError(
+                "profile_can_override_tank_temperature must be a bool, "
+                f"not {value}"
+            )
+        self._profile_can_override_tank_temperature = value
+
+    @property
+    def first_drops_threshold(self):
+        return self._first_drops_threshold
+
+    @first_drops_threshold.setter
+    def first_drops_threshold(self, value):
+        if value and not (0 <= value <= 10):
+            raise DE1APIValueError(
+                f"first_drops_threshold not 0 <= {value} <= 10")
+        self._first_drops_threshold = value
+
+    @property
+    def last_drops_minimum_time(self):
+        return self._last_drops_minimum_time
+
+    @last_drops_minimum_time.setter
+    def last_drops_minimum_time(self, value):
+        if value < 0:
+            raise DE1APIValueError(
+                f"last_drops_minimum_time less than zero ({value}")
+        self._last_drops_minimum_time = value
+
+
+class SteamControl (ByModeControl):
+
+        def __init__(self, disable_auto_tare: bool = True):
+            super(SteamControl, self).__init__(
+                disable_auto_tare=disable_auto_tare)
+
+        @property
+        def stop_at_time(self):
+            """
+            Return the value from the DE1 for consistency with flush,
+            which is managed by the DE1 starting with FW 1283
+            """
+            return FlowSequencer().de1._cuuid_dict[
+                CUUID.ShotSettings].last_value.TargetSteamLength
+
+        @stop_at_time.setter
+        def stop_at_time(self, value):
+            raise DE1APINotManagedHereException(
+                "Steam time is set in the DE1 with CUUID.ShotSettings"
+            )
+
+
+class HotWaterControl (StopAtWeight, ByModeControl):
+
+    def __init__(self, disable_auto_tare: bool = True,
+                 stop_at_weight: Optional[float] = None,
+                 ):
+        ByModeControl.__init__(self,
+                               disable_auto_tare=disable_auto_tare)
+        StopAtWeight.__init__(self, stop_at_weight=stop_at_weight)
+
+
+class HotWaterRinseControl (StopAtTime, ByModeControl):
+
+    # Duration is controlled by FlowSequencer prior to FW 1283
+    # but is handled by the DE1 after FW 1283
+    # Define setter/getter that checks feature_flag.rinse_control
+
+    # If the firmware version is unknown or is prior to 1283:
+    #   manage the stop-at-time here
+    #
+    # If the DE1 is connected and is firmware enabled and a change is made:
+    #   note that the change was made here and its value
+    #   pass through to the DE1
+    #   let the DE1 manage stop-at-time
+    #
+    # If a DE1 connects and is not firmware enabled:
+    #   stay the course
+    #
+    # If a DE1 connects and is firmware enabled:
+    #   And FS has been explicitly set through the API
+    #       Use the FS value and send to the DE1
+    #   But the FS has not been explicitly set
+    #       Use the DE1 value, but don't mark as "explicitly set" (??)
+
+    def __init__(self, disable_auto_tare: bool = True,
+                 stop_at_time: Optional[float] = None,
+                 ):
+        ByModeControl.__init__(self,
+                               disable_auto_tare=disable_auto_tare)
+        StopAtTime.__init__(self, stop_at_time=stop_at_time)
+        # Distinguish between not set and intentionally set to None
+        self._stop_at_time_api_set = False
+
+    @property
+    def stop_at_time(self):
+        de1 = FlowSequencer().de1
+        if de1 is not None and de1.is_ready \
+                and de1.feature_flag.rinse_control:
+            retval = de1._mmr_dict[
+                MMR0x80LowAddr.FLUSH_TIMEOUT].data_decoded
+        else:
+            retval = self._stop_at_time
+        return retval
+
+    @stop_at_time.setter
+    def stop_at_time(self, value):
+        raise DE1APINotManagedHereException(
+            "Flush time needs to be set through the FlowSequencer "
+            "as it may be managed by the DE1 with later firmware."
+        )
+
+    async def stop_at_time_set_async(self, value):
+        self._stop_at_time = self._validate_stop_at(value)
+        self._stop_at_time_api_set = True
+        de1 = FlowSequencer().de1
+        if de1 is not None and de1.is_ready \
+                and de1.feature_flag.rinse_control:
+            send_val = value
+            if send_val is None:
+                send_val = 0
+            await de1.write_one_mmr0x80(MMR0x80LowAddr.FLUSH_TIMEOUT, send_val)
+            ready_event = await de1.read_one_mmr0x80(MMR0x80LowAddr.FLUSH_TIMEOUT)
+            await ready_event.wait()
+            new_val = de1._mmr_dict[
+                MMR0x80LowAddr.FLUSH_TIMEOUT].data_decoded
+            if new_val != send_val:
+                logger.error(
+                    f"Wrote flush, stop-at-time {send_val} "
+                    f"but got back {new_val}")
+
+    async def on_de1_nearly_ready(self):
+        """
+        Update based on what the DE1's MMR says and if locally set
+        prior to connection.
+
+        This conceivably could be handled with a callback on the MMR read
+        but visions of infinite loops are dancing in my head.
+        Going simple, if not completely robust, to start
+        """
+        de1 = FlowSequencer().de1
+        if de1 is not None and de1.feature_flag.rinse_control:
+            de1_val = de1._mmr_dict[
+                MMR0x80LowAddr.FLUSH_TIMEOUT].data_decoded
+            # 0 can mean "unimplemented MMR" or 0 or "ignore"
+            # as feature_flag.rinse_control is true, take it as "ignore"
+            if de1_val == 0:
+                de1_val = None
+            # If locally set
+            if self._stop_at_time_api_set and de1_val != self._stop_at_time:
+                # Override the DE1 setting
+                await self.stop_at_time_set_async(self._stop_at_time)
+            else:
+                # Accept what the DE1 says
+                # Don't use the setter as it already is in the DE1
+                self._stop_at_time = de1_val
+                self._stop_at_time_api_set = False
+
+
+
+
+

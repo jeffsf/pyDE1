@@ -276,7 +276,7 @@ MAPPING[Resource.DE1_PROFILE_ID] = {
 # DE1_FIRMWARES = 'de1/firmwares'
 
 MAPPING[Resource.DE1_FIRMWARE_ID] = {
-    'id': IsAt(target=MMR0x80LowAddr.FIRMWARE_BUILD_NUMBER,
+    'id': IsAt(target=MMR0x80LowAddr.CPU_FIRMWARE_BUILD,
                attr_path='', v_type=int),
 }
 
@@ -359,6 +359,7 @@ MAPPING[Resource.DE1_CONTROL_HOT_WATER_RINSE] = {
     'stop_at_time':
         IsAt(target=FlowSequencer,
              attr_path='hot_water_rinse_control.stop_at_time',
+             setter_path='hot_water_rinse_control.stop_at_time_set_async',
              v_type=Optional[float]),
     'stop_at_volume':
         IsAt(target=FlowSequencer,
@@ -371,10 +372,14 @@ MAPPING[Resource.DE1_CONTROL_HOT_WATER_RINSE] = {
     'disable_auto_tare':
         IsAt(target=FlowSequencer,
              attr_path='hot_water_rinse_control.disable_auto_tare', v_type=bool),
+    'temperature':
+        IsAt(target=MMR0x80LowAddr.FLUSH_TEMP, attr_path='', v_type=float),
+    'flow':
+        IsAt(target=MMR0x80LowAddr.FLUSH_FLOW_RATE, attr_path='', v_type=float),
 }
 
 MAPPING[Resource.DE1_CONTROL_TANK_WATER_THRESHOLD] = {
-    'temperature': IsAt(target=MMR0x80LowAddr.TANK_WATER_THRESHOLD, attr_path='', v_type=int),
+    'temperature': IsAt(target=MMR0x80LowAddr.TANK_TEMP, attr_path='', v_type=int),
 }
 
 # DE1_SETTING = 'de1/setting' -- aggregate
@@ -393,16 +398,16 @@ MAPPING[Resource.DE1_SETTING_START_FILL_LEVEL] = {
 }
 
 MAPPING[Resource.DE1_SETTING_BEFORE_FLOW] = {
-    'heater_phase1_flow': IsAt(target=MMR0x80LowAddr.HEATER_PHASE1_FLOW, attr_path='', v_type=float),
-    'heater_phase2_flow': IsAt(target=MMR0x80LowAddr.HEATER_PHASE2_FLOW, attr_path='', v_type=float),
-    'heater_phase2_timeout': IsAt(target=MMR0x80LowAddr.HEATER_PHASE2_TIMEOUT, attr_path='', v_type=float),
-    'heater_idle_temperature': IsAt(target=MMR0x80LowAddr.HEATER_IDLE_TEMPERATURE, attr_path='', v_type=float),
+    'heater_phase1_flow': IsAt(target=MMR0x80LowAddr.HEATER_UP1_FLOW, attr_path='', v_type=float),
+    'heater_phase2_flow': IsAt(target=MMR0x80LowAddr.HEATER_UP2_FLOW, attr_path='', v_type=float),
+    'heater_phase2_timeout': IsAt(target=MMR0x80LowAddr.HEATER_UP2_TIMEOUT, attr_path='', v_type=float),
+    'heater_idle_temperature': IsAt(target=MMR0x80LowAddr.WATER_HEATER_IDLE_TEMP, attr_path='', v_type=float),
 }
 
 MAPPING[Resource.DE1_SETTING_STEAM] = {
     'temperature': IsAt(target=ShotSettings, attr_path='TargetSteamTemp', v_type=int),
-    'flow': IsAt(target=MMR0x80LowAddr.STEAM_FLOW_RATE, attr_path='', v_type=float),
-    'high_flow_time': IsAt(target=MMR0x80LowAddr.HIGH_STEAM_FLOW_TIME, attr_path='', v_type=float),
+    'flow': IsAt(target=MMR0x80LowAddr.TARGET_STEAM_FLOW, attr_path='', v_type=float),
+    'high_flow_time': IsAt(target=MMR0x80LowAddr.STEAM_START_SECS, attr_path='', v_type=float),
 }
 
 # TODO: What is ShotSettings.TargetGroupTemp and where does it really belong?
@@ -432,8 +437,8 @@ MAPPING[Resource.DE1_READ_ONCE] = {
     'hw_config_hexstr': IsAt(target=MMR0x80LowAddr.HW_CONFIG, attr_path='', v_type=str),
     'model_hexstr': IsAt(target=MMR0x80LowAddr.MODEL, attr_path='', v_type=str),
     'cpu_board_model': IsAt(target=MMR0x80LowAddr.CPU_BOARD_MODEL, attr_path='', v_type=float),
-    'firmware_model': IsAt(target=MMR0x80LowAddr.FIRMWARE_MODEL, attr_path='', v_type=str),
-    'firmware_build_number': IsAt(target=MMR0x80LowAddr.FIRMWARE_BUILD_NUMBER, attr_path='', v_type=int),
+    'firmware_model': IsAt(target=MMR0x80LowAddr.V13_MODEL, attr_path='', v_type=str),
+    'firmware_build_number': IsAt(target=MMR0x80LowAddr.CPU_FIRMWARE_BUILD, attr_path='', v_type=int),
     'ghc_info': IsAt(target=MMR0x80LowAddr.GHC_INFO, attr_path='', v_type=str),  # See MMRGHCInfoBitMask
     'serial_number_hexstr': IsAt(target=MMR0x80LowAddr.SERIAL_NUMBER, attr_path='', v_type=str),
     'heater_voltage': IsAt(target=MMR0x80LowAddr.HEATER_VOLTAGE, attr_path='', v_type=int),
@@ -456,7 +461,7 @@ MAPPING[Resource.DE1_READ_ONCE] = {
 }
 
 MAPPING[Resource.DE1_CALIBRATION_FLOW_MULTIPLIER] = {
-    'multiplier': IsAt(target=MMR0x80LowAddr.FLOW_CALIBRATION,
+    'multiplier': IsAt(target=MMR0x80LowAddr.CAL_FLOW_EST,
                        attr_path='', v_type=float),
 }
 
