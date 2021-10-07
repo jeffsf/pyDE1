@@ -70,10 +70,9 @@ def exception_handler(loop: asyncio.AbstractEventLoop,
         level = logging.CRITICAL
     exc_class = context['exception'].__class__
     logger.log(level,
-        f"Uncaught exception {exc_class}:\n"
+        f"Uncaught exception (loop) {exc_class}:\n"
         f"{pprint.pformat(context)}")
     if not shutdown_underway.is_set():
-        shutdown_underway.set()
         loop.create_task(shutdown(None, loop))
 
 
@@ -175,7 +174,8 @@ def shutdown_if_exception(fut: asyncio.Future):
             level = logging.WARNING
         else:
             level = logging.CRITICAL
-        logger.log(level, "Uncaught exception: " + ''.join(tbe.format()))
+        logger.log(level,
+                   "Uncaught exception (future): " + ''.join(tbe.format()))
         if not shutdown_underway.is_set():
             logger.critical("Initiating shutdown")
             loop = asyncio.get_running_loop()
