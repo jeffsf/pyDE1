@@ -300,7 +300,11 @@ async def create_history_record(flow_sequencer: FlowSequencer):
 
     async with aiosqlite.connect(config.database.FILENAME) as db:
 
-        profile_id = flow_sequencer.de1.latest_profile.id
+        try:
+            profile_id = flow_sequencer.de1.latest_profile.id
+        except AttributeError:
+            logger.warning("Unable to determine profile for sequence record")
+            profile_id = None
 
         # The database keeps track of the most-recently uploaded profile
         # if there isn't one known by the DE1
