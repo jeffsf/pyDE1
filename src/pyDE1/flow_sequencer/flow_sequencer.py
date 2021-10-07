@@ -487,6 +487,9 @@ class FlowSequencer (Singleton, I_TargetSetter):
 
     async def _sequence_scale_tare(self):
         scale = self._scale_processor.scale
+        if scale is None:
+            logger.info("No scale present, will not hold at tare")
+            return
         if self.active_state not in self.autotare_states:
             scale.hold_at_tare = False
             logger.debug(f"Scale: release - {self.active_state.name}")
