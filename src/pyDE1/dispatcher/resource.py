@@ -10,7 +10,7 @@ Enum that defines the recognized resources that the Dispatcher can access
 
 import enum
 
-RESOURCE_VERSION = '3.1.0'
+RESOURCE_VERSION = '3.2.0'
 
 
 class Resource (enum.Enum):
@@ -158,9 +158,10 @@ class DE1ModeEnum (enum.Enum):
     WAKE = 'Wake'
     STOP = 'Stop'
     # TODO: Determine conditions under which these can be activated
-    # CLEAN = 'Clean'
-    # DESCALE = 'Descale'
-    # TRANSPORT = 'Transport' # AirPurge
+    #       For now, assume the machine needs to be in Idle
+    CLEAN = 'Clean'
+    DESCALE = 'Descale'
+    TRANSPORT = 'Transport' # AirPurge
 
     # Only valid during espresso flow
     SKIP_TO_NEXT = 'SkipToNext'

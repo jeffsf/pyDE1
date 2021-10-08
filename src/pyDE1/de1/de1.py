@@ -1481,6 +1481,27 @@ class DE1 (Singleton):
                 logger.debug("API triggered _flow_start_hot_water()")
                 await self._flow_start_hot_water()
 
+        elif mode in (DE1ModeEnum.CLEAN,
+                      DE1ModeEnum.DESCALE,
+                      DE1ModeEnum.TRANSPORT,
+                      ):
+            if cs != API_MachineStates.Idle:
+                raise DE1APIUnsupportedStateTransitionError(mode, cs, css)
+            next_state = None
+            if mode == DE1ModeEnum.CLEAN:
+                next_state = API_MachineStates.Clean
+            elif mode == DE1ModeEnum.DESCALE:
+                next_state = API_MachineStates.Descale
+            elif mode == DE1ModeEnum.TRANSPORT:
+                next_state = API_MachineStates.AirPurge
+            if next_state is None:
+                raise DE1APIValueError(
+                    f"Logic error in recognizing {mode.name}"
+                )
+            logger.debug(f"API triggered state change for {mode.name}")
+            await self.write_packed_attr(RequestedState(State=next_state))
+
+
         else:
             raise DE1APIUnsupportedStateTransitionError(mode, cs, css)
 
