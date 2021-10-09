@@ -435,6 +435,10 @@ def run_api_inbound(config: pyDE1.config.Config,
 
             content = self.get_content()
             if content is None:
+                self.send_error_response(
+                    HTTPStatus.BAD_REQUEST,
+                    "No content provided for PATCH request"
+                )
                 return
 
             try:
@@ -474,6 +478,10 @@ def run_api_inbound(config: pyDE1.config.Config,
 
             content = self.get_content()
             if content is None:
+                self.send_error_response(
+                    HTTPStatus.BAD_REQUEST,
+                    "No content provided for PUT request"
+                )
                 return
 
             try:
