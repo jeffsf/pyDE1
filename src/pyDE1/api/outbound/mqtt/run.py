@@ -196,7 +196,8 @@ def run_api_outbound(config: pyDE1.config.Config,
                 topic=topic,
                 payload=item_json,
                 qos=0,
-                retain=True,
+                # retain=True,  # Can cause client to always check if "current"
+                retain=False,
                 properties=None
             )
 
