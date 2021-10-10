@@ -23,11 +23,16 @@ import binascii
 #   U8  IV[32];       // Initialization vector for the firmware
 #   U32 HSum;        // Checksum of this header.
 # } T_FirmwareHeader;
+from pyDE1.exceptions import DE1ValueError
 
 
 class FirmwareFile():
 
-    def __init__(self, filename=None):
+    def __init__(self, content=None, filename=None):
+        if filename is not None and content is not None:
+            raise ValueError(
+                "Only one of 'content' and 'filename' can be specified"
+            )
         self._filename = None
         self._checksum = None
         self._board_marker = None
@@ -38,10 +43,13 @@ class FirmwareFile():
         self._dc_sum = None
         self._initialization_vector = None
         self._header_checksum = None
-        self._file_contents = None
+        self._content = None
 
         if filename is not None:
             self.filename = filename
+            self._load_from_file()
+        elif content is not None:
+            self.content = content
 
     def _clear(self):
         self._checksum = None
@@ -49,7 +57,7 @@ class FirmwareFile():
         self._version = None
         self._byte_count = None
         self._cpu_bytes = None
-        self._unknown = None
+        self._unused = None
         self._dc_sum = None
         self._initialization_vector = None
         self._header_checksum = None
@@ -64,51 +72,67 @@ class FirmwareFile():
         self._filename = value
 
     @property
-    def file_contents(self):
-        if self._file_contents is None:
+    def content(self):
+        if self._content is None and self.filename is not None:
             self._load_from_file()
-        return self._file_contents
+        return self._content
+
+    @content.setter
+    def content(self, value):
+        self._content = value
+        self._populate_from_content()
 
     def _load_from_file(self):
         with open(self._filename, 'rb') as fh:
-            # Header is
-            #   7, 32-bit words (28 bytes)
-            #   32-byte initialization vector
-            #   1, 32-bit word of checksum (4 bytes)
-            self._file_contents  = fh.read()
-            print(f"File length: {len(self._file_contents)}")
-            header = self._file_contents[0:64]
-            (
-                self._checksum,
-                self._board_marker,
-                self._version,
-                self._byte_count,
-                self._cpu_bytes,
-                self._unknown,
-                self._dc_sum,
-                self._initialization_vector,
-                self._header_checksum,
-            ) = unpack('IIIIIII32sI', header)
-            self._header = header
-            # Not clear why
-            print(f"binascii: {binascii.crc32(header[0:64]):08x}")
-            print(f"zlib:     {zlib.crc32(header[0:64]):08x}")
-            print(f"reported: {self._header_checksum:08x}")
-            remainder = self._file_contents[64:]
-            self._bytes_following = len(remainder)
-            remainder_checksum = binascii.crc32(remainder)
-            print()
-            print(f"bcount: {self._byte_count}")
-            print(f"length: {len(remainder)}")
-            print(f"evaluated: {remainder_checksum:08x}")
-            print(f"reported : {self._checksum:08x}")
-            debug = True
+            self.content  = fh.read()
+
+    def _populate_from_content(self):
+        # See T_FirmwareHeader
+        # Header is 64 bytes:
+        #   7, 32-bit words (28 bytes)
+        #   32-byte initialization vector
+        #   1, 32-bit word of checksum (4 bytes)
+        header = self._content[0:64]
+        (
+            self._checksum,     # Excludes "Header"
+            self._board_marker, # 0xDE100001
+            self._version,      # 4 byte int
+            self._byte_count,   # Ignores padding
+            self._cpu_bytes,    # Bytes to go to CPU, rest to BLE module
+            self._unused,       # Reserved for later use
+            self._dc_sum,       # Checksum of decrypted image
+            self._initialization_vector,    # 32-byte initialization vector
+            self._header_checksum,  # Checksum of header itself
+        ) = unpack('IIIIIII32sI', header)
+        self._header = header
+        remainder = self._content[64:]
+        self._bytes_following = len(remainder)
+        if self._board_marker != 0xDE100001:
+            raise DE1ValueError(
+                "Firmware board marker not found, likely not valid firmware.")
 
 
 if __name__ == '__main__':
-    ff = FirmwareFile('../../bootfwupdate.dat')
-    ff._load_from_file()
+    ff = FirmwareFile(filename='/home/jeff/fw/bootfwupdate.dat.1265')
 
+    # Not clear why
+    print()
+    print(f"version:  {ff._version}")
+    print(f"binascii: {binascii.crc32(ff._header[0:60]):08x}")
+    print(f"zlib:     {zlib.crc32(ff._header[0:60]):08x}")
+    print(f"reported: {ff._header_checksum:08x}")
+    remainder = ff._content[64:]
+    remainder_checksum = binascii.crc32(remainder)
+    print()
+    print(f"File:   {len(ff._content)}")
+    print(f"length: {len(remainder)}")
+    print(f"bcount: {ff._byte_count}, "
+          f"diff: {len(remainder) - ff._byte_count}")
+    print()
+    print(f"evaluated: {remainder_checksum:08x}")
+    print(f"reported : {ff._checksum:08x}")
+
+    print()
     print("done")
 
 """

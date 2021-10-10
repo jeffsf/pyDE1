@@ -145,13 +145,17 @@ class Config (ConfigYAML):
         def RESPONSE_TIMEOUT(self):
             # See pyDE1/dispatcher/implementation.py
             # Right now, single timeout, bounded by scan/connect
+            # This is in addition to the timeout in the implementation
             if self._response_timeout:
                 retval = self._response_timeout
             else:
-                retval = (  self._parent.bluetooth.SCAN_TIME
-                          + self._parent.bluetooth.CONNECT_TIMEOUT
-                          + self.ASYNC_TIMEOUT
-                          + 0.100 )
+                retval = (max((self._parent.bluetooth.SCAN_TIME
+                               + self._parent.bluetooth.CONNECT_TIMEOUT
+                               + self.ASYNC_TIMEOUT),
+                              (self.PROFILE_TIMEOUT
+                               + self.ASYNC_TIMEOUT
+                               + self._parent.de1.CUUID_LOCK_WAIT_TIMEOUT))
+                          + 0.100)
             return retval
 
         @RESPONSE_TIMEOUT.setter
@@ -206,6 +210,7 @@ class Config (ConfigYAML):
         def __init__(self):
             self.LINE_FREQUENCY = 60
             self.MAX_WAIT_FOR_READY_EVENTS = 3.5 # Seconds (25 at 0.1 each)
+            self.CUUID_LOCK_WAIT_TIMEOUT = 2 # Seconds
             # Do these "settings" belong here,
             # or should they be separated from parameters?
             self.DEFAULT_AUTO_OFF_TIME = None   # Minutes

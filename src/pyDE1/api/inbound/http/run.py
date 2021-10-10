@@ -255,7 +255,17 @@ def run_api_inbound(config: pyDE1.config.Config,
             else:
                 content_length = int(content_length)
 
-            if content_length > config.http.PATCH_SIZE_LIMIT:
+
+            this_content_limit = config.http.PATCH_SIZE_LIMIT
+            try:
+                resource = Resource(
+                    remove_prefix(self.path, config.http.SERVER_ROOT))
+                if resource == Resource.DE1_FIRMWARE:
+                    this_content_limit = 1 * 1024 * 1024  # FW1258 < 500 kB
+            except ValueError:
+                pass
+
+            if content_length > this_content_limit:
                 self.send_error_response(
                     HTTPStatus.REQUEST_ENTITY_TOO_LARGE,
                     "Patch is too large")
@@ -469,7 +479,9 @@ def run_api_inbound(config: pyDE1.config.Config,
                 return
 
             if resource not in (Resource.DE1_PROFILE,
-                                Resource.DE1_PROFILE_ID):
+                                Resource.DE1_PROFILE_ID,
+                                Resource.DE1_FIRMWARE,
+                                Resource.DE1_FIRMWARE_CANCEL):
                 self.send_error_response(
                     HTTPStatus.NOT_IMPLEMENTED,
                     f"PUT not yet supported for {resource}"
@@ -486,7 +498,9 @@ def run_api_inbound(config: pyDE1.config.Config,
 
             try:
                 if resource in (Resource.DE1_PROFILE,
-                                Resource.DE1_FIRMWARE):
+                                Resource.DE1_FIRMWARE,
+                                Resource.DE1_FIRMWARE_CANCEL,
+                                ):
                     patch = content
                 else:
                     patch = json.loads(content)

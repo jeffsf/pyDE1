@@ -10,7 +10,7 @@ Enum that defines the recognized resources that the Dispatcher can access
 
 import enum
 
-RESOURCE_VERSION = '3.2.0'
+RESOURCE_VERSION = '3.3.0'
 
 
 class Resource (enum.Enum):
@@ -34,6 +34,7 @@ class Resource (enum.Enum):
     DE1_PROFILES = 'de1/profiles'
 
     DE1_FIRMWARE = 'de1/firmware'
+    DE1_FIRMWARE_CANCEL = 'de1/firmware/cancel'
     DE1_FIRMWARE_ID = 'de1/firmware/id'
     DE1_FIRMWARES = 'de1/firmwares'
 
@@ -85,7 +86,8 @@ class Resource (enum.Enum):
     @property
     def can_get(self):
         retval = True
-        # False if in
+
+        # is FALSE
         if self in (
                 self.SCAN,
                 self.DE1_MODE,
@@ -99,12 +101,14 @@ class Resource (enum.Enum):
                 self.DE1_DEPRECATED,
         ):
             retval = False
+
         return retval
 
     @property
     def can_put(self):
         retval = True
-        # False if in
+
+        # is FALSE
         if self in (
                 self.SCAN_DEVICES,
                 self.DE1_READ_ONCE,
@@ -114,17 +118,18 @@ class Resource (enum.Enum):
                 self.DE1_PROFILES,
                 self.DE1_FIRMWARES,
                 # unimplemented
-                self.DE1_FIRMWARE,
                 self.DE1_DEPRECATED,
         ):
             retval = False
+
         return retval
 
     @property
     def can_patch(self):
         retval = self.can_put
         # Can't PATCH firmware or profiles, have to PUT
-        # False if in
+
+        # is FALSE
         if self in (
                 self.DE1_FIRMWARE,
                 self.DE1_FIRMWARE_ID,
@@ -132,6 +137,7 @@ class Resource (enum.Enum):
                 self.DE1_PROFILE_ID,
         ):
             retval = False
+
         return retval
 
     @property

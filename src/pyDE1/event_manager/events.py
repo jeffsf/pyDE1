@@ -41,3 +41,26 @@ class ConnectivityChange (EventPayload):
         self.state = state
         self.id = id
         self.name = name
+
+
+class FirmwareUploadState (enum.Enum):
+    STARTING = 'starting'
+    UPLOADING = 'uploading'
+    COMPLETED = 'completed'
+    FAILED = 'failed'
+    CANCELED = 'canceled'
+
+
+class FirmwareUpload (EventPayload):
+
+    def __init__(self,
+                 arrival_time: float,
+                 state: FirmwareUploadState,
+                 uploaded: Optional[int] = None,
+                 total: Optional[int] = None,
+                 ):
+        super(FirmwareUpload, self).__init__(arrival_time=arrival_time)
+        self._version = "1.0.0"
+        self.state = state
+        self.uploaded = uploaded
+        self.total = total

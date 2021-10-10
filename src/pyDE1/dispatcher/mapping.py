@@ -69,7 +69,7 @@ from pyDE1.de1.c_api import PackedAttr, MMR0x80LowAddr, get_cuuid, \
 
 from pyDE1.exceptions import DE1APIValueError
 
-MAPPING_VERSION = "3.2.0"
+MAPPING_VERSION = "3.3.0"
 
 # There are a handful of requests related to the DE1 and Scale
 # that can be or must be handled even if the device is not ready.
@@ -219,6 +219,14 @@ MAPPING[Resource.VERSION] = {
 MAPPING[Resource.DE1_PROFILE] = IsAt(target=DE1, attr_path=None,
                                      setter_path='upload_json_v2_profile',
                                      v_type=Union[bytes, bytearray])
+
+MAPPING[Resource.DE1_FIRMWARE] = IsAt(target=DE1, attr_path=None,
+                                      setter_path='upload_firmware_from_content',
+                                      v_type=Union[bytes, bytearray])
+
+MAPPING[Resource.DE1_FIRMWARE_CANCEL] = IsAt(target=DE1, attr_path=None,
+                                             setter_path='cancel_firmware_api',
+                                             v_type=Union[bytes, bytearray])
 
 # TODO: How to reference a module-level subroutine? Use module as target?
 # TODO: How to get the scan ID back to the caller

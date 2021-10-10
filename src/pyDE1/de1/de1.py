@@ -46,7 +46,8 @@ from pyDE1.de1.profile import Profile, ProfileByFrames, \
     DE1ProfileValidationError, SourceFormat
 
 from pyDE1.i_target_setter import I_TargetSetter
-from pyDE1.event_manager.events import ConnectivityState, ConnectivityChange
+from pyDE1.event_manager.events import ConnectivityState, ConnectivityChange, \
+    FirmwareUploadState, FirmwareUpload
 
 # Importing from the module-level init fails
 # from pyDE1.flow_sequencer import I_TargetManager
@@ -74,6 +75,7 @@ if _TEST_BLE_LOSS_DURING_FW_UPLOAD:
     import random
 
 logger = logging.getLogger('DE1')
+
 
 class DE1 (Singleton):
 
@@ -111,6 +113,7 @@ class DE1 (Singleton):
         self._event_shot_sample = SubscribedEvent(self)
         self._event_water_levels = SubscribedEvent(self)
         self._event_shot_sample_with_volumes_update = SubscribedEvent(self)
+        self._event_firmware_upload = SubscribedEvent(self)
 
         self._ready = asyncio.Event()
 
@@ -641,23 +644,64 @@ class DE1 (Singleton):
         )
 
     async def read_cuuid(self, cuuid: CUUID):
+        cuuid_logger = logging.getLogger(f"{cuuid.__str__()}.Read")
         if not cuuid.can_read:
-            logging.getLogger(f"{cuuid.__str__()}.Read").error(
-                "Denied read request from non-readable CUUID")
+            cuuid_logger.error("Denied read request from non-readable CUUID")
             return None
-        logging.getLogger(f"{cuuid.__str__()}.Read").debug("Requested")
+        cuuid_logger.debug("Requested")
         # self._cuuid_dict[cuuid].mark_requested()  # TODO: This isn't ideal
-        wire_bytes = await self._bleak_client.read_gatt_char(cuuid.uuid)
+
+        # I wish I knew why there isn't an innate timeout for most asyncio
+        async def _read_cuuid_inner():
+            async with cuuid.lock:
+                return await self._bleak_client.read_gatt_char(cuuid.uuid)
+
+        if cuuid.lock.locked():
+            cuuid_logger.warning(f"Awaiting lock to read {cuuid.name}")
+
+        try:
+            wire_bytes = await asyncio.wait_for(
+                _read_cuuid_inner(),
+                timeout=config.de1.CUUID_LOCK_WAIT_TIMEOUT)
+        except asyncio.TimeoutError as e:
+            cuuid_logger.critical(
+                "Timeout waiting for lock. Aborting process.")
+            raise e
+
         obj = packed_attr_from_cuuid(cuuid, wire_bytes)
         self._cuuid_dict[cuuid].mark_updated(obj)
         return obj
 
-    async def write_packed_attr(self, obj: PackedAttr):
+    async def write_packed_attr(self, obj: PackedAttr, have_lock=False):
         cuuid = get_cuuid(obj)
-        logging.getLogger(f"{cuuid.__str__()}.Write").info(obj.log_string())
+        cuuid_logger = logging.getLogger(f"{cuuid.__str__()}.Write")
 
-        await self._bleak_client.write_gatt_char(cuuid.uuid,
-                                                 obj.as_wire_bytes())
+        # See write_packed_attr_return_notification() which acquires the lock
+        # Presently only used for FWMapRequest
+        # to ensure ready for firmware upload
+
+        if have_lock:
+            await self._bleak_client.write_gatt_char(cuuid.uuid,
+                                                     obj.as_wire_bytes())
+        else:
+            # I wish I knew why there isn't an innate timeout for most asyncio
+            async def _write_packed_attr_inner():
+                async with cuuid.lock:
+                    cuuid_logger.info(obj.log_string())
+                    await self._bleak_client.write_gatt_char(
+                        cuuid.uuid, obj.as_wire_bytes())
+
+            if cuuid.lock.locked():
+                cuuid_logger.warning(f"Awaiting lock to write {cuuid.name}")
+
+            try:
+                await asyncio.wait_for(
+                    _write_packed_attr_inner(),
+                    timeout=config.de1.CUUID_LOCK_WAIT_TIMEOUT)
+            except asyncio.TimeoutError as e:
+                cuuid_logger.critical(
+                    "Timeout waiting for lock. Aborting process.")
+                raise e
 
         # Read-back ensures that local cache is consistent
         if isinstance(obj, WriteToMMR) and obj.addr_high == 0x80:
@@ -684,6 +728,8 @@ class DE1 (Singleton):
         if wait_for is not None:
             await wait_for
 
+    # This was previously only used for the MMR FMMapRequest
+
     async def write_packed_attr_return_notification(self, obj: PackedAttr):
         """
         Write to the CUUID, then wait for the first response
@@ -698,23 +744,38 @@ class DE1 (Singleton):
               and what "done" means in that case
         """
         cuuid = get_cuuid(obj)
-        logger = logging.getLogger(cuuid.__str__())
+        cuuid_logger = logging.getLogger(cuuid.__str__())
         if not cuuid.can_write_then_return:
             raise UnsupportedBLEActionError(
                 "write_cuuid_return_notification not supported for "
                 + cuuid.__str__()
             )
-        logger.debug(f"Acquiring write/return lock")
-        async with cuuid.lock:
-            logger.debug(f"Acquired write/return lock")
-            # TODO: This order should work, though potential race condition
-            notification_state = self._cuuid_dict[cuuid]
-            await self.write_packed_attr(obj)
-            notification_state.mark_requested()
-            logger.debug(f"Waiting for notification")
-            await notification_state.ready_event.wait()
-            logger.debug(f"Returning notification")
-            return notification_state.last_value
+        cuuid_logger.info(f"Acquiring write/return lock")
+
+        async def _write_packed_attr_return_notification_inner():
+            async with cuuid.lock:
+                cuuid_logger.info("Acquired write/return lock")
+                # TODO: This order should work, though potential race condition
+                notification_state = self._cuuid_dict[cuuid]
+                await self.write_packed_attr(obj, have_lock=True)
+                notification_state.mark_requested()
+                cuuid_logger.debug("Waiting for notification")
+                await notification_state.ready_event.wait()
+                cuuid_logger.debug("Returning notification")
+                return notification_state.last_value
+
+        if cuuid.lock.locked():
+            cuuid_logger.warning(
+                f"Awaiting lock to write and return {cuuid.name}")
+
+        try:
+            await asyncio.wait_for(
+                _write_packed_attr_return_notification_inner(),
+                timeout=config.de1.CUUID_LOCK_WAIT_TIMEOUT)
+        except asyncio.TimeoutError as e:
+            cuuid_logger.critical(
+                "Timeout waiting for lock. Aborting process.")
+            raise e
 
     async def _request_state(self, State: API_MachineStates):
         rs = RequestedState(State)
@@ -1006,8 +1067,27 @@ class DE1 (Singleton):
 
     # TODO: Does it need a lock?
 
-    async def upload_firmware(self, fw: FirmwareFile, force=False):
-        if task_name_exists('upload_firmware'):
+    async def upload_firmware_from_content(self,
+                                           content: Union[bytes, bytearray]):
+        fw = FirmwareFile(content=content)
+        await self.upload_firmware(fw)
+
+    @property
+    def uploading_firmware(self):
+        return task_name_exists('upload_firmware')
+
+    async def cancel_firmware_api(self, val):
+        """
+        Ignores the value, always tries to cancel
+        """
+        if not self.uploading_firmware:
+            raise DE1OperationInProgressError(
+                "No 'upload_firmware' task to cancel"
+            )
+        await self.cancel_firmware_upload()
+
+    async def upload_firmware(self, fw: FirmwareFile, force=False, wait=False):
+        if self.uploading_firmware:
             if force:
                 logger.warning('Firmware upload in progress being canceled')
                 await self.cancel_firmware_upload()
@@ -1017,18 +1097,37 @@ class DE1 (Singleton):
                                 name='upload_firmware')
         # t.add_done_callback()
         logger.info(f"Firmware upload started for {fw.filename}")
-        await t
+        if wait:
+            await t
+        return t
 
-    @staticmethod
-    async def cancel_firmware_upload():
+    async def cancel_firmware_upload(self):
         cancel_tasks_by_name('upload_firmware')
+        await self._event_firmware_upload.publish(
+            FirmwareUpload(arrival_time=time.time(),
+                           state=FirmwareUploadState.CANCELED,
+                           uploaded=0,
+                           total=0))
 
-    async def _upload_firmware(self, fw: FirmwareFile):
+    async def _upload_firmware(self, fw: FirmwareFile, sleep=False):
         start_addr = 0x000000
         write_size = 0x10
-        offsets = range(0, len(fw.file_contents), write_size)
+        bytes_written = 0
+        bytes_to_write = len(fw.content)
+        offsets = range(0, bytes_to_write, write_size)
 
-        await self._request_state(API_MachineStates.Sleep)
+        last_notified = 0
+        NOTIFY_EVERY = 1024  # bytes
+
+        if sleep:  # de1app sleeps, it doesn't handle concurrency well
+            await self._request_state(API_MachineStates.Sleep)
+
+        await self._event_firmware_upload.publish(
+            FirmwareUpload(arrival_time=time.time(),
+                           state=FirmwareUploadState.STARTING,
+                           uploaded=bytes_written,
+                           total=bytes_to_write))
+
         await self.start_notifying(CUUID.FWMapRequest)
 
         fw_map_result = await self.write_packed_attr_return_notification(
@@ -1038,13 +1137,10 @@ class DE1 (Singleton):
                 FWToMap=1,
                 FirstError=FWErrorMapRequest.Ignore
             )
-
         )
 
-        # Intentionally "fail" the upload
-
         for offset in offsets:
-            data = fw.file_contents[offset:(offset + write_size)]
+            data = fw.content[offset:(offset + write_size)]
             await self.write_packed_attr(
                 WriteToMMR(
                     Len=len(data),
@@ -1052,6 +1148,23 @@ class DE1 (Singleton):
                     Data=data,
                 )
             )
+            bytes_written += write_size
+
+            if bytes_written >= last_notified + NOTIFY_EVERY:
+                await self._event_firmware_upload.publish(
+                    FirmwareUpload(arrival_time=time.time(),
+                                   state=FirmwareUploadState.UPLOADING,
+                                   uploaded=bytes_written,
+                                   total=bytes_to_write))
+                last_notified = bytes_written
+
+        # Always send the "100%" report
+        if bytes_written != last_notified:
+            await self._event_firmware_upload.publish(
+                FirmwareUpload(arrival_time=time.time(),
+                               state=FirmwareUploadState.UPLOADING,
+                               uploaded=bytes_written,
+                               total=bytes_to_write))
 
         # TODO: Is there something better here?
         await asyncio.sleep(1)
@@ -1066,11 +1179,20 @@ class DE1 (Singleton):
         )
 
         success =  fw_map_result.FirstError == FWErrorMapResponse.NoneFound
-        if not success:
+        if success:
+            result = FirmwareUploadState.COMPLETED
+        else:
+            result = FirmwareUploadState.FAILED
             logger.error(
                 "Error(s) in firmware upload. "
                 f"First at 0x{fw_map_result.FirstError:06x}"
             )
+
+        await self._event_firmware_upload.publish(
+            FirmwareUpload(arrival_time=time.time(),
+                           state=result,
+                           uploaded=bytes_written,
+                           total=bytes_to_write))
 
         return success
 
