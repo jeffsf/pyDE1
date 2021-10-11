@@ -19,12 +19,13 @@ import traceback
 
 from typing import Union, Optional
 
+import pyDE1
 from pyDE1.exceptions import DE1APITypeError, DE1APIValueError, \
     DE1APITooManyFramesError, MMRTypeError, MMRValueError, MMRDataTooLongError
 from pyDE1.utils import data_as_hex
 from pyDE1.de1.ble import CUUID
 
-logger = logging.getLogger('c_api')
+logger = pyDE1.getLogger('DE1.C_API')
 
 # TODO: log_string() is not "None-safe"
 #       TypeError: unsupported format string passed to NoneType.__format__

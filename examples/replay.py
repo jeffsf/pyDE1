@@ -18,6 +18,7 @@ NB: Does _not_ modify the DB contents, so real-time pulls by the consumer
 import json
 import logging
 import os
+import queue
 import socket
 import sqlite3
 import time
@@ -28,7 +29,11 @@ from typing import NamedTuple, Union, List, Optional
 import paho.mqtt.client as mqtt
 from paho.mqtt.client import MQTTv5, MQTT_CLEAN_START_FIRST_ONLY
 
-from pyDE1.config_yaml import ConfigYAML
+import pyDE1
+import pyDE1.pyde1_logging as pyde1_logging
+from pyDE1.config_load import ConfigYAML, ConfigLoadable
+from pyDE1.pyde1_logging import ConfigLogging, ConfigLoggingFormatters, \
+    ConfigLoggingHandlers
 
 
 class Config (ConfigYAML):
@@ -37,62 +42,48 @@ class Config (ConfigYAML):
 
     def __init__(self):
         super(Config, self).__init__()
-        self.database = self._Database()
-        self.logging = self._Logging()
-        self.mqtt = self._MQTT()
-        self.sequence = self._Sequence()
+        self.database = _Database()
+        self.logging = _Logging()
+        self.mqtt = _MQTT()
+        self.sequence = _Sequence()
 
-    # This craziness is so pyCharm autocompletes
-    # Otherwise typing.SimpleNamespace() would be sufficient
 
-    class _MQTT (ConfigYAML._Loadable):
-        def __init__(self):
-            self.TOPIC_ROOT = 'KEpyDE1'
-            self.CLIENT_ID_PREFIX = 'pyde1-replay'
-            self.BROKER_HOSTNAME = '::1'
-            self.BROKER_PORT = 1883
-            self.TRANSPORT = 'tcp'
-            self.TLS_CONTEXT = None
-            self.KEEPALIVE = 60
-            self.USERNAME = None
-            self.PASSWORD = None
-            self.DEBUG = False
+# This craziness is so pyCharm autocompletes
+# Otherwise typing.SimpleNamespace() would be sufficient
 
-    class _Logging (ConfigYAML._Loadable):
-        def __init__(self):
-            self.LOG_DIRECTORY = '/var/log/pyde1/'
-            # NB: The log file name is matched against [a-zA-Z0-9._-]
-            self.LOG_FILENAME = 'replay.log'
-            self.FORMAT_MAIN = "%(asctime)s %(levelname)s " \
-                               "%(name)s: %(message)s"
-            self.FORMAT_STDERR = self.FORMAT_MAIN
-            self.LEVEL_MAIN = logging.DEBUG
-            self.LEVEL_STDERR = logging.DEBUG
-            self.LEVEL_MQTT = logging.INFO
+class _MQTT (ConfigLoadable):
+    def __init__(self):
+        self.TOPIC_ROOT = 'KEpyDE1'
+        self.CLIENT_ID_PREFIX = 'pyde1-replay'
+        self.BROKER_HOSTNAME = '::1'
+        self.BROKER_PORT = 1883
+        self.TRANSPORT = 'tcp'
+        self.TLS_CONTEXT = None
+        self.KEEPALIVE = 60
+        self.USERNAME = None
+        self.PASSWORD = None
+        self.DEBUG = False
 
-    def set_logging(self):
-        # TODO: Clean up logging, in general
-        # TODO: Consider replacing this with logging.config.fileConfig()
-        formatter_main = logging.Formatter(fmt=config.logging.FORMAT_MAIN)
-        formatter_stderr = logging.Formatter(fmt=config.logging.FORMAT_STDERR)
-        root_logger = logging.getLogger()
-        root_logger.setLevel(self.logging.LEVEL_MAIN)
-        for handler in root_logger.handlers:
-            try:
-                if isinstance(handler, logging.StreamHandler) \
-                        and handler.stream.name == '<stderr>':
-                    handler.setLevel(self.logging.LEVEL_STDERR)
-                    handler.setFormatter(formatter_stderr)
-            except AttributeError:
-                pass
 
-    class _Database (ConfigYAML._Loadable):
-        def __init__(self):
-            self.FILENAME = '/var/lib/pyde1/pyde1.sqlite3'
+class _Logging (ConfigLogging):
+    def __init__(self):
+        super(_Logging, self).__init__()
+        # NB: The log file name is matched against [a-zA-Z0-9._-]
+        self.LOG_FILENAME = 'replay.log'
+        self.LOGGERS = {
+        }
 
-    class _Sequence (ConfigYAML._Loadable):
-        def __init__(self):
-            self.ID = None
+# Accept default formatters and handlers
+
+
+class _Database (ConfigLoadable):
+    def __init__(self):
+        self.FILENAME = '/var/lib/pyde1/pyde1.sqlite3'
+
+
+class _Sequence (ConfigLoadable):
+    def __init__(self):
+        self.ID = None
 
 
 config = Config()
@@ -508,6 +499,8 @@ if __name__ == '__main__':
 
     args = ap.parse_args()
 
+    pyde1_logging.setup_initial_logger()
+
     config.load_from_yaml(args.c)
 
     if args.s is not None:
@@ -516,20 +509,11 @@ if __name__ == '__main__':
     if args.t is not None:
         config.mqtt.TOPIC_ROOT = args.t
 
-    logger = logging.getLogger()
-    handler = logging.StreamHandler()
-    handler.setLevel(logging.DEBUG)
-    handler.setFormatter(logging.Formatter(
-        "%(asctime)s %(levelname)s [%(processName)s] %(name)s: "
-        "%(message)s"
-    ))
-    logger.addHandler(handler)
-    logger.setLevel(logging.DEBUG)
+    pyde1_logging.setup_direct_logging(config.logging)
+    pyde1_logging.config_logger_levels(config.logging)
 
-    # config.set_logging()
-
-    client_logger = logging.getLogger('MQTT')
-    client_logger.level = logging.DEBUG
+    logger = pyDE1.getLogger('Replay')
+    client_logger = pyDE1.getLogger('MQTTClient')
 
     sst = get_sequence_start_time(config.sequence.ID)
     now = time.time()

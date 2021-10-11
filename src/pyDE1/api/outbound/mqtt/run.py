@@ -47,16 +47,14 @@ def run_api_outbound(config: pyDE1.config.Config,
     from pyDE1.supervise import SupervisedTask
     import pyDE1.shutdown_manager as sm
 
-    from pyDE1.default_logger import initialize_default_logger, \
-        set_some_logging_levels
+    import pyDE1.pyde1_logging as pyde1_logging
 
-    logger = logging.getLogger(multiprocessing.current_process().name)
+    logger = pyDE1.getLogger('Outbound')
 
-    initialize_default_logger(log_queue)
-    set_some_logging_levels()
-    config.set_logging()
+    pyde1_logging.setup_queue_logging(config.logging, log_queue)
+    pyde1_logging.config_logger_levels(config.logging)
 
-    client_logger = logging.getLogger('MQTTClient')
+    client_logger = pyDE1.getLogger('Outbound.MQTTClient')
     client_logger.level = logging.INFO
 
     # https://github.com/eclipse/paho.mqtt.c/issues/864
@@ -88,13 +86,12 @@ def run_api_outbound(config: pyDE1.config.Config,
     loop.set_exception_handler(sm.exception_handler)
 
     async def heartbeat():
-        import random
+        hlog = pyDE1.getLogger('Heartbeat.OutboundAPI')
         while not sm.shutdown_underway.is_set():
             await asyncio.sleep(10)
-            logger.debug("===== BEEP =====")
+            hlog.debug("===== BEEP =====")
 
     heartbeat_task = SupervisedTask(heartbeat)
-
 
     def on_log_callback(client: mqtt.Client, userdata, level, buf):
         client_logger.info(f"CB: Log: level: {level} '{buf}' ({type(buf)})")

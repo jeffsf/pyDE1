@@ -20,12 +20,13 @@ import multiprocessing
 import sys
 from typing import Optional, Union, NamedTuple
 
+import pyDE1
 from pyDE1.dispatcher.resource import Resource, RESOURCE_VERSION, \
     DE1ModeEnum, ConnectivityEnum
 
 # TODO: Work through main and remote thread imports
 
-logger = logging.getLogger('Mapping')
+logger = pyDE1.getLogger('Inbound.Mapping')
 
 pname = f"into {multiprocessing.current_process().name} process"
 

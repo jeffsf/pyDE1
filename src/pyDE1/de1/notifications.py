@@ -13,6 +13,7 @@ import time
 from copy import deepcopy
 from typing import Union, Optional
 
+import pyDE1
 from pyDE1.de1.ble import CUUID
 
 from pyDE1.de1.c_api import PackedAttr, MMR0x80LowAddr, decode_one_mmr
@@ -58,7 +59,7 @@ class NotifyState ():
         if update_time is None:
             update_time = time.time()
         if self.last_requested is None:
-            logger = logging.getLogger(f"{self.name}.Notify")
+            logger = pyDE1.getLogger(f"DE1.{self.name}.Notify")
             logger.error(f"Update with no last_requested on {self.name}")
         self._last_value = obj
         self.last_updated = update_time

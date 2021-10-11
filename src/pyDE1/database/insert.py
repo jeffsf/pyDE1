@@ -16,12 +16,12 @@ from typing import Optional, NamedTuple
 
 import aiosqlite
 
+import pyDE1
 from pyDE1.de1.profile import Profile
 from pyDE1.event_manager import EventNotificationName, SequencerGateName
 from pyDE1.event_manager.event_manager import EventNotificationAction
 
-logger = logging.getLogger('DB.insert')
-logging.getLogger('aiosqlite').setLevel(logging.INFO)
+logger = pyDE1.getLogger('Database.Insert')
 
 
 async def profile(profile: Profile, db: aiosqlite.Connection, when: float):

@@ -52,14 +52,14 @@ def run_api_inbound(config: pyDE1.config.Config,
     import pyDE1.shutdown_manager as sm
     from pyDE1.utils import timestamp_to_str_with_ms
 
-    logger = logging.getLogger(multiprocessing.current_process().name)
+    import pyDE1
 
-    from pyDE1.default_logger import initialize_default_logger, \
-        set_some_logging_levels
+    logger = pyDE1.getLogger('Inbound')
 
-    initialize_default_logger(log_queue)
-    set_some_logging_levels()
-    config.set_logging()
+    import pyDE1.pyde1_logging as pyde1_logging
+
+    pyde1_logging.setup_queue_logging(config.logging, log_queue)
+    pyde1_logging.config_logger_levels(config.logging)
 
     from pyDE1.dispatcher.mapping import MAPPING, mapping_requires
 
@@ -79,8 +79,6 @@ def run_api_inbound(config: pyDE1.config.Config,
     from pyDE1.dispatcher.resource import Resource
     from pyDE1.dispatcher.payloads import APIRequest, APIResponse, HTTPMethod
     from pyDE1.dispatcher.validate import validate_patch_return_targets
-
-    logger = logging.getLogger(multiprocessing.current_process().name)
 
     loop = asyncio.get_event_loop()
     loop.set_debug(True)
@@ -104,9 +102,10 @@ def run_api_inbound(config: pyDE1.config.Config,
     loop.set_exception_handler(sm.exception_handler)
 
     async def heartbeat():
+        hlog = pyDE1.getLogger('Heartbeat.InboundAPI')
         while True:
             await asyncio.sleep(10)
-            logger.debug("===== BOOP =====")
+            hlog.debug("===== BOOP =====")
 
     SupervisedTask(heartbeat)
 
@@ -177,7 +176,7 @@ def run_api_inbound(config: pyDE1.config.Config,
 
     class RequestHandler (http.server.BaseHTTPRequestHandler):
 
-        logger = logging.getLogger('HTTP')
+        logger = pyDE1.getLogger('HTTP')
 
         def log_message(self, format, *args):
             logger.info("%s - - [%s] %s" %

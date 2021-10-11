@@ -15,7 +15,7 @@ import uuid
 from datetime import datetime
 from typing import Optional
 
-logger_cancel_tasks = logging.getLogger('CancelTasks')
+logger_cancel_tasks = logging.getLogger('Util.CancelTasks')
 
 
 def task_name_exists(name_to_find: str, starts_with=False):

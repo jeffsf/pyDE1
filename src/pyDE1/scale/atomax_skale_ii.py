@@ -23,7 +23,9 @@ from pyDE1.event_manager.events import ConnectivityState, ConnectivityChange
 
 from pyDE1.supervise import SupervisedTask
 
-logger = logging.getLogger('Scale.AtomaxIIScale')
+import pyDE1
+
+logger = pyDE1.getLogger('Scale.AtomaxIIScale')
 
 
 class AtomaxSkaleII(Scale):

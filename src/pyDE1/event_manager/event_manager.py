@@ -60,9 +60,10 @@ import uuid
 from inspect import iscoroutinefunction, signature
 from typing import Optional, Coroutine, Union, List
 
+import pyDE1
 from pyDE1.utils import prep_for_json
 
-logger = logging.getLogger('EventManager')
+logger = pyDE1.getLogger('EventManager')
 
 LOG_DELAYS = False
 

@@ -23,6 +23,7 @@ from typing import Optional, NamedTuple, Dict, Deque
 
 import aiosqlite
 
+import pyDE1
 from pyDE1.config import config
 from pyDE1.de1.c_api import API_MachineStates
 from pyDE1.event_manager.event_manager import EventNotificationAction
@@ -33,7 +34,7 @@ import pyDE1.shutdown_manager as sm
 
 import pyDE1.database.insert as db_insert
 
-logger = logging.getLogger('DBNotifications')
+logger = pyDE1.getLogger('Database.Notifications')
 
 
 def read_queue_to_queue(queue_to_get: multiprocessing.Queue,

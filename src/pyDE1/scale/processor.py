@@ -33,7 +33,9 @@ from pyDE1.de1 import DE1
 
 from pyDE1.config import config
 
-logger = logging.getLogger('ScaleProcessor')
+import pyDE1
+
+logger = pyDE1.getLogger('Scale.Processor')
 
 
 class ScaleProcessorError (ScaleError):

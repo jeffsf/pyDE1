@@ -77,16 +77,18 @@ Disadvantages:
 """
 
 import logging
-import sys
 from typing import Optional
 
-import toml
+import pyDE1
 
-from pyDE1.config_yaml import ConfigYAML
+from pyDE1.config_load import ConfigYAML, ConfigLoadable
+from pyDE1.pyde1_logging import ConfigLogging, ConfigLoggingFormatters, \
+    ConfigLoggingHandlers
 
 DEFAULT_CONFIG_FILE = '/usr/local/etc/pyde1/pyde1.conf'
 
-logger = logging.getLogger('config')
+logger = pyDE1.getLogger('Config')
+
 
 class Config (ConfigYAML):
 
@@ -94,127 +96,136 @@ class Config (ConfigYAML):
 
     def __init__(self):
         super(Config, self).__init__()
-        self.bluetooth = self._Bluetooth()
-        self.database = self._Database()
-        self.de1 = self._DE1()
-        self.http = self._HTTP(self)    # Calculating timeout needs bluetooth
-        self.logging = self._Logging()
-        self.mqtt = self._MQTT()
+        self.bluetooth = _Bluetooth()
+        self.database = _Database()
+        self.de1 = _DE1()
+        self.http = _HTTP(self)    # Calculating timeout needs bluetooth
+        self.logging = _Logging()
+        self.mqtt = _MQTT()
 
-    # This craziness is so pyCharm autocompletes
-    # Otherwise typing.SimpleNamespace() would be sufficient
-
-    class _MQTT (ConfigYAML._Loadable):
-        def __init__(self):
-            self.TOPIC_ROOT = 'pyDE1'
-            self.CLIENT_ID_PREFIX = 'pyde1'
-            self.BROKER_HOSTNAME = '::1'
-            self.BROKER_PORT = 1883
-            self.TRANSPORT = 'tcp'
-            self.TLS_CONTEXT = None
-            self.KEEPALIVE = 60
-            self.USERNAME = None
-            self.PASSWORD = None
-            self.DEBUG = False
-
-    class _HTTP (ConfigYAML._Loadable):
-        def __init__(self, parent):
-            self.SERVER_HOST = ''
-            self.SERVER_PORT = 1234
-            self.SERVER_ROOT = '/'
-            # adaptive_allonge.json is 7632 bytes
-            self.PATCH_SIZE_LIMIT = 16384
-            # Seconds, before abandoning the request
-            self.ASYNC_TIMEOUT = 1.0
-            # Seconds, 20*2 frames + head + tail at ~100 ms each
-            self.PROFILE_TIMEOUT = 4.5
-            self._response_timeout = None
-
-            # If true, don't output nodes that have no value (write-only)
-            # or are empty dicts
-            # Otherwise math.nan fills in for the missing value
-            # As not compliant with RFC 7159, some parsers may fail with NaN
-            # although it is permitted by ECMAScript and JavaScript
-            # A False setting is intended to be a development/exploration tool
-            # This feature be considered as deprecated
-            self.PRUNE_EMPTY_NODES = True
-
-            self._parent = parent   # Path to get to bluetooth
-
-        @property
-        def RESPONSE_TIMEOUT(self):
-            # See pyDE1/dispatcher/implementation.py
-            # Right now, single timeout, bounded by scan/connect
-            # This is in addition to the timeout in the implementation
-            if self._response_timeout:
-                retval = self._response_timeout
-            else:
-                retval = (max((self._parent.bluetooth.SCAN_TIME
-                               + self._parent.bluetooth.CONNECT_TIMEOUT
-                               + self.ASYNC_TIMEOUT),
-                              (self.PROFILE_TIMEOUT
-                               + self.ASYNC_TIMEOUT
-                               + self._parent.de1.CUUID_LOCK_WAIT_TIMEOUT))
-                          + 0.100)
-            return retval
-
-        @RESPONSE_TIMEOUT.setter
-        def RESPONSE_TIMEOUT(self, value):
-            self._response_timeout = value
-
-    class _Logging (ConfigYAML._Loadable):
-        def __init__(self):
-            self.LOG_DIRECTORY = '/var/log/pyde1/'
-            # NB: The log file name is matched against [a-zA-Z0-9._-]
-            self.LOG_FILENAME = 'pyde1.log'
-            self.FORMAT_MAIN = "%(asctime)s %(levelname)s [%(processName)s] " \
-                    "%(name)s: %(message)s"
-            self.FORMAT_STDERR = "%(levelname)s [%(processName)s] " \
-                    "%(name)s: %(message)s"
-            self.LEVEL_MAIN = logging.INFO
-            self.LEVEL_STDERR = logging.WARNING
-            self.LEVEL_MQTT = logging.INFO
-
-    def set_logging(self):
+    def set_logging(self, log_file_handler: Optional[logging.Handler] = None,
+                    stderr_handler: Optional[logging.Handler] = None):
+        # TODO: LOGGING
+        logging.getLogger().setLevel(logging.DEBUG)
         # TODO: Clean up logging, in general
-        # TODO: Consider replacing this with logging.config.fileConfig()
-        formatter_main = logging.Formatter(fmt=self.logging.FORMAT_MAIN)
-        formatter_stderr = logging.Formatter(fmt=self.logging.FORMAT_STDERR)
-        root_logger = logging.getLogger()
-        root_logger.setLevel(self.logging.LEVEL_MAIN)
-        for handler in root_logger.handlers:
-            if isinstance(handler, logging.StreamHandler) \
-                    and handler.stream.name == '<stderr>':
-                handler.setLevel(self.logging.LEVEL_STDERR)
-                handler.setFormatter(formatter_stderr)
+        if log_file_handler:
+            formatter_file = logging.Formatter(fmt=self.logging.FORMAT_FILE)
+            log_file_handler.setFormatter(formatter_file)
+            log_file_handler.setLevel(self.logging.LEVEL_FILE)
+        if stderr_handler:
+            formatter_stderr = logging.Formatter(fmt=self.logging.FORMAT_STDERR)
+            stderr_handler.setFormatter(formatter_stderr)
+            stderr_handler.setLevel(self.logging.LEVEL_STDERR)
 
-    class _Bluetooth (ConfigYAML._Loadable):
-        def __init__(self):
-            self.SCAN_TIME = 5  # Seconds
-            self.CONNECT_TIMEOUT = 10  # Seconds
-            self.DISCONNECT_TIMEOUT = 5  # Seconds
-            self.SCAN_CACHE_EXPIRY = 300  # Seconds, probably too long
-            self.RECONNECT_MAX_INTERVAL = 10 # Seconds
-            # Files that hold the Bluetooth ID of connected devices
-            # for potential cleanup by supervisor scripts
-            self.ID_FILE_DIRECTORY = '/var/lib/pyde1/'
-            self.ID_FILE_SUFFIX = '.btid'
 
-    class _Database (ConfigYAML._Loadable):
-        def __init__(self):
-            self.FILENAME = '/var/lib/pyde1/pyde1.sqlite3'
-            self.BACKUP_TIMEOUT = 60  # seconds
-            self.BACKUP_COMPRESSION_EXECUTABLE = 'xz'
+# This craziness is so pyCharm autocompletes
+# Otherwise typing.SimpleNamespace() would be sufficient
 
-    class _DE1 (ConfigYAML._Loadable):
-        def __init__(self):
-            self.LINE_FREQUENCY = 60
-            self.MAX_WAIT_FOR_READY_EVENTS = 3.5 # Seconds (25 at 0.1 each)
-            self.CUUID_LOCK_WAIT_TIMEOUT = 2 # Seconds
-            # Do these "settings" belong here,
-            # or should they be separated from parameters?
-            self.DEFAULT_AUTO_OFF_TIME = None   # Minutes
-            self.STOP_AT_WEIGHT_ADJUST = -0.07  # Secs, larger increases weight
+
+class _MQTT (ConfigLoadable):
+    def __init__(self):
+        self.TOPIC_ROOT = 'pyDE1'
+        self.CLIENT_ID_PREFIX = 'pyde1'
+        self.BROKER_HOSTNAME = '::1'
+        self.BROKER_PORT = 1883
+        self.TRANSPORT = 'tcp'
+        self.TLS_CONTEXT = None
+        self.KEEPALIVE = 60
+        self.USERNAME = None
+        self.PASSWORD = None
+        self.DEBUG = False
+
+
+class _HTTP (ConfigLoadable):
+    def __init__(self, parent):
+        self.SERVER_HOST = ''
+        self.SERVER_PORT = 1234
+        self.SERVER_ROOT = '/'
+        # adaptive_allonge.json is 7632 bytes
+        self.PATCH_SIZE_LIMIT = 16384
+        # Seconds, before abandoning the request
+        self.ASYNC_TIMEOUT = 1.0
+        # Seconds, 20*2 frames + head + tail at ~100 ms each
+        self.PROFILE_TIMEOUT = 4.5
+        self._response_timeout = None
+
+        # If true, don't output nodes that have no value (write-only)
+        # or are empty dicts
+        # Otherwise math.nan fills in for the missing value
+        # As not compliant with RFC 7159, some parsers may fail with NaN
+        # although it is permitted by ECMAScript and JavaScript
+        # A False setting is intended to be a development/exploration tool
+        # This feature be considered as deprecated
+        self.PRUNE_EMPTY_NODES = True
+
+        self._parent = parent   # Path to get to bluetooth
+
+    @property
+    def RESPONSE_TIMEOUT(self):
+        # See pyDE1/dispatcher/implementation.py
+        # Right now, single timeout, bounded by scan/connect
+        # This is in addition to the timeout in the implementation
+        if self._response_timeout:
+            retval = self._response_timeout
+        else:
+            retval = (max((self._parent.bluetooth.SCAN_TIME
+                           + self._parent.bluetooth.CONNECT_TIMEOUT
+                           + self.ASYNC_TIMEOUT),
+                          (self.PROFILE_TIMEOUT
+                           + self.ASYNC_TIMEOUT
+                           + self._parent.de1.CUUID_LOCK_WAIT_TIMEOUT))
+                      + 0.100)
+        return retval
+
+    @RESPONSE_TIMEOUT.setter
+    def RESPONSE_TIMEOUT(self, value):
+        self._response_timeout = value
+
+
+class _Logging (ConfigLogging):
+    def __init__(self):
+        super(_Logging, self).__init__()
+
+
+class _LoggingFormatters (ConfigLoggingFormatters):
+    def __init__(self):
+        super(_LoggingFormatters, self).__init__()
+
+
+class _LoggingHandlers (ConfigLoggingHandlers):
+    def __init__(self):
+        super(_LoggingHandlers, self).__init__()
+
+
+class _Bluetooth (ConfigLoadable):
+    def __init__(self):
+        self.SCAN_TIME = 5  # Seconds
+        self.CONNECT_TIMEOUT = 10  # Seconds
+        self.DISCONNECT_TIMEOUT = 5  # Seconds
+        self.SCAN_CACHE_EXPIRY = 300  # Seconds, probably too long
+        self.RECONNECT_MAX_INTERVAL = 10 # Seconds
+        # Files that hold the Bluetooth ID of connected devices
+        # for potential cleanup by supervisor scripts
+        self.ID_FILE_DIRECTORY = '/var/lib/pyde1/'
+        self.ID_FILE_SUFFIX = '.btid'
+
+
+class _Database (ConfigLoadable):
+    def __init__(self):
+        self.FILENAME = '/var/lib/pyde1/pyde1.sqlite3'
+        self.BACKUP_TIMEOUT = 60  # seconds
+        self.BACKUP_COMPRESSION_EXECUTABLE = 'xz'
+
+
+class _DE1 (ConfigLoadable):
+    def __init__(self):
+        self.LINE_FREQUENCY = 60
+        self.MAX_WAIT_FOR_READY_EVENTS = 3.5 # Seconds (25 at 0.1 each)
+        self.CUUID_LOCK_WAIT_TIMEOUT = 2 # Seconds
+        # Do these "settings" belong here,
+        # or should they be separated from parameters?
+        self.DEFAULT_AUTO_OFF_TIME = None   # Minutes
+        self.STOP_AT_WEIGHT_ADJUST = -0.07  # Secs, larger increases weight
 
 
 config = Config()

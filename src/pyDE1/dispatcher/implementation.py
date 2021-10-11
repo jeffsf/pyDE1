@@ -41,7 +41,7 @@ from pyDE1.dispatcher.mapping import IsAt
 
 from pyDE1.config import config
 
-logger = logging.getLogger('APIImpl')
+logger = pyDE1.getLogger('Inbound.Implementation')
 
 """
 How this works:

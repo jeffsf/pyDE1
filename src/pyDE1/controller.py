@@ -23,30 +23,25 @@ def run_controller(config: pyDE1.config.Config,
                    database_queue: multiprocessing.Queue):
 
     import asyncio
-    import logging
-    import signal
     import time
 
     from pyDE1.de1.c_api import API_MachineStates
 
     from pyDE1.de1 import DE1
-    from pyDE1.de1.ble import CUUID
 
     from pyDE1.dispatcher.dispatcher import register_read_pipe_to_queue, \
         start_request_queue_processor, start_response_queue_processor
 
     from pyDE1.event_manager import SubscribedEvent
 
-    from pyDE1.default_logger import initialize_default_logger, \
-        set_some_logging_levels
+    import pyDE1.pyde1_logging as pyde1_logging
 
     import pyDE1.shutdown_manager as sm
 
-    initialize_default_logger(log_queue)
-    set_some_logging_levels()
-    config.set_logging()
+    pyde1_logging.setup_queue_logging(config.logging, log_queue)
+    pyde1_logging.config_logger_levels(config.logging)
 
-    logger = logging.getLogger(multiprocessing.current_process().name)
+    logger = pyDE1.getLogger('Controller')
 
     loop = asyncio.get_event_loop()
     loop.set_debug(True)

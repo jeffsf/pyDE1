@@ -20,11 +20,11 @@ from typing import NamedTuple, List, Union, Tuple
 
 import aiosqlite
 
+import pyDE1
+import pyDE1.pyde1_logging as pyde1_logging
 from pyDE1.exceptions import DE1IncompleteSequenceRecordError
 
-logger = logging.getLogger()
-format_string = "%(asctime)s %(levelname)s %(name)s: %(message)s"
-logging.basicConfig(level=logging.DEBUG, format=format_string)
+logger = pyDE1.getLogger('LegacyShotFile')
 
 
 class ShotRow (NamedTuple):
@@ -380,7 +380,7 @@ if __name__ == '__main__':
 
     import argparse
 
-    import pyDE1.config as config
+    from pyDE1.config import config
 
     ap = argparse.ArgumentParser(
         description="""Main executable to start the pyDE1 core.
@@ -392,8 +392,12 @@ if __name__ == '__main__':
 
     args = ap.parse_args()
 
-    config.load_from_toml(args.c)
+    pyde1_logging.setup_initial_logger()
 
+    config.load_from_yaml(args.c)
+
+    pyde1_logging.setup_direct_logging(config.logging)
+    pyde1_logging.config_logger_levels(config.logging)
 
     async def run():
         async with aiosqlite.connect(config.database.FILENAME) as db:

@@ -17,7 +17,9 @@ from typing import Tuple, List
 
 from pyDE1.scale.processor import ScaleProcessor, ScaleProcessorError
 
-logger = logging.getLogger('Estimator')
+import pyDE1
+
+logger = pyDE1.getLogger('Scale.Estimator')
 
 # Test to see how much of the ~4.5 ms delay is coming from calling mean()
 # Quick check shows delay dropped to ~2.5 ms, so leaving False for now

@@ -43,7 +43,7 @@ from pyDE1.config import config
 # import pyDE1.database.write_notifications import create_history_record
 import pyDE1.database.write_notifications
 
-logger = logging.getLogger('FlowSequencer')
+logger = pyDE1.getLogger('FlowSequencer')
 
 # These apply to Espresso only, at this time. Others return 0
 LAST_DROPS_MINIMUM_TIME_DEFAULT = 3.0  # seconds
@@ -710,7 +710,7 @@ class FlowSequencer (Singleton, I_TargetSetter):
         Should be subscribed to ShotSampleWithVolumesUpdate on DE1
         """
         flow_sequencer = self
-        sav_logger = logging.getLogger('StopAtVolume')
+        sav_logger = pyDE1.getLogger('FlowSequencer.StopAtVolume')
 
         async def stop_at_volume(sswvu: ShotSampleWithVolumesUpdate):
             nonlocal flow_sequencer, sav_logger
@@ -735,7 +735,7 @@ class FlowSequencer (Singleton, I_TargetSetter):
         Should be subscribed to WeightAndFlowUpdate on ScaleProcessor
         """
         flow_sequencer = self
-        saw_logger = logging.getLogger('StopAtWeight')
+        saw_logger = pyDE1.getLogger('FlowSequencer.StopAtWeight')
 
         async def stop_at_weight(wafu: WeightAndFlowUpdate):
             nonlocal flow_sequencer, saw_logger

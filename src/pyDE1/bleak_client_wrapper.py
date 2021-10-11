@@ -24,7 +24,9 @@ from bleak.backends.device import BLEDevice
 
 from pyDE1.btcontrack import persist_connection_file, remove_connection_file
 
-logger = logging.getLogger('BCWrapper')
+import pyDE1
+
+logger = pyDE1.getLogger('Bluetooth.BleakClientWrapper')
 
 
 class BleakClientWrapped (BleakClient):

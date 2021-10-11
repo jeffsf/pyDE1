@@ -21,6 +21,7 @@ import traceback
 from concurrent.futures import Executor, ThreadPoolExecutor
 from typing import Union, Awaitable, Callable, Optional, Mapping
 
+import pyDE1
 import pyDE1.shutdown_manager as sm
 
 
@@ -43,8 +44,7 @@ class SupervisedWork:
                 = f"{routine.__self__.__class__.__name__}.{routine.__name__}"
         except AttributeError:
             self._name = routine.__name__
-        self._logger = logging.getLogger(
-            f"{self.__class__.__name__}.{self._name}")
+        self._logger = pyDE1.getLogger(f"Supervised.Work.{self._name}")
         self._work = None
         self._cancelled_error: Optional[asyncio.CancelledError] = None
         self._start_time_list = []
@@ -121,6 +121,7 @@ class SupervisedTask (SupervisedWork):
 
     def __init__(self, routine: Callable, *args, **kwargs):
         super(SupervisedTask, self).__init__(routine, *args, **kwargs)
+        self._logger = pyDE1.getLogger(f"Supervised.Task.{self._name}")
         self._start()
 
     def _create_work(self) -> T_Work:
@@ -164,6 +165,7 @@ class SupervisedExecutor (SupervisedWork):
     def __init__(self, executor: [Executor],
                  routine: Callable, *args):
         super(SupervisedExecutor, self).__init__(routine, *args)
+        self._logger = pyDE1.getLogger(f"Supervised.Executor.{self._name}")
         if executor is None:
             executor = ThreadPoolExecutor(
                 max_workers=1,
@@ -203,7 +205,7 @@ class SupervisedProcess:
         self._kwargs = kwargs
         self._daemon = daemon
         self._do_not_restart = do_not_restart
-        self._logger = logging.getLogger(f"SupervisedProcess.{self._name}")
+        self._logger = pyDE1.getLogger(f"Supervised.Process.{self._name}")
         self._process: Optional[multiprocessing.Process] = None
         self._start_time_list = []
         self._restart_count_limit = 2  # No more than 2 restarts in

@@ -74,7 +74,7 @@ _TEST_BLE_LOSS_DURING_FW_UPLOAD = False
 if _TEST_BLE_LOSS_DURING_FW_UPLOAD:
     import random
 
-logger = logging.getLogger('DE1')
+logger = pyDE1.getLogger('DE1')
 
 
 class DE1 (Singleton):
@@ -584,7 +584,7 @@ class DE1 (Singleton):
             done = self._cuuid_dict[cuuid].mark_requested()
             await self._bleak_client.start_notify(cuuid.uuid,
                                                   self._handlers[cuuid])
-            logging.getLogger(cuuid.__str__()).debug("Start notify")
+            pyDE1.getLogger(f"DE1.{cuuid.__str__()}").debug("Start notify")
         except KeyError:
             raise DE1NoHandlerError(f"No handler found for {cuuid}")
         return done
@@ -593,7 +593,7 @@ class DE1 (Singleton):
         try:
             done = self._cuuid_dict[cuuid].mark_ended()
             await self._bleak_client.stop_notify(cuuid.uuid)
-            logging.getLogger(cuuid.__str__()).debug("Stop notify")
+            pyDE1.getLogger(f"DE1.{cuuid.__str__()}").debug("Stop notify")
         except KeyError:
             raise DE1NoHandlerError(f"No handler found for {cuuid}")
         return done
@@ -644,7 +644,7 @@ class DE1 (Singleton):
         )
 
     async def read_cuuid(self, cuuid: CUUID):
-        cuuid_logger = logging.getLogger(f"{cuuid.__str__()}.Read")
+        cuuid_logger = pyDE1.getLogger(f"DE1.{cuuid.__str__()}.Read")
         if not cuuid.can_read:
             cuuid_logger.error("Denied read request from non-readable CUUID")
             return None
@@ -674,7 +674,7 @@ class DE1 (Singleton):
 
     async def write_packed_attr(self, obj: PackedAttr, have_lock=False):
         cuuid = get_cuuid(obj)
-        cuuid_logger = logging.getLogger(f"{cuuid.__str__()}.Write")
+        cuuid_logger = pyDE1.getLogger(f"DE1.{cuuid.__str__()}.Write")
 
         # See write_packed_attr_return_notification() which acquires the lock
         # Presently only used for FWMapRequest
@@ -744,7 +744,7 @@ class DE1 (Singleton):
               and what "done" means in that case
         """
         cuuid = get_cuuid(obj)
-        cuuid_logger = logging.getLogger(cuuid.__str__())
+        cuuid_logger = pyDE1.getLogger(f"DE1.{cuuid.__str__()}")
         if not cuuid.can_write_then_return:
             raise UnsupportedBLEActionError(
                 "write_cuuid_return_notification not supported for "

@@ -25,7 +25,7 @@ from paho.mqtt.client import MQTTMessage, MQTTv5, MQTT_CLEAN_START_FIRST_ONLY
 import requests
 from requests.auth import HTTPBasicAuth, HTTPDigestAuth
 
-from pyDE1.config_yaml import ConfigYAML
+from pyDE1.config_load import ConfigYAML, ConfigLoadable
 
 import pyDE1.shutdown_manager as sm
 from pyDE1.de1.c_api import API_MachineStates, API_Substates
@@ -38,6 +38,10 @@ from pyDE1.shot_file.legacy import legacy_shot_file
 # The default config file can be missing without error
 # If specified on the command line and missing is fatal
 
+import pyDE1
+import pyDE1.pyde1_logging as pyde1_logging
+from pyDE1.pyde1_logging import ConfigLogging
+
 
 class Config (ConfigYAML):
 
@@ -45,92 +49,61 @@ class Config (ConfigYAML):
 
     def __init__(self):
         super(Config, self).__init__()
-        self.database = self._Database()
-        self.logging = self._Logging()
-        self.mqtt = self._MQTT()
-        self.visualizer = self._Visualizer()
+        self.database = _Database()
+        self.logging = _Logging()
+        self.mqtt = _MQTT()
+        self.visualizer = _Visualizer()
+
 
     # This craziness is so pyCharm autocompletes
     # Otherwise typing.SimpleNamespace() would be sufficient
 
-    class _MQTT (ConfigYAML._Loadable):
-        def __init__(self):
-            self.TOPIC_ROOT = 'pyDE1'
-            self.CLIENT_ID_PREFIX = 'pyde1-visualizer'
-            self.BROKER_HOSTNAME = '::1'
-            self.BROKER_PORT = 1883
-            self.TRANSPORT = 'tcp'
-            self.TLS_CONTEXT = None
-            self.KEEPALIVE = 60
-            self.USERNAME = None
-            self.PASSWORD = None
-            self.DEBUG = False
+class _MQTT (ConfigLoadable):
+    def __init__(self):
+        self.TOPIC_ROOT = 'pyDE1'
+        self.CLIENT_ID_PREFIX = 'pyde1-visualizer'
+        self.BROKER_HOSTNAME = '::1'
+        self.BROKER_PORT = 1883
+        self.TRANSPORT = 'tcp'
+        self.TLS_CONTEXT = None
+        self.KEEPALIVE = 60
+        self.USERNAME = None
+        self.PASSWORD = None
+        self.DEBUG = False
 
-    class _Visualizer (ConfigYAML._Loadable):
-        def __init__(self):
-            self.USERNAME = 'you@example.com'
-            self.PASSWORD = 'your password or upload token here'
-            self.MIN_FLOW_TIME = 10  # seconds, or not uploaded
 
-    class _Logging (ConfigYAML._Loadable):
-        def __init__(self):
-            self.LOG_DIRECTORY = '/var/log/pyde1/'
-            # NB: The log file name is matched against [a-zA-Z0-9._-]
-            self.LOG_FILENAME = 'pyde1.log'
-            self.FORMAT_MAIN = "%(asctime)s %(levelname)s %(name)s: %(message)s"
-            self.FORMAT_STDERR = "%(levelname)s %(name)s: %(message)s"
-            self.LEVEL_MAIN = logging.INFO
-            self.LEVEL_STDERR = logging.WARNING
-            self.LEVEL_MQTT = logging.INFO
-            self.LEVEL_UPLOAD = logging.INFO
+class _Visualizer (ConfigLoadable):
+    def __init__(self):
+        self.USERNAME = 'you@example.com'
+        self.PASSWORD = 'your password or upload token here'
+        self.MIN_FLOW_TIME = 10  # seconds, or not uploaded
 
-    class _Database (ConfigYAML._Loadable):
-        def __init__(self):
-            self.FILENAME = '/var/lib/pyde1/pyde1.sqlite3'
+
+class _Logging (ConfigLogging):
+    def __init__(self):
+        super(_Logging, self).__init__()
+        # NB: The log file name is matched against [a-zA-Z0-9._-]
+        self.LOG_FILENAME = 'visualizer.log'
+        self.LOGGERS = {
+            'MQTTClient':       'INFO',
+            'root.aiosqlite':   'INFO',
+            'root.asyncio':     'INFO',
+        }
+        self.formatters.STYLE = '%'
+        self.formatters.LOGFILE = \
+            '%(asctime)s %(levelname)s %(name)s: %(message)s'
+        self.formatters.STDERR = \
+                        '%(levelname)s %(name)s: %(message)s'
+
+# Accept defaults for other logging
+
+
+class _Database (ConfigLoadable):
+    def __init__(self):
+        self.FILENAME = '/var/lib/pyde1/pyde1.sqlite3'
 
 
 config = Config()
-
-handler_stderr = logging.StreamHandler()
-handler_stderr.setFormatter(logging.Formatter(
-    fmt="%(asctime)s %(levelname)s %(name)s: %(message)s"))
-handler_stderr.setLevel(logging.DEBUG)
-
-logger = logging.getLogger()
-for h in logger.handlers: # There should only be the default handler for stderr
-    logger.removeHandler(h)
-logger.addHandler(handler_stderr)
-
-logger_mqtt = logging.getLogger('mqtt')
-logger_upload = logging.getLogger('upload')
-
-
-def set_logging_from_config():
-    root_logger = logging.getLogger()
-    root_logger.setLevel(config.logging.LEVEL_MAIN)
-    handler_stderr.setFormatter(
-        logging.Formatter(config.logging.FORMAT_STDERR))
-    logger_mqtt.setLevel(config.logging.LEVEL_MQTT)
-    logger_upload.setLevel(config.logging.LEVEL_UPLOAD)
-
-    if not os.path.exists(config.logging.LOG_DIRECTORY):
-        logger.error(
-            "logfile_directory '{}' does not exist. Creating.".format(
-                os.path.realpath(config.logging.LOG_DIRECTORY)
-            )
-        )
-        # Will create intermediate directories
-        # Will not use "mode" on intermediates
-        os.makedirs(config.logging.LOG_DIRECTORY)
-
-    fq_logfile = os.path.join(config.logging.LOG_DIRECTORY,
-                              config.logging.LOG_FILENAME)
-
-    log_file_handler = logging.handlers.WatchedFileHandler(fq_logfile)
-    log_file_handler.setFormatter(
-        logging.Formatter(fmt=config.logging.FORMAT_MAIN))
-
-    root_logger.addHandler(log_file_handler)
 
 
 #
@@ -304,7 +277,7 @@ def configure_mqtt() -> mqtt.Client:
     )
 
     if config.mqtt.DEBUG:
-        paho_logger = logging.getLogger('paho')
+        paho_logger = pyDE1.getLogger('paho')
         paho_logger.setLevel(logging.DEBUG)
         mqtt_client.enable_logger(paho_logger)
 
@@ -417,7 +390,7 @@ async def loop_on_queue(client: mqtt.Client):
 
 
 async def setup_and_run():
-    global client
+    global client   # TODO: This is sort of hack-ish
     client = configure_mqtt()
     loop.create_task(wait_then_cleanup(client))
     mqtt_task = loop.run_in_executor(None, run_mqtt_client_sync, client)
@@ -448,8 +421,17 @@ if __name__ == '__main__':
 
     args = ap.parse_args()
 
+    pyde1_logging.setup_initial_logger()
+
     config.load_from_yaml(args.c)
-    set_logging_from_config()
+
+    pyde1_logging.setup_direct_logging(config.logging)
+    pyde1_logging.config_logger_levels(config.logging)
+
+    logger = pyDE1.getLogger('Main')
+
+    logger_mqtt = pyDE1.getLogger('MQTT')
+    logger_upload = pyDE1.getLogger('Upload')
 
     loop = asyncio.get_event_loop()
     loop.set_debug(True)

@@ -12,6 +12,7 @@ import time
 
 from typing import Union
 
+import pyDE1
 from pyDE1 import de1
 from pyDE1.de1.c_api import Versions, RequestedState, SetTime, \
     ReadFromMMR, WriteToMMR, Temperatures, ShotSettings, \
@@ -30,8 +31,8 @@ from pyDE1.utils import data_as_readable_or_hex
 # Logging is set to DEBUG by default. This effectively disables them
 # with independent control. (The evaluation of the f-string is still done)
 for cuuid in CUUID:
-    logging.getLogger(
-        f"{cuuid.__str__()}.Notify").setLevel(logging.INFO)
+    pyDE1.getLogger(
+        f"DE1.{cuuid.__str__()}.Notify").setLevel(logging.INFO)
 
 def default_handler_map(de1: de1):
     return {
@@ -84,7 +85,7 @@ def create_Versions_callback(de1: de1):
         arrival_time = time.time()
         obj = Versions().from_wire_bytes(data, arrival_time)
         de1._cuuid_dict[CUUID.Versions].mark_updated(obj, arrival_time)
-        logger = logging.getLogger(f"{CUUID.Versions.__str__()}.Notify")
+        logger = pyDE1.getLogger(f"DE1.{CUUID.Versions.__str__()}.Notify")
         logger.debug(obj.log_string())
     return Versions_callback
 
@@ -96,7 +97,7 @@ def create_RequestedState_callback(de1: de1):
         arrival_time = time.time()
         obj = RequestedState().from_wire_bytes(data, arrival_time)
         de1._cuuid_dict[CUUID.RequestedState].mark_updated(obj, arrival_time)
-        logger = logging.getLogger(f"{CUUID.RequestedState.__str__()}.Notify")
+        logger = pyDE1.getLogger(f"DE1.{CUUID.RequestedState.__str__()}.Notify")
         logger.debug(obj.log_string())
     return RequestedState_callback
 
@@ -108,7 +109,7 @@ def create_SetTime_callback(de1: de1):
         arrival_time = time.time()
         obj = SetTime().from_wire_bytes(data, arrival_time)
         de1._cuuid_dict[CUUID.SetTime].mark_updated(obj, arrival_time)
-        logger = logging.getLogger(f"{CUUID.SetTime.__str__()}.Notify")
+        logger = pyDE1.getLogger(f"DE1.{CUUID.SetTime.__str__()}.Notify")
         logger.debug(obj.log_string())
     return SetTime_callback
 
@@ -121,7 +122,7 @@ def create_ShotDirectory_callback(de1: de1):
         # obj = ShotDirectory().from_wire_bytes(data, arrival_time)
         # logger.debug(obj.log_string())
         de1._cuuid_dict[CUUID.ShotDirectory].mark_updated(data, arrival_time)
-        logger = logging.getLogger(f"{CUUID.ShotDirectory.__str__()}.Notify")
+        logger = pyDE1.getLogger(f"DE1.{CUUID.ShotDirectory.__str__()}.Notify")
         logger.debug(f"{data_as_readable_or_hex(data)} ({len(data)})")
     return ShotDirectory_callback
 
@@ -145,7 +146,7 @@ def create_ReadFromMMR_callback(de1: de1):
                                             from_response=True)
         # Logging of the full response is intentionally
         # early as MMR may contain multiple registers
-        logger = logging.getLogger(f"{CUUID.ReadFromMMR.__str__()}.Notify")
+        logger = pyDE1.getLogger(f"DE1.{CUUID.ReadFromMMR.__str__()}.Notify")
         logger.debug(obj.log_string())
         if obj.addr_high != 0x80:
             # Can't write these to de1._mmr_dict as it assumes 0x80
@@ -183,7 +184,7 @@ def create_ReadFromMMR_callback(de1: de1):
                     mmr = MMR0x80LowAddr(this_addr).__str__()
                 except ValueError:
                     mmr = f"MMR0x80LowAddr.{this_addr:0x04x}"
-                logging.getLogger(mmr).debug(notify_state.data_decoded)
+                pyDE1.getLogger(f"DE1.{mmr}").debug(notify_state.data_decoded)
                 start += 4
         de1._cuuid_dict[CUUID.ReadFromMMR].mark_updated(obj, arrival_time)
     return ReadFromMMR_callback
@@ -200,7 +201,7 @@ def create_WriteToMMR_callback(de1: de1):
 
         obj = WriteToMMR().from_wire_bytes(data, arrival_time)
         de1._cuuid_dict[CUUID.WriteToMMR].mark_updated(obj, arrival_time)
-        logger = logging.getLogger(f"{CUUID.WriteToMMR.__str__()}.Notify")
+        logger = pyDE1.getLogger(f"DE1.{CUUID.WriteToMMR.__str__()}.Notify")
         logger.debug(obj.log_string())
     return WriteToMMR_callback
 
@@ -213,7 +214,7 @@ def create_ShotMapRequest_callback(de1:de1):
         # obj = ShotMapRequest().from_wire_bytes(data, arrival_time)
         # logger.debug(obj.log_string())
         de1._cuuid_dict[CUUID.ShotMapRequest].mark_updated(data, arrival_time)
-        logger = logging.getLogger(f"{CUUID.ShotMapRequest.__str__()}.Notify")
+        logger = pyDE1.getLogger(f"DE1.{CUUID.ShotMapRequest.__str__()}.Notify")
         logger.debug(f"{data_as_readable_or_hex(data)} ({len(data)})")
     return ShotMapRequest_callback
 
@@ -226,7 +227,7 @@ def create_DeleteShotRange_callback(de1: de1):
         # obj = DeleteShotRange().from_wire_bytes(data, arrival_time)
         # logger.debug(obj.log_string())
         de1._cuuid_dict[CUUID.DeleteShotRange].mark_updated(data, arrival_time)
-        logger = logging.getLogger(f"{CUUID.DeleteShotRange.__str__()}.Notify")
+        logger = pyDE1.getLogger(f"DE1.{CUUID.DeleteShotRange.__str__()}.Notify")
         logger.debug(f"{data_as_readable_or_hex(data)} ({len(data)})")
     return DeleteShotRange_callback
 
@@ -238,7 +239,7 @@ def create_FWMapRequest_callback(de1: de1):
         arrival_time = time.time()
         obj = FWMapRequest().from_wire_bytes(data, arrival_time)
         de1._cuuid_dict[CUUID.FWMapRequest].mark_updated(obj, arrival_time)
-        logger = logging.getLogger(f"{CUUID.FWMapRequest.__str__()}.Notify")
+        logger = pyDE1.getLogger(f"DE1.{CUUID.FWMapRequest.__str__()}.Notify")
         logger.debug(obj.log_string())
     return FWMapRequest_callback
 
@@ -250,7 +251,7 @@ def create_Temperatures_callback(de1: de1):
         arrival_time = time.time()
         obj = Temperatures().from_wire_bytes(data, arrival_time)
         de1._cuuid_dict[CUUID.Temperatures].mark_updated(obj, arrival_time)
-        logger = logging.getLogger(f"{CUUID.Temperatures.__str__()}.Notify")
+        logger = pyDE1.getLogger(f"DE1.{CUUID.Temperatures.__str__()}.Notify")
         logger.debug(obj.log_string())
     return Temperatures_callback
 
@@ -262,7 +263,7 @@ def create_ShotSettings_callback(de1: de1):
         arrival_time = time.time()
         obj = ShotSettings().from_wire_bytes(data, arrival_time)
         de1._cuuid_dict[CUUID.ShotSettings].mark_updated(obj, arrival_time)
-        logger = logging.getLogger(f"{CUUID.ShotSettings.__str__()}.Notify")
+        logger = pyDE1.getLogger(f"DE1.{CUUID.ShotSettings.__str__()}.Notify")
         logger.debug(obj.log_string())
     return ShotSettings_callback
 
@@ -275,7 +276,7 @@ def create_Deprecated_callback(de1: de1):
         # obj = Deprecated().from_wire_bytes(data, arrival_time)
         # logger.debug(obj.log_string())
         de1._cuuid_dict[CUUID.Deprecated].mark_updated(data, arrival_time)
-        logger = logging.getLogger(f"{CUUID.Deprecated.__str__()}.Notify")
+        logger = pyDE1.getLogger(f"DE1.{CUUID.Deprecated.__str__()}.Notify")
         logger.error(f"{data_as_readable_or_hex(data)} ({len(data)})")
     return Deprecated_callback
 
@@ -302,7 +303,7 @@ def create_ShotSample_callback(de1: de1):
                 frame_number=obj.FrameNumber,
                 steam_temp=obj.SteamTemp,
             ))
-        logger = logging.getLogger(f"{CUUID.ShotSample.__str__()}.Notify")
+        logger = pyDE1.getLogger(f"DE1.{CUUID.ShotSample.__str__()}.Notify")
         logger.debug(obj.log_string())
     return ShotSample_callback
 
@@ -328,7 +329,7 @@ def create_StateInfo_callback(de1: de1):
 
         if obj.State == API_MachineStates.FatalError or obj.SubState.is_error:
             details = f"DE1 reported error condition: {obj.log_string()}"
-            logger = logging.getLogger(f"{CUUID.StateInfo.__str__()}.Notify")
+            logger = pyDE1.getLogger(f"DE1.{CUUID.StateInfo.__str__()}.Notify")
             logger.error(details)
             raise DE1ErrorStateReported(details)
 
@@ -349,7 +350,7 @@ def create_StateInfo_callback(de1: de1):
             previous_state = obj.State
             previous_substate = obj.SubState
 
-        logger = logging.getLogger(f"{CUUID.StateInfo.__str__()}.Notify")
+        logger = pyDE1.getLogger(f"DE1.{CUUID.StateInfo.__str__()}.Notify")
         logger.debug(obj.log_string())
     return StateInfo_callback
 
@@ -361,7 +362,7 @@ def create_HeaderWrite_callback(de1: de1):
         arrival_time = time.time()
         obj = HeaderWrite().from_wire_bytes(data, arrival_time)
         de1._cuuid_dict[CUUID.HeaderWrite].mark_updated(obj, arrival_time)
-        logger = logging.getLogger(f"{CUUID.HeaderWrite.__str__()}.Notify")
+        logger = pyDE1.getLogger(f"DE1.{CUUID.HeaderWrite.__str__()}.Notify")
         logger.debug(obj.log_string())
     return HeaderWrite_callback
 
@@ -373,7 +374,7 @@ def create_FrameWrite_callback(de1: de1):
         arrival_time = time.time()
         obj = FrameWrite().from_wire_bytes(data, arrival_time)
         de1._cuuid_dict[CUUID.FrameWrite].mark_updated(obj, arrival_time)
-        logger = logging.getLogger(f"{CUUID.FrameWrite.__str__()}.Notify")
+        logger = pyDE1.getLogger(f"DE1.{CUUID.FrameWrite.__str__()}.Notify")
         logger.debug(obj.log_string())
     return FrameWrite_callback
 
@@ -391,7 +392,7 @@ def create_WaterLevels_callback(de1: de1):
                 level=obj.Level,
                 start_fill_level=obj.StartFillLevel,
             ))
-        logger = logging.getLogger(f"{CUUID.WaterLevels.__str__()}.Notify")
+        logger = pyDE1.getLogger(f"DE1.{CUUID.WaterLevels.__str__()}.Notify")
         logger.debug(obj.log_string())
     return WaterLevels_callback
 
@@ -404,7 +405,7 @@ def create_Calibration_callback(de1:de1):
         # obj = Calibration().from_wire_bytes(data, arrival_time)
         # logger.debug(obj.log_string())
         de1._cuuid_dict[CUUID.Calibration].mark_updated(data, arrival_time)
-        logger = logging.getLogger(f"{CUUID.Calibration.__str__()}.Notify")
+        logger = pyDE1.getLogger(f"DE1.{CUUID.Calibration.__str__()}.Notify")
         logger.debug(f"{data_as_readable_or_hex(data)} ({len(data)})")
     return Calibration_callback
 

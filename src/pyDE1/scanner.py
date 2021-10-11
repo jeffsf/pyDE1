@@ -26,7 +26,9 @@ from pyDE1.supervise import SupervisedTask
 
 from pyDE1.config import config
 
-logger = logging.getLogger('Scanner')
+import pyDE1
+
+logger = pyDE1.getLogger('Bluetooth.Scanner')
 
 # Otherwise will iterate over D,E,1
 _registered_ble_prefixes = set()
@@ -209,7 +211,7 @@ class DiscoveredDevices (Singleton):
 
 
 async def stop_scanner_if_running(scanner: BleakScanner):
-    logger = logging.getLogger('StopScanner')
+    logger = pyDE1.getLogger('Bluetooth.Scanner')
     logger.debug(f"Stopping {scanner}")
     await scanner.stop()
     logger.debug(f"Stopped {scanner}")

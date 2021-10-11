@@ -9,17 +9,17 @@ import asyncio
 import logging
 import sqlite3
 import subprocess
-import time
 
 from datetime import datetime
 from multiprocessing import cpu_count
 from pathlib import Path
 from typing import Union, Optional, Awaitable
 
+import pyDE1
 from pyDE1.config import config
 from pyDE1.exceptions import DE1DBError
 
-logger = logging.getLogger('database')
+logger = pyDE1.getLogger('Database.Manage')
 
 CURRENT_USER_VERSION = 2
 CURRENT_SCHEMA_RELPATH = 'schema/schema.002.sql'
@@ -190,6 +190,9 @@ if __name__ == '__main__':
     #     sql_commands_from_file(
     #         '/home/ble-remote/devel/pyDE1/src/pyDE1/database/schema/schema.002.sql')
     # )
+
+    config = Config()
+    config.load_from_yaml('/usr/local/etc/pyde1/pyde1.config')
 
     backup_db('/var/lib/pyde1/pyde1.sqlite3', '/home/ble-remote/bu.backup',
               asyncio.get_event_loop())

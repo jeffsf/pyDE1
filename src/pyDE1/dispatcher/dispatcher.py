@@ -17,6 +17,8 @@ import time
 import traceback
 from traceback import TracebackException
 
+import pyDE1
+from pyDE1.config import config
 from pyDE1.de1 import DE1
 from pyDE1.exceptions import DE1NotConnectedError, DE1ValueError
 from pyDE1.flow_sequencer import FlowSequencer
@@ -31,7 +33,7 @@ from pyDE1.supervise import SupervisedTask
 
 QUEUE_TOO_DEEP = 1  # If deeper than this, something is probably wrong, log
 
-logger = logging.getLogger('Dispatcher')
+logger = pyDE1.getLogger('Inbound.Dispatcher')
 
 
 # Interface from multiprocessing (sync) to asyncio.Queue() for async processing
@@ -63,7 +65,7 @@ def start_response_queue_processor(response_queue: asyncio.Queue,
 
 
 async def _response_queue_processor(response_queue: asyncio.Queue,
-        response_pipe: mpc.Connection):
+                                    response_pipe: mpc.Connection):
 
     while True:
         response = await response_queue.get()

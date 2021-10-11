@@ -17,13 +17,13 @@ import uuid
 from copy import deepcopy
 from typing import Any, Union, Optional, List
 
-import logging
+import pyDE1
 
 from pyDE1.de1.c_api import ShotDescHeader, ShotFrame, ShotExtFrame, ShotTail, \
     FrameFlags, ShotSettings, SteamSetting, HeaderWrite, \
     FrameWrite_ShotFrame, FrameWrite_ShotExtFrame, FrameWrite_ShotTail
 
-logger = logging.getLogger('Profile')
+logger = pyDE1.getLogger('DE1.Profile')
 
 class DE1ProfileValidationError (ValueError):
     def __init__(self, *args, **kwargs):

@@ -31,12 +31,13 @@ import yaml
 
 from types import FrameType
 
+import pyDE1
+import pyDE1.pyde1_logging as pyde1_logging
+
 from pyDE1.api.outbound.mqtt import run_api_outbound
 from pyDE1.api.inbound.http import run_api_inbound
 from pyDE1.database.run import run_database_logger
 from pyDE1.controller import run_controller
-
-import pyDE1.default_logger
 
 import pyDE1.shutdown_manager as sm
 
@@ -48,8 +49,6 @@ from pyDE1.database.manage import check_schema
 
 def run():
 
-    logger = logging.getLogger('run')
-
     # NB: Can only be set once, make sure the top-level script uses
     # if __name__ == '__main__':
     #   Not enough if importing something that imports multiprocessing
@@ -57,42 +56,15 @@ def run():
     # TODO: Replace this rather ugly hack
     multiprocessing.set_start_method('spawn', force=True)
 
+    logger = pyDE1.getLogger('Run')
+
+    log_queue = multiprocessing.Queue()
+    pyde1_logging.setup_queue_and_listener(config.logging, log_queue)
+    pyde1_logging.setup_queue_logging(config.logging, log_queue)
+    pyde1_logging.config_logger_levels(config.logging)
+
     loop = asyncio.get_event_loop()
     loop.set_debug(True)
-
-    # If the controller is going to move into its own process
-    # this process needs to handle the arrival of signals
-
-    # Might be able to use SimpleQueue here,
-    # at least until the queue gets joined at exit
-    log_queue = multiprocessing.Queue()
-
-    pyDE1.default_logger.initialize_default_logger(log_queue)
-    pyDE1.default_logger.set_some_logging_levels()
-    config.set_logging()
-
-    if not os.path.exists(config.logging.LOG_DIRECTORY):
-        logger.error(
-            "logfile_directory '{}' does not exist. Creating.".format(
-                os.path.realpath(config.logging.LOG_DIRECTORY)
-            )
-        )
-        # Will create intermediate directories
-        # Will not use "mode" on intermediates
-        os.makedirs(config.logging.LOG_DIRECTORY)
-
-    fq_logfile = os.path.join(config.logging.LOG_DIRECTORY,
-                              config.logging.LOG_FILENAME)
-
-    log_file_handler = logging.handlers.WatchedFileHandler(fq_logfile)
-    log_queue_listener = logging.handlers.QueueListener(log_queue,
-                                                        log_file_handler)
-    log_file_formatter = logging.Formatter(
-        fmt=config.logging.FORMAT_MAIN
-    )
-    log_file_handler.setFormatter(log_file_formatter)
-
-    log_queue_listener.start()
 
     def _sigchild_handler(signum: signal.Signals, frame: FrameType):
         ac = multiprocessing.active_children()
@@ -104,6 +76,9 @@ def run():
 
     signal.signal(signal.SIGCHLD, _sigchild_handler)
 
+    # TODO Move process definition, but not starting them
+    #      up here so that there isn't NameError on early exit
+
     def on_shutdown_underway_cleanup():
         sm.shutdown_underway.wait()
 
@@ -112,8 +87,8 @@ def run():
         def _the_rest_sync():
             logger.info("Setting do_not_restart")
             for sp in (
-                    supervised_inbound_api_process,
                     supervised_outbound_api_process,
+                    supervised_inbound_api_process,
                     supervised_controller_process,
                     supervised_database_logger_process,
             ):
@@ -211,6 +186,8 @@ def run():
     )
     supervised_controller_process.start()
 
+    logger.info('About to start loop')
+
     loop.run_forever()
 
     logger.debug("After loop.run_forever()")
@@ -245,7 +222,7 @@ def run():
             ev_str = 'os.EX_SOFTWARE'
 
     logger.info(f"Will exit with {sm.exit_value} {ev_str}")
-    log_queue_listener.stop()
+    pyde1_logging.log_queue_listener.stop()
     # Thread needs a bit to shut down
     # TODO: Can/should this thread be joined?
     time.sleep(1)
@@ -254,27 +231,12 @@ def run():
 
 if __name__ == "__main__":
 
+    # Complains even if set here
+    # multiprocessing.set_start_method('spawn')
+
     import argparse
 
-    initial_log_config = """
----
-version: 1
-formatters:
-    timestamped:
-        class: logging.Formatter
-        format: >-
-            %(asctime)s %(levelname)s [%(processName)s]
-            %(name)s: %(message)s
-handlers:
-    stderr:
-        class: logging.StreamHandler
-        formatter: timestamped
-        level: DEBUG
-root:
-    handlers: [stderr]
-    level: DEBUG
-"""
-    logging.config.dictConfig(yaml.safe_load(initial_log_config))
+    pyde1_logging.setup_initial_logger()
 
     ap = argparse.ArgumentParser(
         description="""Main executable to start the pyDE1 core.
@@ -291,8 +253,7 @@ root:
     config.load_from_yaml(args.c)
 
     if args.console:
-        config.logging.LEVEL_STDERR = logging.DEBUG
-        config.logging.FORMAT_STDERR = \
-            '%(asctime)s %(levelname)s [%(processName)s] %(name)s: %(message)s'
+        config.logging.handlers.STDERR = 'DEBUG'
+        config.logging.formatters.STDERR = config.logging.formatters.LOGFILE
 
     run()

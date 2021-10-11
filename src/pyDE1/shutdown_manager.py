@@ -34,6 +34,8 @@ import traceback
 
 from typing import Callable, Optional, Coroutine, Iterable, Union
 
+import pyDE1
+
 # Set when a shutdown is requested
 # Does not start a shutdown when set
 shutdown_underway = multiprocessing.Event()
@@ -47,7 +49,7 @@ CLEANUP_WAIT = 5.0  # seconds
 exit_value = os.EX_OK
 signal_rcvd = None
 
-logger = logging.getLogger('shutdown')
+logger = pyDE1.getLogger('Shutdown')
 
 default_signal_set = (
     signal.SIGHUP,

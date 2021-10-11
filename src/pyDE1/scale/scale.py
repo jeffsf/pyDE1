@@ -32,7 +32,9 @@ from pyDE1.de1 import DE1
 
 from pyDE1.config import config
 
-logger = logging.getLogger('Scale')
+import pyDE1
+
+logger = pyDE1.getLogger('Scale')
 
 # TODO: Can/should this be related to the class?
 #       If so, how should subclasses respond?
