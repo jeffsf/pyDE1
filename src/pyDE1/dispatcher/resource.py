@@ -10,7 +10,7 @@ Enum that defines the recognized resources that the Dispatcher can access
 
 import enum
 
-RESOURCE_VERSION = '3.3.0'
+RESOURCE_VERSION = '3.4.0'
 
 
 class Resource (enum.Enum):
@@ -25,7 +25,8 @@ class Resource (enum.Enum):
 
     DE1_ID = 'de1/id'
 
-    DE1_MODE = 'de1/mode'
+    DE1_MODE = 'de1/mode'   # Commands
+    DE1_STATE = 'de1/state' # Current state and substate
 
     DE1_FEATURE_FLAGS = 'de1/feature_flags'
 
@@ -115,6 +116,7 @@ class Resource (enum.Enum):
                 self.VERSION,
                 self.LOG,
                 self.LOGS,
+                self.DE1_STATE,
                 self.DE1_PROFILES,
                 self.DE1_FIRMWARES,
                 # unimplemented
@@ -177,3 +179,4 @@ class DE1ModeEnum (enum.Enum):
     STEAM = 'Steam'
     HOT_WATER = 'HotWater'
     HOT_WATER_RINSE = 'HotWaterRinse'
+

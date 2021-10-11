@@ -1506,6 +1506,13 @@ class DE1 (Singleton):
 
     # General mode activation -- check is here for GHC or not
 
+    @property
+    def state_getter(self):
+        return {
+            'state': self.current_state.name,
+            'substate': self.current_substate.name,
+        }
+
     async def mode_setter(self, mode: DE1ModeEnum):
         assert isinstance(mode, DE1ModeEnum), \
             f"mode of {mode} not a DE1ModeEnum in DE1.mode_setter()"

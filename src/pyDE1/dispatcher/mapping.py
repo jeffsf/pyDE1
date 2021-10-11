@@ -69,7 +69,7 @@ from pyDE1.de1.c_api import PackedAttr, MMR0x80LowAddr, get_cuuid, \
 
 from pyDE1.exceptions import DE1APIValueError
 
-MAPPING_VERSION = "3.3.0"
+MAPPING_VERSION = "3.4.0"
 
 # There are a handful of requests related to the DE1 and Scale
 # that can be or must be handled even if the device is not ready.
@@ -265,6 +265,12 @@ MAPPING[Resource.DE1_ID] = {
 MAPPING[Resource.DE1_MODE] = {
     'mode': IsAt(target=DE1, attr_path=None, setter_path='mode_setter',
                  v_type=str, internal_type=DE1ModeEnum),
+}
+
+MAPPING[Resource.DE1_STATE] = {
+    'state': IsAt(target=DE1, attr_path='state_getter',
+                  read_only=True,
+                  v_type=str, internal_type=str),
 }
 
 MAPPING[Resource.DE1_FEATURE_FLAGS] = {
@@ -542,6 +548,7 @@ MAPPING[Resource.DE1_CALIBRATION] = {
 MAPPING[Resource.DE1] = {
     'id': MAPPING[Resource.DE1_ID],
     'mode': MAPPING[Resource.DE1_MODE],
+    'state': MAPPING[Resource.DE1_STATE],
     # profile
     # profiles
     # firmware
