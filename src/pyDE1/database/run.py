@@ -46,7 +46,7 @@ def run_database_logger(config: pyDE1.config.Config,
     loop.set_debug(True)
 
     def on_shutdown_underway_cleanup():
-        logger.info("Shutdown wait beginning")
+        logger.info("Watching for shutdown event")
         sm.shutdown_underway.wait()
         logger.info("Shutdown cleanup start")
         logger.info(f"Threads: {threading.enumerate()}")

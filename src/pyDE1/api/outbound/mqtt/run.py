@@ -72,7 +72,7 @@ def run_api_outbound(config: pyDE1.config.Config,
     # TODO: THIS NEEDS TO BE TRIGGERED FROM MAIN PROCESS
 
     def on_shutdown_underway_cleanup():
-        logger.info("Shutdown wait beginning")
+        logger.info("Watching for shutdown event")
         sm.shutdown_underway.wait()
         logger.info("Shutting down MQTT client")
         mqtt_client.loop_stop()

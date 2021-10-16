@@ -52,7 +52,7 @@ def run_controller(config: pyDE1.config.Config,
     loop.set_debug(True)
 
     def on_shutdown_underway_cleanup():
-        logger.info("Shutdown wait beginning")
+        logger.info("Watching for shutdown event")
         sm.shutdown_underway.wait()
 
         async def _the_rest():
