@@ -91,7 +91,7 @@ Note: Can't 'from import pyDE1.config import config'
 
 import copy
 import logging
-from logging.handlers import QueueHandler
+from logging.handlers import QueueHandler, MemoryHandler
 import os
 import multiprocessing
 import warnings
@@ -107,14 +107,29 @@ def setup_initial_logger():
     Configure a basic logger that logs to stderr at DEBUG level
     sufficient to report errors in reading config and then
     starting the "real" logger.
+
+    Capture the records in a MemoryHandler for later flushing
+    to the logfile_handler, when it becomes available
     """
+    CAPACITY = 1000  # records
+
+    global memory_handler
+
     formatter = Formatter(
         "%(asctime)s %(levelname)s [%(processName)s] %(name)s: %(message)s")
 
-    handler = logging.StreamHandler()
-    handler.setFormatter(formatter)
-    handler.setLevel(logging.DEBUG)
-    handler.name = 'initial_logger'
+    initial_handler = logging.StreamHandler()
+    initial_handler.setFormatter(formatter)
+    initial_handler.setLevel(logging.DEBUG)
+    initial_handler.name = 'initial_logger'
+
+    memory_handler = MemoryHandler(
+        capacity=CAPACITY,
+        flushLevel=(logging.CRITICAL + 1),
+        target = None,
+        flushOnClose=True
+    )
+    memory_handler.name = 'memory_handler'
 
     root_logger = logging.getLogger()
     if len(rlh := root_logger.handlers):
@@ -123,7 +138,8 @@ def setup_initial_logger():
         )
         for handler in rlh:
             root_logger.removeHandler(handler)
-    root_logger.addHandler(handler)
+    root_logger.addHandler(initial_handler)
+    root_logger.addHandler(memory_handler)
     root_logger.setLevel(logging.DEBUG)
 
 
@@ -192,6 +208,7 @@ class ConfigLoggingHandlers (ConfigLoadable):
 # just accesses the property object, rather than providing property behavior
 
 log_queue_listener = None
+memory_handler = None
 stderr_handler = None
 logfile_handler = None
 
@@ -204,7 +221,7 @@ def setup_queue_and_listener(config_logging: ConfigLogging,
     NB: Call *after* config has been read
     :param config_logging: 
     """
-    _setup_queue_and_listener(config_logging, log_queue=log_queue)
+    _setup_logging_internal(config_logging, log_queue=log_queue)
 
 
 def setup_direct_logging(config_logging: ConfigLogging):
@@ -220,17 +237,17 @@ def setup_direct_logging(config_logging: ConfigLogging):
             "setup_direct_logging() called in a multiprocessing environment",
             RuntimeWarning
         )
-    _setup_queue_and_listener(config_logging, log_queue=None)
+    _setup_logging_internal(config_logging, log_queue=None)
 
 
-def _setup_queue_and_listener(config_logging: ConfigLogging,
-                              log_queue: Optional[multiprocessing.Queue]):
+def _setup_logging_internal(config_logging: ConfigLogging,
+                            log_queue: Optional[multiprocessing.Queue]):
     """
     If log_queue is present, set up queue and listener
     If None, set up direct logging
     :param config_logging: 
     """
-    global log_queue_listener, stderr_handler, logfile_handler
+    global log_queue_listener, memory_handler, stderr_handler, logfile_handler
 
     # log_queue = multiprocessing.Queue()
 
@@ -287,6 +304,12 @@ def _setup_queue_and_listener(config_logging: ConfigLogging,
             root_logger.removeHandler(handler)
         root_logger.addHandler(stderr_handler)
         root_logger.addHandler(logfile_handler)
+
+    if memory_handler:
+        root_logger.removeHandler(memory_handler)
+        memory_handler.target = logfile_handler
+        memory_handler.close()
+        memory_handler = None
 
     set_root_logger_levels(config_logging)
 
