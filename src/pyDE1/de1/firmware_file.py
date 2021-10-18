@@ -6,11 +6,12 @@ GNU General Public License v3.0 only
 SPDX-License-Identifier: GPL-3.0-only
 """
 
-import logging
+import binascii
+import zlib
 from struct import unpack
 
-import zlib
-import binascii
+from pyDE1.exceptions import DE1ValueError
+
 
 # typedef struct {
 #   U32 CheckSum;    // The checksum of the rest of the encrypted image. Includes "CheckSums" + "Data" fields, not "Header"
@@ -23,7 +24,7 @@ import binascii
 #   U8  IV[32];       // Initialization vector for the firmware
 #   U32 HSum;        // Checksum of this header.
 # } T_FirmwareHeader;
-from pyDE1.exceptions import DE1ValueError
+
 
 
 class FirmwareFile():

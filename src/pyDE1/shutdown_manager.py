@@ -26,12 +26,11 @@ async def wait_then_cleanup(client: mqtt.Client):
 """
 import asyncio
 import logging
+import multiprocessing
 import os
 import pprint
 import signal
-import multiprocessing
 import traceback
-
 from typing import Callable, Optional, Coroutine, Iterable, Union
 
 import pyDE1

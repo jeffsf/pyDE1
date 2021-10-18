@@ -10,20 +10,18 @@ from __future__ import annotations
 
 import enum
 import hashlib
-import io
 import json
-import uuid
-
 from copy import deepcopy
-from typing import Any, Union, Optional, List
+from typing import Union, Optional, List
 
 import pyDE1
-
-from pyDE1.de1.c_api import ShotDescHeader, ShotFrame, ShotExtFrame, ShotTail, \
-    FrameFlags, ShotSettings, SteamSetting, HeaderWrite, \
+from pyDE1.de1.c_api import (
+    ShotDescHeader, ShotFrame, ShotExtFrame, ShotTail, FrameFlags, HeaderWrite,
     FrameWrite_ShotFrame, FrameWrite_ShotExtFrame, FrameWrite_ShotTail
+)
 
 logger = pyDE1.getLogger('DE1.Profile')
+
 
 class DE1ProfileValidationError (ValueError):
     def __init__(self, *args, **kwargs):
@@ -33,6 +31,7 @@ class DE1ProfileValidationError (ValueError):
 class DE1ProfileValidationErrorJSON (DE1ProfileValidationError):
     def __init__(self, *args, **kwargs):
         super(DE1ProfileValidationErrorJSON, self).__init__(args, kwargs)
+
 
 class SourceFormat (enum.Enum):
     JSONv2 = 'JSONv2'

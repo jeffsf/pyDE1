@@ -11,68 +11,45 @@ SPDX-License-Identifier: GPL-3.0-only
 import asyncio
 import hashlib
 import inspect
-import logging
 import time
-
 from copy import copy, deepcopy
 from typing import Union, Dict, Coroutine, Optional, List, Callable
 
+import aiosqlite
 from bleak.backends.device import BLEDevice
 from bleak.backends.scanner import AdvertisementData
 from bleak.backends.service import BleakGATTServiceCollection
 
-from pyDE1.bleak_client_wrapper import BleakClientWrapped
-
-from pyDE1.exceptions import *
-from pyDE1.de1.ble import UnsupportedBLEActionError
-
 import pyDE1.database.insert as db_insert
-
-from pyDE1.config import config
-
-import aiosqlite
-
-# general utilities
-
-from pyDE1.de1.c_api import \
-    PackedAttr, RequestedState, ReadFromMMR, WriteToMMR, StateInfo, \
-    FWMapRequest, FWErrorMapRequest, FWErrorMapResponse, \
-    API_MachineStates, API_Substates, MAX_FRAMES, get_cuuid, MMR0x80LowAddr, \
-    packed_attr_from_cuuid, pack_one_mmr0x80_write, MMRGHCInfoBitMask
-
-from pyDE1.de1.ble import CUUID
-from pyDE1.de1.notifications import NotificationState, MMR0x80Data
-from pyDE1.de1.profile import Profile, ProfileByFrames, \
-    DE1ProfileValidationError, SourceFormat
-
-from pyDE1.i_target_setter import I_TargetSetter
-from pyDE1.event_manager.events import ConnectivityState, ConnectivityChange, \
-    FirmwareUploadState, FirmwareUpload
-
-# Importing from the module-level init fails
-# from pyDE1.flow_sequencer import I_TargetManager
-
-from pyDE1.de1.firmware_file import FirmwareFile
-
 import pyDE1.de1.handlers
-
+from pyDE1.bleak_client_wrapper import BleakClientWrapped
+from pyDE1.config import config
+from pyDE1.de1.ble import UnsupportedBLEActionError, CUUID
+from pyDE1.de1.c_api import (
+    PackedAttr, RequestedState, ReadFromMMR, WriteToMMR, StateInfo,
+    FWMapRequest, FWErrorMapRequest, FWErrorMapResponse,
+    API_MachineStates, API_Substates, MAX_FRAMES, get_cuuid, MMR0x80LowAddr,
+    packed_attr_from_cuuid, pack_one_mmr0x80_write, MMRGHCInfoBitMask
+)
+from pyDE1.de1.events import ShotSampleUpdate, ShotSampleWithVolumesUpdate
+from pyDE1.de1.firmware_file import FirmwareFile
+from pyDE1.de1.notifications import NotificationState, MMR0x80Data
+from pyDE1.de1.profile import (
+    Profile, ProfileByFrames, DE1ProfileValidationError, SourceFormat
+)
+from pyDE1.dispatcher.resource import ConnectivityEnum, DE1ModeEnum
 from pyDE1.event_manager import SubscribedEvent
-from pyDE1.de1.events import ShotSampleUpdate, \
-    ShotSampleWithVolumesUpdate
-from pyDE1.scanner import DiscoveredDevices, BleakScannerWrapped
+from pyDE1.event_manager.events import (
+    ConnectivityState, ConnectivityChange, FirmwareUploadState, FirmwareUpload
+)
+from pyDE1.exceptions import *
+from pyDE1.flow_sequencer import FlowSequencer
+from pyDE1.scanner import (
+    DiscoveredDevices, BleakScannerWrapped, find_first_matching
+)
 from pyDE1.singleton import Singleton
-
 from pyDE1.utils import task_name_exists, cancel_tasks_by_name
 
-from pyDE1.dispatcher.resource import ConnectivityEnum, DE1ModeEnum
-
-from pyDE1.scanner import find_first_matching
-
-
-# If True, randomly skips upload packets
-_TEST_BLE_LOSS_DURING_FW_UPLOAD = False
-if _TEST_BLE_LOSS_DURING_FW_UPLOAD:
-    import random
 
 logger = pyDE1.getLogger('DE1')
 
@@ -92,10 +69,6 @@ class DE1 (Singleton):
         self._address_or_bledevice: Optional[Union[str, BLEDevice]] = None
         self._name = None
         self._bleak_client: Optional[BleakClientWrapped] = None
-
-        # TODO: This one is probably going to need some care
-        #       to transform to Singleton use
-        self._flow_sequencer: Optional[I_TargetSetter] = None
 
         # TODO: Should the handlers be able to be changed on the fly?
         self._handlers = pyDE1.de1.handlers.default_handler_map(self)
@@ -263,7 +236,8 @@ class DE1 (Singleton):
                 idx += 1
             logger.error("Stupidly continuing anyway after re-requesting")
 
-        await self._flow_sequencer.on_de1_nearly_ready()
+        await FlowSequencer().on_de1_nearly_ready()
+
         # NB: This gets sent if all there or not
         await self._notify_ready()
 
@@ -923,10 +897,10 @@ class DE1 (Singleton):
     async def upload_profile(self, profile: ProfileByFrames,
                              force=True):
         try:
-            osl = self._flow_sequencer.profile_can_override_stop_limits(
+            osl = FlowSequencer().profile_can_override_stop_limits(
                 API_MachineStates.Espresso
             )
-            ott = self._flow_sequencer.profile_can_override_tank_temperature(
+            ott = FlowSequencer().profile_can_override_tank_temperature(
                 API_MachineStates.Espresso
             )
         except AttributeError:
@@ -1011,7 +985,7 @@ class DE1 (Singleton):
                     if (target := profile.target_volume) is not None:
                         if target <= 0:
                             target = None
-                        self._flow_sequencer.stop_at_volume_set(
+                        FlowSequencer().stop_at_volume_set(
                             state=API_MachineStates.Espresso,
                             volume=target
                         )
@@ -1019,7 +993,7 @@ class DE1 (Singleton):
                     if (target := profile.target_weight) is not None:
                         if target <= 0:
                             target = None
-                        self._flow_sequencer.stop_at_weight_set(
+                        FlowSequencer().stop_at_weight_set(
                             state=API_MachineStates.Espresso,
                             weight=target
                         )

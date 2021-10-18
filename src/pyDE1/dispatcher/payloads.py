@@ -12,7 +12,6 @@ These should be pickle-able so can be passed between processes
 
 import enum
 from traceback import TracebackException
-
 from typing import Optional
 
 from pyDE1.dispatcher.resource import Resource

@@ -7,32 +7,24 @@ SPDX-License-Identifier: GPL-3.0-only
 """
 
 import asyncio
-import logging
 import time
-import gc
-
 from typing import Optional, Callable, Coroutine, Union
 
 import aiosqlite
 from bleak.backends.device import BLEDevice
-from bleak.backends.scanner import AdvertisementData
 from bleak.backends.service import BleakGATTServiceCollection
 
+import pyDE1
 from pyDE1.bleak_client_wrapper import BleakClientWrapped
+from pyDE1.config import config
+from pyDE1.de1 import DE1
 from pyDE1.de1.c_api import API_MachineStates
-from pyDE1.scanner import BleakScannerWrapped
-from pyDE1.exceptions import DE1APIValueError, DE1NoAddressError
 from pyDE1.dispatcher.resource import ConnectivityEnum
 from pyDE1.event_manager import SubscribedEvent
 from pyDE1.event_manager.events import ConnectivityState, ConnectivityChange
+from pyDE1.exceptions import DE1APIValueError, DE1NoAddressError
 from pyDE1.scale.events import ScaleWeightUpdate, ScaleTareSeen
-from pyDE1.scanner import _registered_ble_prefixes, DiscoveredDevices
-
-from pyDE1.de1 import DE1
-
-from pyDE1.config import config
-
-import pyDE1
+from pyDE1.scanner import _registered_ble_prefixes
 
 logger = pyDE1.getLogger('Scale')
 

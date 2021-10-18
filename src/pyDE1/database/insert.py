@@ -6,20 +6,15 @@ GNU General Public License v3.0 only
 SPDX-License-Identifier: GPL-3.0-only
 """
 
-import asyncio
 import json
-import logging
-import sys
 import time
-
-from typing import Optional, NamedTuple
 
 import aiosqlite
 
 import pyDE1
 from pyDE1.de1.profile import Profile
-from pyDE1.event_manager import EventNotificationName, SequencerGateName
-from pyDE1.event_manager.event_manager import EventNotificationAction
+from pyDE1.event_manager import SequencerGateName
+from pyDE1.event_manager.payloads import EventNotificationAction
 
 logger = pyDE1.getLogger('Database.Insert')
 

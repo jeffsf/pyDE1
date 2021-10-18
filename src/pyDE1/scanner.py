@@ -9,24 +9,21 @@ SPDX-License-Identifier: GPL-3.0-only
 import asyncio
 import enum
 import inspect
-import logging
 import time
-
-from typing import Optional, Iterable, NamedTuple, Dict, Set, Callable, Tuple, \
-    Union
+from typing import (
+    Optional, Iterable, NamedTuple, Dict, Set, Tuple, Union,
+)
 
 from bleak import BleakScanner
 from bleak.backends.device import BLEDevice
 from bleak.backends.scanner import AdvertisementData
 
+import pyDE1
+from pyDE1.config import config
+from pyDE1.event_manager import EventPayload, send_to_outbound_pipes
 from pyDE1.exceptions import *
 from pyDE1.singleton import Singleton
-from pyDE1.event_manager import EventPayload, send_to_outbound_pipes
 from pyDE1.supervise import SupervisedTask
-
-from pyDE1.config import config
-
-import pyDE1
 
 logger = pyDE1.getLogger('Bluetooth.Scanner')
 

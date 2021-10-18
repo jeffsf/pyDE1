@@ -17,7 +17,6 @@ This is due to challenges in determining if the class or the stub is needed.
 import importlib.util
 import inspect
 import sys
-
 from enum import Enum, auto
 from typing import Optional, Union, NamedTuple
 

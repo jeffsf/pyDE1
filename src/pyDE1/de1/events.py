@@ -11,8 +11,8 @@ Common events for the DE1 itself
 from copy import copy
 from typing import Optional, List
 
-from pyDE1.event_manager import EventPayload
 from pyDE1.de1.c_api import API_MachineStates, API_Substates
+from pyDE1.event_manager import EventPayload
 
 
 class StateUpdate (EventPayload):

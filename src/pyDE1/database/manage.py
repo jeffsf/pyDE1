@@ -9,11 +9,10 @@ import asyncio
 import logging
 import sqlite3
 import subprocess
-
 from datetime import datetime
 from multiprocessing import cpu_count
 from pathlib import Path
-from typing import Union, Optional, Awaitable
+from typing import Union, Optional
 
 import pyDE1
 from pyDE1.config import config
@@ -178,8 +177,6 @@ def backup_db(db_filename: str, backup_filename: str,
 
 
 if __name__ == '__main__':
-    import pprint
-
     format_string = "%(asctime)s %(levelname)s %(name)s: %(message)s"
 
     logging.basicConfig(level=logging.DEBUG,
@@ -191,7 +188,6 @@ if __name__ == '__main__':
     #         '/home/ble-remote/devel/pyDE1/src/pyDE1/database/schema/schema.002.sql')
     # )
 
-    config = Config()
     config.load_from_yaml('/usr/local/etc/pyde1/pyde1.config')
 
     backup_db('/var/lib/pyde1/pyde1.sqlite3', '/home/ble-remote/bu.backup',

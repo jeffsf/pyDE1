@@ -12,18 +12,18 @@ SPDX-License-Identifier: GPL-3.0-only
 import asyncio
 import copy
 import enum
-import logging
-from struct import unpack, pack
 import time
 import traceback
-
+from struct import unpack, pack
 from typing import Union, Optional
 
 import pyDE1
-from pyDE1.exceptions import DE1APITypeError, DE1APIValueError, \
-    DE1APITooManyFramesError, MMRTypeError, MMRValueError, MMRDataTooLongError
-from pyDE1.utils import data_as_hex
 from pyDE1.de1.ble import CUUID
+from pyDE1.exceptions import (
+    DE1APITypeError, DE1APIValueError, DE1APITooManyFramesError,
+    MMRTypeError, MMRValueError, MMRDataTooLongError
+)
+from pyDE1.utils import data_as_hex
 
 logger = pyDE1.getLogger('DE1.C_API')
 

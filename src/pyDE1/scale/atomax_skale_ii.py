@@ -8,22 +8,13 @@ SPDX-License-Identifier: GPL-3.0-only
 
 import asyncio
 import enum
-import logging
 import sys
 import time
 from typing import Callable
 
-from bleak.backends.device import BLEDevice
-from bleak.backends.scanner import AdvertisementData
-
+import pyDE1
 from pyDE1.scale import Scale
 from pyDE1.scale.events import ScaleWeightUpdate, ScaleButtonPress
-
-from pyDE1.event_manager.events import ConnectivityState, ConnectivityChange
-
-from pyDE1.supervise import SupervisedTask
-
-import pyDE1
 
 logger = pyDE1.getLogger('Scale.AtomaxIIScale')
 

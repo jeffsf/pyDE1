@@ -9,23 +9,18 @@ SPDX-License-Identifier: GPL-3.0-only
 import asyncio
 import logging
 import time
-
 from typing import Union
 
 import pyDE1
 from pyDE1 import de1
-from pyDE1.de1.c_api import Versions, RequestedState, SetTime, \
-    ReadFromMMR, WriteToMMR, Temperatures, ShotSettings, \
-    ShotSample, StateInfo, HeaderWrite, FrameWrite, \
-    WaterLevels, FWMapRequest, \
-    MMR0x80LowAddr
-
-from pyDE1.de1.events import StateUpdate, ShotSampleUpdate, WaterLevelUpdate
-from pyDE1.de1.c_api import API_MachineStates, API_Substates
-
 from pyDE1.de1.ble import CUUID
+from pyDE1.de1.c_api import (
+    Versions, RequestedState, SetTime, ReadFromMMR, WriteToMMR,
+    Temperatures, ShotSettings, ShotSample, StateInfo, HeaderWrite, FrameWrite,
+    WaterLevels, FWMapRequest, MMR0x80LowAddr, API_MachineStates, API_Substates
+)
+from pyDE1.de1.events import StateUpdate, ShotSampleUpdate, WaterLevelUpdate
 from pyDE1.exceptions import DE1ErrorStateReported, MMRAddressOffsetError
-
 from pyDE1.utils import data_as_readable_or_hex
 
 # Logging is set to DEBUG by default. This effectively disables them

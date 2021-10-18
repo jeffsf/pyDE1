@@ -9,15 +9,11 @@ SPDX-License-Identifier: GPL-3.0-only
 Estimators to use with ScaleProcessor
 """
 
-import logging
-
-# from statistics import mean
 from statistics import median
 from typing import Tuple, List
 
-from pyDE1.scale.processor import ScaleProcessor, ScaleProcessorError
-
 import pyDE1
+from pyDE1.scale.processor import ScaleProcessor
 
 logger = pyDE1.getLogger('Scale.Estimator')
 
@@ -29,6 +25,7 @@ logger = pyDE1.getLogger('Scale.Estimator')
 _USE_MEAN_FOR_TIME = True
 
 # This drops the delay to ~2.5 ms as well
+# statistics.mean tries to be robust against everything
 def mean(data: List[float]):
     return sum(data)/len(data)
 

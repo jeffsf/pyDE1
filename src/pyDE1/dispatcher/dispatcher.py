@@ -18,18 +18,15 @@ import traceback
 from traceback import TracebackException
 
 import pyDE1
-from pyDE1.config import config
 from pyDE1.de1 import DE1
-from pyDE1.exceptions import DE1NotConnectedError, DE1ValueError
-from pyDE1.flow_sequencer import FlowSequencer
-
-from pyDE1.dispatcher.resource import Resource
+from pyDE1.dispatcher.implementation import (
+    get_resource_to_dict, patch_resource_from_dict
+)
 from pyDE1.dispatcher.payloads import APIRequest, APIResponse, HTTPMethod
-from pyDE1.dispatcher.implementation import get_resource_to_dict, \
-    patch_resource_from_dict
+from pyDE1.dispatcher.resource import Resource
+from pyDE1.exceptions import DE1NotConnectedError, DE1ValueError
 from pyDE1.scale.processor import ScaleProcessor
 from pyDE1.supervise import SupervisedTask
-
 
 QUEUE_TOO_DEEP = 1  # If deeper than this, something is probably wrong, log
 
@@ -88,10 +85,9 @@ def start_request_queue_processor(request_queue: asyncio.Queue,
 async def _request_queue_processor(request_queue: asyncio.Queue,
                                    response_queue: asyncio.Queue):
 
-    flow_sequencer = FlowSequencer()
+    # Needed only to determine connectivity and readiness
     de1 = DE1()
     scale_processor = ScaleProcessor()
-    # scale = ScaleProcessor.scale  # No .scale when this starts
 
     while True:
         got: APIRequest = await request_queue.get()
@@ -119,8 +115,8 @@ async def _request_queue_processor(request_queue: asyncio.Queue,
                 else:
                     level = logging.ERROR
                 logger.log(level,
-                           f"Exception in processing {got.method} {got.resource}"
-                           f" {repr(exception)}")
+                           "Exception in processing "
+                           f"{got.method} {got.resource} {repr(exception)}")
                 logger.log(level,
                            ''.join(tbe.format()))
             response = APIResponse(original_timestamp=got.timestamp,
@@ -209,7 +205,6 @@ async def _request_queue_processor(request_queue: asyncio.Queue,
                                    payload=results_list,
                                    exception=exception,
                                    tbe=tbe)
-
 
         else:
             response = APIResponse(original_timestamp=got.timestamp,

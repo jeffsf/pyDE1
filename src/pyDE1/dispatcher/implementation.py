@@ -12,37 +12,28 @@ SPDX-License-Identifier: GPL-3.0-only
 # TODO: Wipe cached state on disconnect
 import asyncio
 import copy
-import enum
 import inspect
 import math  # for nan to be uniquely math.nan
 import time
-import token
-
 from functools import reduce
-from typing import Union, Dict, Set, Optional
+from typing import Union, Dict, Set
 
 import pyDE1.scanner
-from pyDE1.de1.notifications import NotificationState, MMR0x80Data
-from pyDE1.utils import prep_for_json
-from pyDE1.utils_public import rgetattr, rsetattr
-
-from pyDE1.dispatcher.resource import Resource
-from pyDE1.dispatcher.mapping import MAPPING, TO, IsAt
-
+from pyDE1.config import config
 from pyDE1.de1 import DE1
-from pyDE1.scale import Scale
-from pyDE1.scale.processor import ScaleProcessor
-from pyDE1.flow_sequencer import FlowSequencer
-from pyDE1.scanner import DiscoveredDevices, scan_from_api
-
 from pyDE1.de1.c_api import PackedAttr, MMR0x80LowAddr, pack_one_mmr0x80_write
+from pyDE1.de1.notifications import MMR0x80Data
+from pyDE1.dispatcher.mapping import MAPPING, TO, IsAt
+from pyDE1.dispatcher.resource import Resource
 from pyDE1.exceptions import (
     DE1APITypeError, DE1APIValueError, DE1APIAttributeError, DE1APIKeyError,
     DE1NotConnectedError
 )
-
-from pyDE1.config import config
-
+from pyDE1.flow_sequencer import FlowSequencer
+from pyDE1.scale.processor import ScaleProcessor
+from pyDE1.scanner import DiscoveredDevices, scan_from_api
+from pyDE1.utils import prep_for_json
+from pyDE1.utils_public import rgetattr, rsetattr
 
 logger = pyDE1.getLogger('Inbound.Implementation')
 
@@ -338,30 +329,6 @@ def get_target_sets(mapping: dict,
 async def get_resource_to_dict(resource: Resource) -> dict:
 
     mapping = MAPPING[resource]
-    de1 = DE1()
-    flow_sequencer = FlowSequencer()
-
-    # target_sets = get_target_sets(mapping)
-    # pa_coros = list(map(lambda pa: de1.read_cuuid(pa.cuuid),
-    #                     (target_sets['PackedAttr'])))
-    # mmr_coros = list(map(lambda mmr: de1.read_one_mmr0x80(mmr),
-    #                     (target_sets['MMR0x80LowAddr'])))
-    # t0 = time.time()
-    # # result = await asyncio.gather(*pa_coros) # 390-490 ms for 4
-    # for coro in pa_coros:  # This takes 390 ms
-    #     await coro
-    # t1 = time.time()
-    # logger.debug(
-    #     f"Read of pa_coros took \t{(t1 - t0) * 1000:6.1f} ms"
-    # )
-    # t0 = time.time()
-    # result = await asyncio.gather(*mmr_coros)  # Needs lock
-    # await de1.read_standard_mmr_registers()  # This takes 1.2 seconds
-    #                                          # and needs check for ready
-    # t1 = time.time()
-    # logger.debug(
-    #     f"Read of mmr_coros took \t{(t1 - t0) * 1000:6.1f} ms"
-    # )
     return await _get_mapping_to_dict(mapping)
 
 

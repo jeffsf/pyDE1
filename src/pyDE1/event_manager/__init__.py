@@ -6,6 +6,10 @@ GNU General Public License v3.0 only
 SPDX-License-Identifier: GPL-3.0-only
 """
 
-from .event_manager import SubscribedEvent, EventPayload, \
-    EventWithNotify, EventNotificationName, send_to_outbound_pipes, \
-    SequencerGate, SequencerGateNotification, SequencerGateName
+from .event_manager import (
+    SubscribedEvent, EventWithNotify, SequencerGate, send_to_outbound_pipes,
+)
+from .payloads import (
+    EventPayload, EventNotificationName, SequencerGateName,
+    SequencerGateNotification,
+)

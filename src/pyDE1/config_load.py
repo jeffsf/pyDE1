@@ -17,8 +17,7 @@ so that config success/errors get logged somewhere.
 
 import inspect
 import logging
-
-from typing import Optional, Type
+from typing import Optional
 
 import yaml
 

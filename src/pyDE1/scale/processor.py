@@ -7,33 +7,29 @@ SPDX-License-Identifier: GPL-3.0-only
 """
 
 import asyncio
-import enum
-import logging
 import time
-
-from typing import Optional, List, Tuple, Coroutine, Callable
+from typing import Optional, List, Callable
 from uuid import UUID
 
+import pyDE1
+from pyDE1.config import config
+from pyDE1.de1 import DE1
 from pyDE1.de1.c_api import API_MachineStates
 from pyDE1.de1.events import StateUpdate
-from pyDE1.event_manager.events import ConnectivityState
-from pyDE1.scanner import BleakScannerWrapped
-
 from pyDE1.dispatcher.resource import ConnectivityEnum
-from pyDE1.exceptions import DE1NoAddressError, DE1APIValueError
-from pyDE1.scale import Scale, ScaleError, scale_factory, \
-    recognized_scale_prefixes
 from pyDE1.event_manager import SubscribedEvent
-from pyDE1.scale.events import ScaleWeightUpdate, ScaleTareSeen, \
-    WeightAndFlowUpdate
-from pyDE1.scanner import DiscoveredDevices, find_first_matching
+from pyDE1.event_manager.events import ConnectivityState
+from pyDE1.exceptions import DE1NoAddressError, DE1APIValueError
+from pyDE1.scale import (
+    Scale, ScaleError, scale_factory, recognized_scale_prefixes
+)
+from pyDE1.scale.events import (
+    ScaleWeightUpdate, ScaleTareSeen, WeightAndFlowUpdate
+)
+from pyDE1.scanner import (
+    BleakScannerWrapped, DiscoveredDevices, find_first_matching
+)
 from pyDE1.singleton import Singleton
-
-from pyDE1.de1 import DE1
-
-from pyDE1.config import config
-
-import pyDE1
 
 logger = pyDE1.getLogger('Scale.Processor')
 

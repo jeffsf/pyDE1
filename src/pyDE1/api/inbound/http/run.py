@@ -13,21 +13,15 @@ SPDX-License-Identifier: GPL-3.0-only
 import multiprocessing
 import multiprocessing.connection as mpc
 
+import pyDE1.config
 # TODO: import * is only allowed at the  module level
-import asyncio
-import os
-import traceback
-
 from pyDE1.exceptions import *
+
 
 # Right now, this is all "sync" processing. As it is a benefit to only have
 # one request pending at a time, this shouldn't be a big problem.
 # Going to async for the "second half" of waiting for the response
 # might be a way to provide a timeout and prevent permanent blocking.
-
-from pyDE1.supervise import SupervisedTask, SupervisedExecutor
-
-import pyDE1.config
 
 
 def run_api_inbound(config: pyDE1.config.Config,
@@ -37,11 +31,8 @@ def run_api_inbound(config: pyDE1.config.Config,
     import asyncio
     import http.server
     import json
-    import logging
-    import multiprocessing
     import os
     import re
-    import signal
     import time
 
     from email.utils import formatdate  # RFC2822 dates
@@ -49,36 +40,27 @@ def run_api_inbound(config: pyDE1.config.Config,
     from traceback import TracebackException
     from typing import Optional, Union, NamedTuple, Dict, Pattern
 
-    import pyDE1.shutdown_manager as sm
-    from pyDE1.utils import timestamp_to_str_with_ms
-
     import pyDE1
-
-    logger = pyDE1.getLogger('Inbound')
-
     import pyDE1.pyde1_logging as pyde1_logging
-
-    pyde1_logging.setup_queue_logging(config.logging, log_queue)
-    pyde1_logging.config_logger_levels(config.logging)
+    import pyDE1.shutdown_manager as sm
 
     from pyDE1.dispatcher.mapping import MAPPING, mapping_requires
-
-    # cpn = multiprocessing.current_process().name
-    # for k in sys.modules.keys():
-    #     if (k.startswith('pyDE1')
-    #             or k.startswith('bleak')
-    #             or k.startswith('asyncio-mqtt')):
-    #         print(
-    #             f"{cpn}: {k}"
-    #         )
-
-    # This one is needed as it has specific fields that need to be unpickled
-    from pyDE1.exceptions import DE1APIUnsupportedStateTransitionError, \
-        DE1APIUnsupportedFeatureError
-
     from pyDE1.dispatcher.resource import Resource
     from pyDE1.dispatcher.payloads import APIRequest, APIResponse, HTTPMethod
     from pyDE1.dispatcher.validate import validate_patch_return_targets
+    # These are needed as they have specific fields that need to be unpickled
+    # TODO: Confirm if still needed with module-level import of *
+    from pyDE1.exceptions import (
+        DE1APIUnsupportedStateTransitionError, DE1APIUnsupportedFeatureError
+    )
+    from pyDE1.supervise import SupervisedTask, SupervisedExecutor
+    from pyDE1.utils import timestamp_to_str_with_ms
+
+
+    logger = pyDE1.getLogger('Inbound')
+
+    pyde1_logging.setup_queue_logging(config.logging, log_queue)
+    pyde1_logging.config_logger_levels(config.logging)
 
     loop = asyncio.get_event_loop()
     loop.set_debug(True)
@@ -178,11 +160,11 @@ def run_api_inbound(config: pyDE1.config.Config,
 
         logger = pyDE1.getLogger('HTTP')
 
-        def log_message(self, format, *args):
+        def log_message(self, fmt, *args):
             logger.info("%s - - [%s] %s" %
                         (self.address_string(),
                          self.log_date_time_string(),
-                         format % args))
+                         fmt % args))
 
         def send_error_response(self,
                                 code: Union[HTTPStatus, int], resp_str: str,

@@ -9,6 +9,8 @@ SPDX-License-Identifier: GPL-3.0-only
 import asyncio
 import enum
 
+from pyDE1.exceptions import DE1APIError
+
 
 class CUUID (enum.Enum):
     """
@@ -133,9 +135,6 @@ class CUUID (enum.Enum):
         Those that don't change without being written
         """
         return self.is_read_once or self is self.Calibration
-
-
-from pyDE1.exceptions import DE1APIError
 
 
 class UnsupportedBLEActionError(DE1APIError):

@@ -91,11 +91,10 @@ Note: Can't 'from import pyDE1.config import config'
 
 import copy
 import logging
-from logging.handlers import QueueHandler, MemoryHandler
-import os
 import multiprocessing
+import os
 import warnings
-
+from logging.handlers import QueueHandler, MemoryHandler
 from typing import Optional, Union
 
 import pyDE1

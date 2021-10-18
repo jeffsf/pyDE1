@@ -19,6 +19,10 @@ class DE1TypeError (DE1Error, TypeError):
     pass
 
 
+class DE1RuntimeError (DE1Error, RuntimeError):
+    pass
+
+
 class DE1AttributeError(DE1Error, AttributeError):
     pass
 

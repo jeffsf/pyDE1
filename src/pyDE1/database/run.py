@@ -9,31 +9,27 @@ Main process for receiving update packets and logging to the database
 """
 
 # Only import the minimal here, as it potentially ends up in all processes.
+
 import multiprocessing
-import multiprocessing.connection as mpc
-
-# TODO: look into how loggers here relate to the root logger from "main"
-import threading
-from concurrent.futures import ThreadPoolExecutor
-
-from pyDE1.database.write_notifications import read_queue_to_queue, record_data
-from pyDE1.supervise import SupervisedExecutor
 
 import pyDE1.config
+
 
 def run_database_logger(config: pyDE1.config.Config,
                         log_queue: multiprocessing.Queue,
                         notification_queue: multiprocessing.Queue):
 
     import asyncio
-    import logging
-    import multiprocessing
+    import threading
+
+    import pyDE1.pyde1_logging as pyde1_logging
+    import pyDE1.shutdown_manager as sm
+
+    # Failing if only here (and not at the module level)
+    from pyDE1.database.write_notifications import record_data
 
     from pyDE1.supervise import SupervisedTask
 
-    import pyDE1.shutdown_manager as sm
-
-    import pyDE1.pyde1_logging as pyde1_logging
 
     logger = pyDE1.getLogger('DatabaseLogger')
 

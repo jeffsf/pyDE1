@@ -14,7 +14,6 @@ SPDX-License-Identifier: GPL-3.0-only
 
 
 import asyncio
-import logging
 import multiprocessing
 import time
 import traceback

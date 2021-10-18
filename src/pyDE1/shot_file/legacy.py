@@ -9,13 +9,10 @@ SPDX-License-Identifier: GPL-3.0-only
 import asyncio
 import email.utils
 import json
-import logging
 import sqlite3
 import time
-
 # For the output of local_time
 from datetime import datetime
-
 from typing import NamedTuple, List, Union, Tuple
 
 import aiosqlite

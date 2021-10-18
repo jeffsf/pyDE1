@@ -11,10 +11,8 @@ See `manual_setup()` for some still-needed setup on process start
 import multiprocessing
 import multiprocessing.connection as mpc
 
-from pyDE1.flow_sequencer import FlowSequencer
-from pyDE1.scale.processor import ScaleProcessor
-
 import pyDE1.config
+
 
 def run_controller(config: pyDE1.config.Config,
                    log_queue: multiprocessing.Queue,
@@ -25,18 +23,18 @@ def run_controller(config: pyDE1.config.Config,
     import asyncio
     import time
 
-    from pyDE1.de1.c_api import API_MachineStates
+    import pyDE1.pyde1_logging as pyde1_logging
+    import pyDE1.shutdown_manager as sm
 
     from pyDE1.de1 import DE1
-
-    from pyDE1.dispatcher.dispatcher import register_read_pipe_to_queue, \
+    from pyDE1.de1.c_api import API_MachineStates
+    from pyDE1.dispatcher.dispatcher import (
+        register_read_pipe_to_queue,
         start_request_queue_processor, start_response_queue_processor
-
+    )
     from pyDE1.event_manager import SubscribedEvent
-
-    import pyDE1.pyde1_logging as pyde1_logging
-
-    import pyDE1.shutdown_manager as sm
+    from pyDE1.flow_sequencer import FlowSequencer
+    from pyDE1.scale.processor import ScaleProcessor
 
     pyde1_logging.setup_queue_logging(config.logging, log_queue)
     pyde1_logging.config_logger_levels(config.logging)
@@ -94,7 +92,7 @@ def run_controller(config: pyDE1.config.Config,
         queue_to_put=request_queue,
     )
 
-    # In dispatcher, "does the work"
+    # In dispatcher, this process "does the work"
     start_request_queue_processor(request_queue=request_queue,
                                   response_queue=response_queue)
 
@@ -108,6 +106,7 @@ def run_controller(config: pyDE1.config.Config,
     SubscribedEvent.outbound_pipe = outbound_pipe
     SubscribedEvent.database_queue = database_queue
 
+    # TODO: This may no longer be correct, make a classmethod to set/get?
     FlowSequencer.database_queue = database_queue
 
     loop.run_forever()

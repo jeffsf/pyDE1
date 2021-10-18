@@ -80,10 +80,10 @@ import logging
 from typing import Optional
 
 import pyDE1
-
 from pyDE1.config_load import ConfigYAML, ConfigLoadable
-from pyDE1.pyde1_logging import ConfigLogging, ConfigLoggingFormatters, \
-    ConfigLoggingHandlers
+from pyDE1.pyde1_logging import (
+    ConfigLogging, ConfigLoggingFormatters, ConfigLoggingHandlers
+)
 
 DEFAULT_CONFIG_FILE = '/usr/local/etc/pyde1/pyde1.conf'
 

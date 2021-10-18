@@ -17,37 +17,34 @@ logging every update_period seconds (and resetting the count)
 import multiprocessing
 import multiprocessing.connection as mpc
 
-# TODO: look into how loggers here relate to the root logger from "main"
-
-# TODO: Look into or resolve processes' loggers writing over each other
-
-from socket import gethostname
-
-import os
-
 import pyDE1.config
+
+
+# TODO: look into how loggers here relate to the root logger from "main"
+# TODO: Look into or resolve processes' loggers writing over each other
 
 
 def run_api_outbound(config: pyDE1.config.Config,
                      log_queue: multiprocessing.Queue,
                      outbound_pipe: mpc.Connection):
 
-    import logging
-    import multiprocessing
-    import time
     import asyncio
     import json
-    import signal
+    import logging
+    import os
+    import time
 
     from collections import Callable
+    from socket import gethostname
 
     import paho.mqtt.client as mqtt
     from paho.mqtt.client import MQTTv5, MQTT_CLEAN_START_FIRST_ONLY
 
-    from pyDE1.supervise import SupervisedTask
+    import pyDE1.pyde1_logging as pyde1_logging
     import pyDE1.shutdown_manager as sm
 
-    import pyDE1.pyde1_logging as pyde1_logging
+    from pyDE1.supervise import SupervisedTask
+
 
     logger = pyDE1.getLogger('Outbound')
 
@@ -64,8 +61,6 @@ def run_api_outbound(config: pyDE1.config.Config,
 
     loop = asyncio.get_event_loop()
     loop.set_debug(True)
-
-    # signal.signal(signal.SIGHUP, signal.SIG_IGN)
 
     # TODO: THIS NEEDS TO BE TRIGGERED FROM MAIN PROCESS
 

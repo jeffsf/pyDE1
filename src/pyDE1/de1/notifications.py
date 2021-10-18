@@ -7,15 +7,12 @@ SPDX-License-Identifier: GPL-3.0-only
 """
 
 import asyncio
-import logging
 import time
-
 from copy import deepcopy
 from typing import Union, Optional
 
 import pyDE1
 from pyDE1.de1.ble import CUUID
-
 from pyDE1.de1.c_api import PackedAttr, MMR0x80LowAddr, decode_one_mmr
 
 

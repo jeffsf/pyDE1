@@ -17,6 +17,13 @@ For PUT (if implemented)
 
 from typing import Union, get_args  # get_origin, get_type_hints
 
+from pyDE1.dispatcher.mapping import MAPPING, IsAt
+from pyDE1.dispatcher.resource import Resource
+from pyDE1.exceptions import (
+    DE1APIAttributeError, DE1APITypeError, DE1APIValueError
+)
+
+
 # t = Union[int, float]
 # isinstance(2, t)
 #   TypeError: Subscripted generics cannot be used with class and instance checks
@@ -26,11 +33,6 @@ from typing import Union, get_args  # get_origin, get_type_hints
 #   typing.Union
 # isinstance(2, get_args(t))
 #   True
-
-from pyDE1.exceptions import DE1APIAttributeError, DE1APITypeError, \
-    DE1APIValueError
-from pyDE1.dispatcher.resource import Resource
-from pyDE1.dispatcher.mapping import MAPPING, IsAt
 
 
 def validate_patch_return_targets(resource: Resource,

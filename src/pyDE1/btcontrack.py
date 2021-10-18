@@ -25,9 +25,9 @@ can run by a member of the bluetooth group to disconnect the device.
 """
 
 import os
-from pathlib import Path
 import re
 import sys
+from pathlib import Path
 
 from pyDE1.config import config
 

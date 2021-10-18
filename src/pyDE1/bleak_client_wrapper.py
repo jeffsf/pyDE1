@@ -15,16 +15,13 @@ with unique calls for each should be sufficient, rather than managing a list.
 
 import asyncio
 import atexit
-import logging
-
-from typing import Union, Callable
+from typing import Union
 
 from bleak import BleakClient
 from bleak.backends.device import BLEDevice
 
-from pyDE1.btcontrack import persist_connection_file, remove_connection_file
-
 import pyDE1
+from pyDE1.btcontrack import persist_connection_file, remove_connection_file
 
 logger = pyDE1.getLogger('Bluetooth.BleakClientWrapper')
 

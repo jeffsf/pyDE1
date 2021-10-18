@@ -16,47 +16,49 @@ SPDX-License-Identifier: GPL-3.0-only
 #   Task: log_queue_reader_blocks
 #   Processes: Controller, OutboundAPI, InboundAPI
 
-import asyncio
-import atexit
-import logging
-import logging.config
-import logging.handlers
-import multiprocessing
-import os
-import signal
-import threading
-import time
-import traceback
-import yaml
-
-from types import FrameType
-
 import pyDE1
+import pyDE1.config
 import pyDE1.pyde1_logging as pyde1_logging
 
-from pyDE1.api.outbound.mqtt import run_api_outbound
-from pyDE1.api.inbound.http import run_api_inbound
-from pyDE1.database.run import run_database_logger
-from pyDE1.controller import run_controller
-
-import pyDE1.shutdown_manager as sm
-
-from pyDE1.supervise import SupervisedExecutor, SupervisedProcess
-
 from pyDE1.config import config
-from pyDE1.database.manage import check_schema
 
 
 def run():
-
     # NB: Can only be set once, make sure the top-level script uses
     # if __name__ == '__main__':
     #   Not enough if importing something that imports multiprocessing
     #   to avoid RuntimeError: context has already been set
     # TODO: Replace this rather ugly hack
+
+    import multiprocessing
     multiprocessing.set_start_method('spawn', force=True)
 
+    import asyncio
+    import atexit
+    import logging
+    import os
+    import signal
+    import time
+
+    from types import FrameType
+
+    import pyDE1.shutdown_manager as sm
+
+    from pyDE1.database.manage import check_schema
+    from pyDE1.supervise import SupervisedProcess
+
     logger = pyDE1.getLogger('Run')
+
+    logger.info("<== run_api_outbound")
+    from pyDE1.api.outbound.mqtt import run_api_outbound
+    logger.info("<== run_api_inbound")
+    from pyDE1.api.inbound.http import run_api_inbound
+    logger.info("<== run_database_logger")
+    from pyDE1.database.run import run_database_logger
+    logger.info("<== run_controller")
+    from pyDE1.controller import run_controller
+
+    # logger = pyDE1.getLogger('Run')
 
     log_queue = multiprocessing.Queue()
     pyde1_logging.setup_queue_and_listener(config.logging, log_queue)
