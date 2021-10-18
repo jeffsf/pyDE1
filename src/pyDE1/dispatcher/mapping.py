@@ -9,68 +9,32 @@ Provide a mapping from internal objects and properties, sufficient for both
 creation of outgoing dict, as well as validation of incoming requests
 (Resource, key, target object, property name, value type, min, max, post_execute)
 
-Provide "mock" classes for use in inbound API process
-
-NB: Must be imported AFTER any imports of DE1, Scale, FlowSequencer, ...
+As of MAPPING_VERSION 4.0.0 direct use of the class or a stub has been replaed
+by use of an enum. Consumers will need to map the enum to the class.
+This is due to challenges in determining if the class or the stub is needed.
 """
+
 import importlib.util
 import inspect
-import logging
-import multiprocessing
 import sys
+
+from enum import Enum, auto
 from typing import Optional, Union, NamedTuple
 
 import pyDE1
-from pyDE1.dispatcher.resource import Resource, RESOURCE_VERSION, \
-    DE1ModeEnum, ConnectivityEnum
+from pyDE1.de1.c_api import (
+    PackedAttr, MMR0x80LowAddr,
+    SetTime, ShotSettings, Versions, WaterLevels,
+)
+from pyDE1.dispatcher.resource import (
+    Resource, RESOURCE_VERSION, DE1ModeEnum, ConnectivityEnum
+)
+
+MAPPING_VERSION = "4.0.0"
 
 # TODO: Work through main and remote thread imports
 
 logger = pyDE1.getLogger('Inbound.Mapping')
-
-pname = f"into {multiprocessing.current_process().name} process"
-
-if 'pyDE1.de1' in sys.modules:
-    logger.info("Importing DE1")
-    from pyDE1.de1 import DE1
-else:
-    logger.info("Using stub for DE1")
-    from pyDE1.dispatcher.stubs import DE1
-
-if 'pyDE1.scale' in sys.modules:
-    logger.info("Importing Scale")
-    from pyDE1.scale import Scale
-else:
-    logger.info("Using stub for Scale")
-    from pyDE1.dispatcher.stubs import Scale
-
-if 'pyDE1.scale.processor' in sys.modules:
-    logger.info("Importing ScaleProcessor")
-    from pyDE1.scale.processor import ScaleProcessor
-else:
-    logger.info("Using stub for ScaleProcessor")
-    from pyDE1.dispatcher.stubs import ScaleProcessor
-
-if 'pyDE1.flow_sequencer' in sys.modules:
-    logger.info("Importing FlowSequencer")
-    from pyDE1.flow_sequencer import FlowSequencer
-else:
-    logger.info("Using stub for FlowSequencer")
-    from pyDE1.dispatcher.stubs import FlowSequencer
-
-if 'pyDE1.scanner' in sys.modules:
-    logger.info("Importing DiscoveredDevices")
-    from pyDE1.scanner import DiscoveredDevices
-else:
-    logger.info("Using stub for DiscoveredDevices")
-    from pyDE1.dispatcher.stubs import DiscoveredDevices
-
-from pyDE1.de1.c_api import PackedAttr, MMR0x80LowAddr, get_cuuid, \
-    ShotSettings, SetTime, Versions, WaterLevels
-
-from pyDE1.exceptions import DE1APIValueError
-
-MAPPING_VERSION = "3.4.0"
 
 # There are a handful of requests related to the DE1 and Scale
 # that can be or must be handled even if the device is not ready.
@@ -82,12 +46,20 @@ MAPPING_VERSION = "3.4.0"
 #   * Add the "if_not_ready" element to IsAt and check in requires_*
 
 
+class TO (Enum):
+    DE1 = auto()
+    DiscoveredDevices = auto()
+    FlowSequencer = auto()
+    Scale = auto()
+    ScaleProcessor = auto()
+    
+
 class IsAt(NamedTuple):
-    target: Union[type(DE1),
-                  type(Scale),
-                  type(FlowSequencer),
+    # TODO: This list appears to miss None for Resource.SCAN (scanner.py)
+    #       Maybe reference by the module?
+    target: Union[type(TO),
                   type(PackedAttr),
-                  type(MMR0x80LowAddr)]
+                  type(MMR0x80LowAddr),]
     attr_path: Optional[str]  # '' for MMR0x80LowAddr, None for write_only,
     v_type: type  # expected value type for type-checking
     setter_path: Optional[str] = None   # If not a property and a different path
@@ -103,7 +75,7 @@ class IsAt(NamedTuple):
     @property
     def requires_connected_de1(self) -> bool:
         retval = (
-            (self.target is DE1 and not self.if_not_ready)
+            (self.target == TO.DE1 and not self.if_not_ready)
             or isinstance(self.target, MMR0x80LowAddr)
             or (inspect.isclass(self.target)
                 and issubclass(self.target, PackedAttr))
@@ -113,7 +85,7 @@ class IsAt(NamedTuple):
     @property
     def requires_connected_scale(self) -> bool:
         retval = (
-            (self.target is Scale and not self.if_not_ready)
+            (self.target == TO.Scale and not self.if_not_ready)
         )
         return retval
 
@@ -217,15 +189,15 @@ MAPPING[Resource.VERSION] = {
 
 # "Specials" -- content-only
 
-MAPPING[Resource.DE1_PROFILE] = IsAt(target=DE1, attr_path=None,
+MAPPING[Resource.DE1_PROFILE] = IsAt(target=TO.DE1, attr_path=None,
                                      setter_path='upload_json_v2_profile',
                                      v_type=Union[bytes, bytearray])
 
-MAPPING[Resource.DE1_FIRMWARE] = IsAt(target=DE1, attr_path=None,
+MAPPING[Resource.DE1_FIRMWARE] = IsAt(target=TO.DE1, attr_path=None,
                                       setter_path='upload_firmware_from_content',
                                       v_type=Union[bytes, bytearray])
 
-MAPPING[Resource.DE1_FIRMWARE_CANCEL] = IsAt(target=DE1, attr_path=None,
+MAPPING[Resource.DE1_FIRMWARE_CANCEL] = IsAt(target=TO.DE1, attr_path=None,
                                              setter_path='cancel_firmware_api',
                                              v_type=Union[bytes, bytearray])
 
@@ -239,7 +211,7 @@ MAPPING[Resource.SCAN] = {
 
 # TODO: This is an async getter because of the lock
 MAPPING[Resource.SCAN_DEVICES] = {
-    'devices': IsAt(target=DiscoveredDevices, attr_path='devices_for_json',
+    'devices': IsAt(target=TO.DiscoveredDevices, attr_path='devices_for_json',
                     read_only=True,
                     v_type=dict)
 }
@@ -248,15 +220,15 @@ MAPPING[Resource.SCAN_DEVICES] = {
 
 # For now, name is not writable
 MAPPING[Resource.DE1_ID] = {
-    'name': IsAt(target=DE1, attr_path='name', v_type=Optional[str],
+    'name': IsAt(target=TO.DE1, attr_path='name', v_type=Optional[str],
                  read_only=True,
                  if_not_ready=True),
-    'id': IsAt(target=DE1, attr_path='address', v_type=Optional[str],
+    'id': IsAt(target=TO.DE1, attr_path='address', v_type=Optional[str],
                setter_path='change_de1_to_id',
                if_not_ready=True),
     # first_if_found, if true, will replace only if one is found
     # It is an error to be true if 'id' is present at this time
-    'first_if_found': IsAt(target=DE1, attr_path=None,
+    'first_if_found': IsAt(target=TO.DE1, attr_path=None,
                            setter_path='first_if_found', v_type=bool,
                            if_not_ready=True),
 }
@@ -264,18 +236,18 @@ MAPPING[Resource.DE1_ID] = {
 # NB: A single-entry tuple needs to end with a comma
 
 MAPPING[Resource.DE1_MODE] = {
-    'mode': IsAt(target=DE1, attr_path=None, setter_path='mode_setter',
+    'mode': IsAt(target=TO.DE1, attr_path=None, setter_path='mode_setter',
                  v_type=str, internal_type=DE1ModeEnum),
 }
 
 MAPPING[Resource.DE1_STATE] = {
-    'state': IsAt(target=DE1, attr_path='state_getter',
+    'state': IsAt(target=TO.DE1, attr_path='state_getter',
                   read_only=True,
                   v_type=str, internal_type=str),
 }
 
 MAPPING[Resource.DE1_FEATURE_FLAGS] = {
-    'feature_flags': IsAt(target=DE1, attr_path='feature_flags',
+    'feature_flags': IsAt(target=TO.DE1, attr_path='feature_flags',
                           v_type=str, read_only=True),
 }
 
@@ -283,7 +255,7 @@ MAPPING[Resource.DE1_FEATURE_FLAGS] = {
 # DE1_PROFILES = 'de1/profiles'
 
 MAPPING[Resource.DE1_PROFILE_ID] = {
-    'id': IsAt(target=DE1, attr_path='profile_id', v_type=str,
+    'id': IsAt(target=TO.DE1, attr_path='profile_id', v_type=str,
                setter_path='set_profile_by_id')
 }
 
@@ -296,7 +268,7 @@ MAPPING[Resource.DE1_FIRMWARE_ID] = {
 }
 
 MAPPING[Resource.DE1_CONNECTIVITY] = {
-    'mode': IsAt(target=DE1, attr_path='connectivity',
+    'mode': IsAt(target=TO.DE1, attr_path='connectivity',
                  setter_path='connectivity_setter', v_type=str,
                  internal_type=ConnectivityEnum,
                  if_not_ready=True),
@@ -309,46 +281,46 @@ MAPPING[Resource.DE1_CONNECTIVITY] = {
 # TODO: Allow stop_at_xxxx for everything, None means don't apply
 
 MAPPING[Resource.DE1_CONTROL_ESPRESSO] = {
-    'stop_at_time': IsAt(target=FlowSequencer,
+    'stop_at_time': IsAt(target=TO.FlowSequencer,
                          attr_path='espresso_control.stop_at_time',
                          v_type=Optional[float]),
-    'stop_at_volume': IsAt(target=FlowSequencer,
+    'stop_at_volume': IsAt(target=TO.FlowSequencer,
                            attr_path='espresso_control.stop_at_volume',
                            v_type=Optional[float]),
-    'stop_at_weight': IsAt(target=FlowSequencer,
+    'stop_at_weight': IsAt(target=TO.FlowSequencer,
                            attr_path='espresso_control.stop_at_weight',
                            v_type=Optional[float]),
-    'disable_auto_tare': IsAt(target=FlowSequencer,
+    'disable_auto_tare': IsAt(target=TO.FlowSequencer,
                               attr_path='espresso_control.disable_auto_tare',
                               v_type=bool),
 
     'profile_can_override_stop_limits':
-        IsAt(target=FlowSequencer,
+        IsAt(target=TO.FlowSequencer,
              attr_path='espresso_control.profile_can_override_stop_limits',
              v_type=bool),
     'profile_can_override_tank_temperature':
-        IsAt(target=FlowSequencer,
+        IsAt(target=TO.FlowSequencer,
              attr_path='espresso_control.profile_can_override_tank_temperature',
              v_type=bool),
     'first_drops_threshold':
-        IsAt(target=FlowSequencer,
+        IsAt(target=TO.FlowSequencer,
              attr_path='espresso_control.first_drops_threshold',
              v_type=Optional[float]),
     'last_drops_minimum_time':
-        IsAt(target=FlowSequencer,
+        IsAt(target=TO.FlowSequencer,
              attr_path='espresso_control.last_drops_minimum_time',
              v_type=float),
 }
 
 MAPPING[Resource.DE1_CONTROL_STEAM] = {
     'stop_at_time': IsAt(target=ShotSettings, attr_path='TargetSteamLength', v_type=int),
-    'stop_at_volume': IsAt(target=FlowSequencer,
+    'stop_at_volume': IsAt(target=TO.FlowSequencer,
                            attr_path='steam_control.stop_at_volume',
                            v_type=Optional[float]),
-    'stop_at_weight': IsAt(target=FlowSequencer,
+    'stop_at_weight': IsAt(target=TO.FlowSequencer,
                            attr_path='steam_control.stop_at_weight',
                            v_type=Optional[float]),
-    'disable_auto_tare': IsAt(target=FlowSequencer,
+    'disable_auto_tare': IsAt(target=TO.FlowSequencer,
                               attr_path='steam_control.disable_auto_tare',
                               v_type=bool),
 }
@@ -360,10 +332,10 @@ MAPPING[Resource.DE1_CONTROL_HOT_WATER] = {
     'stop_at_volume': IsAt(target=ShotSettings,
                            attr_path='TargetHotWaterVol',
                            v_type=int),
-    'stop_at_weight': IsAt(target=FlowSequencer,
+    'stop_at_weight': IsAt(target=TO.FlowSequencer,
                            attr_path='hot_water_control.stop_at_weight',
                            v_type=Optional[float]),
-    'disable_auto_tare': IsAt(target=FlowSequencer,
+    'disable_auto_tare': IsAt(target=TO.FlowSequencer,
                               attr_path='hot_water_control.disable_auto_tare',
                               v_type=bool),
     'temperature': IsAt(target=ShotSettings,
@@ -372,20 +344,20 @@ MAPPING[Resource.DE1_CONTROL_HOT_WATER] = {
 
 MAPPING[Resource.DE1_CONTROL_HOT_WATER_RINSE] = {
     'stop_at_time':
-        IsAt(target=FlowSequencer,
+        IsAt(target=TO.FlowSequencer,
              attr_path='hot_water_rinse_control.stop_at_time',
              setter_path='hot_water_rinse_control.stop_at_time_set_async',
              v_type=Optional[float]),
     'stop_at_volume':
-        IsAt(target=FlowSequencer,
+        IsAt(target=TO.FlowSequencer,
              attr_path='hot_water_rinse_control.stop_at_volume',
              v_type=Optional[float]),
     'stop_at_weight':
-        IsAt(target=FlowSequencer,
+        IsAt(target=TO.FlowSequencer,
              attr_path='hot_water_rinse_control.stop_at_weight',
              v_type=Optional[float]),
     'disable_auto_tare':
-        IsAt(target=FlowSequencer,
+        IsAt(target=TO.FlowSequencer,
              attr_path='hot_water_rinse_control.disable_auto_tare', v_type=bool),
     'temperature':
         IsAt(target=MMR0x80LowAddr.FLUSH_TEMP, attr_path='', v_type=float),
@@ -400,7 +372,7 @@ MAPPING[Resource.DE1_CONTROL_TANK_WATER_THRESHOLD] = {
 # DE1_SETTING = 'de1/setting' -- aggregate
 
 MAPPING[Resource.DE1_SETTING_AUTO_OFF_TIME] = {
-    'time': IsAt(target=DE1, attr_path='auto_off_time',
+    'time': IsAt(target=TO.DE1, attr_path='auto_off_time',
                  v_type=Optional[float]),
 }
 
@@ -481,43 +453,43 @@ MAPPING[Resource.DE1_CALIBRATION_FLOW_MULTIPLIER] = {
 }
 
 MAPPING[Resource.DE1_CALIBRATION_LINE_FREQUENCY] = {
-    'hz': IsAt(target=DE1, attr_path='line_frequency', v_type=int)
+    'hz': IsAt(target=TO.DE1, attr_path='line_frequency', v_type=int)
 }
 
 MAPPING[Resource.SCALE_ID] = {
-    'name': IsAt(target=ScaleProcessor, attr_path='scale_name',
+    'name': IsAt(target=TO.ScaleProcessor, attr_path='scale_name',
                  v_type=Optional[str],
                  read_only=True,
                  if_not_ready=True),
-    'id': IsAt(target=ScaleProcessor, attr_path='scale_address',
+    'id': IsAt(target=TO.ScaleProcessor, attr_path='scale_address',
                v_type=Optional[str],
                setter_path='change_scale_to_id',
                if_not_ready=True),
-    'type': IsAt(target=ScaleProcessor, attr_path='scale_type',
+    'type': IsAt(target=TO.ScaleProcessor, attr_path='scale_type',
                  v_type=Optional[str],
                  read_only=True,
                  if_not_ready=True),
     # first_if_found, if true, will replace only if one is found
     # It is an error to be true if 'id' is present at this time
-    'first_if_found': IsAt(target=ScaleProcessor, attr_path=None,
+    'first_if_found': IsAt(target=TO.ScaleProcessor, attr_path=None,
                            setter_path='first_if_found', v_type=bool,
                            if_not_ready=True),
 }
 
 MAPPING[Resource.SCALE_CONNECTIVITY] = {
-    'mode': IsAt(target=ScaleProcessor, attr_path='scale_connectivity',
+    'mode': IsAt(target=TO.ScaleProcessor, attr_path='scale_connectivity',
                  setter_path="connectivity_setter", v_type=str,
                  internal_type=ConnectivityEnum,
                  if_not_ready=True),
 }
 
 MAPPING[Resource.SCALE_TARE] = {
-    'tare': IsAt(target=Scale, attr_path='', setter_path='tare_with_bool',
+    'tare': IsAt(target=TO.Scale, attr_path='', setter_path='tare_with_bool',
                  v_type=Optional[bool])  # Accommodate None as False
 }
 
 MAPPING[Resource.SCALE_DISPLAY] = {
-    'display_on': IsAt(target=Scale, attr_path='', setter_path='display_bool',
+    'display_on': IsAt(target=TO.Scale, attr_path='', setter_path='display_bool',
                        v_type=Optional[bool])  # Accommodate None as False
 }
 

@@ -12,10 +12,11 @@ SPDX-License-Identifier: GPL-3.0-only
 # TODO: Wipe cached state on disconnect
 import asyncio
 import copy
+import enum
 import inspect
-import logging
 import math  # for nan to be uniquely math.nan
 import time
+import token
 
 from functools import reduce
 from typing import Union, Dict, Set, Optional
@@ -26,7 +27,7 @@ from pyDE1.utils import prep_for_json
 from pyDE1.utils_public import rgetattr, rsetattr
 
 from pyDE1.dispatcher.resource import Resource
-from pyDE1.dispatcher.mapping import MAPPING
+from pyDE1.dispatcher.mapping import MAPPING, TO, IsAt
 
 from pyDE1.de1 import DE1
 from pyDE1.scale import Scale
@@ -35,11 +36,13 @@ from pyDE1.flow_sequencer import FlowSequencer
 from pyDE1.scanner import DiscoveredDevices, scan_from_api
 
 from pyDE1.de1.c_api import PackedAttr, MMR0x80LowAddr, pack_one_mmr0x80_write
-from pyDE1.exceptions import DE1APITypeError, DE1APIValueError, \
-    DE1APIAttributeError, DE1APIKeyError, DE1NotConnectedError
-from pyDE1.dispatcher.mapping import IsAt
+from pyDE1.exceptions import (
+    DE1APITypeError, DE1APIValueError, DE1APIAttributeError, DE1APIKeyError,
+    DE1NotConnectedError
+)
 
 from pyDE1.config import config
+
 
 logger = pyDE1.getLogger('Inbound.Implementation')
 
@@ -144,19 +147,19 @@ async def _get_isat_value(isat: IsAt):
     # If possibly a callable, need to
     #     await _prop_value_getter(rgetattr(target, attr_path))
 
-    if target is DE1:
+    if target == TO.DE1:
         retval = rgetattr(de1, attr_path)
 
-    elif target is FlowSequencer:
+    elif target == TO.FlowSequencer:
         retval = rgetattr(flow_sequencer, attr_path)
 
-    elif target is Scale:
+    elif target == TO.Scale:
         retval = rgetattr(scale, attr_path)
 
-    elif target is ScaleProcessor:
+    elif target == TO.ScaleProcessor:
         retval = rgetattr(scale_processor, attr_path)
 
-    elif target is DiscoveredDevices:
+    elif target == TO.DiscoveredDevices:
         # Need to wrap as devices_for_json is async
         retval = await _prop_value_getter(rgetattr(dd, attr_path))
 
@@ -510,14 +513,14 @@ async def _patch_dict_to_mapping_inner(partial_value_dict: dict,
                     f"Mapping for '{key}': {mapping_isat} is not writable"
                 )
 
-            if target in (DE1, FlowSequencer, Scale, ScaleProcessor):
-                if target is DE1:
+            if isinstance(target, TO) and target != TO.DiscoveredDevices:
+                if target == TO.DE1:
                     this_target = de1
-                elif target is FlowSequencer:
+                elif target == TO.FlowSequencer:
                     this_target = flow_sequencer
-                elif target is Scale:
+                elif target == TO.Scale:
                     this_target = scale
-                elif target is ScaleProcessor:
+                elif target == TO.ScaleProcessor:
                     this_target = scale_processor
                 else:
                     raise DE1APITypeError(
