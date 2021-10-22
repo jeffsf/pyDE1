@@ -21,7 +21,6 @@ logger = pyDE1.getLogger('Scale.Estimator')
 # Quick check shows delay dropped to ~2.5 ms, so leaving False for now
 # Resulting std. dev. is probably around 100 ms / sqrt(2)\
 
-# TODO: Come back and revisit this decision
 _USE_MEAN_FOR_TIME = True
 
 # This drops the delay to ~2.5 ms as well

@@ -194,7 +194,9 @@ class StateUpdateRow (NamedTuple):
     substate:           str
     previous_state:     str
     previous_substate:  str
-    is_error_state:     str     # TODO: Fix this in schema and access
+    is_error_state:     str     # TODO: Change to bool in schema and access
+                                #       2021-10 -- Would require update trigger
+                                #       Consider at next schema change
 
     @property
     def class_str(self):

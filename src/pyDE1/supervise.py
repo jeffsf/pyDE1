@@ -291,8 +291,6 @@ class SupervisedProcess:
             asyncio.get_event_loop().add_reader(self._process.sentinel,
                                                 self.sentinel_cb)
 
-    # TODO: After how many failures in how long should I give up?
-
     def sentinel_cb(self):
         asyncio.get_event_loop().remove_reader(self._process.sentinel)
         if self.do_not_restart:

@@ -69,7 +69,7 @@ class ShotSampleUpdate (EventPayload):
                  steam_temp: float,
                  ):
         super(ShotSampleUpdate, self).__init__(arrival_time=arrival_time)
-        # TODO: This will need to be managed carefully as impacts subclass
+        # NB: (Future) TODO: Manage version carefully as impacts subclass
         self._version = "1.2.0"  # Major version incremented on breaking change
         self.sample_time = sample_time
         self.group_pressure = group_pressure
@@ -126,7 +126,7 @@ class ShotSampleWithVolumesUpdate (ShotSampleUpdate):
             frame_number=shot_sample_update.frame_number,
             steam_temp=shot_sample_update.steam_temp,
         )
-        # TODO: This will need to be managed carefully as depends on super
+        # NB: Future TODO: manage carefully as depends on super
         self._version = "1.2.0"  # Major version incremented on breaking change
 
         self.de1_time = self.arrival_time

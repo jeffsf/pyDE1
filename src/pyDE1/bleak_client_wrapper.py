@@ -106,10 +106,5 @@ class BleakClientWrapped (BleakClient):
     # TODO: How to handle unexpected disconnects?
     #       Handling auto-wrapping the on-disconnect handler seems excessive.
 
-    # This is not the source of doubled disconnects
-    # def __del__(self):
-    #     if self.is_connected:
-    #         logger.debug("__del__")
-    #         self.sync_disconnect()
 
 

@@ -106,7 +106,7 @@ def run_controller(config: pyDE1.config.Config,
     SubscribedEvent.outbound_pipe = outbound_pipe
     SubscribedEvent.database_queue = database_queue
 
-    # TODO: This may no longer be correct, make a classmethod to set/get?
+    # TODO: This may no longer be robust, make a classmethod to set/get?
     FlowSequencer.database_queue = database_queue
 
     loop.run_forever()

@@ -58,8 +58,6 @@ class ConfigLoadable:
                 continue
 
             try:
-                # TODO: Why is there no getattr() or setattr() ??
-                # apply_val_to = target.getattr(key)
                 apply_val_to = target.__getattribute__(key)
             except AttributeError:
                 self._logger.error(

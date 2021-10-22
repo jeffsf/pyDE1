@@ -20,10 +20,6 @@ import multiprocessing.connection as mpc
 import pyDE1.config
 
 
-# TODO: look into how loggers here relate to the root logger from "main"
-# TODO: Look into or resolve processes' loggers writing over each other
-
-
 def run_api_outbound(config: pyDE1.config.Config,
                      log_queue: multiprocessing.Queue,
                      outbound_pipe: mpc.Connection):
@@ -61,8 +57,6 @@ def run_api_outbound(config: pyDE1.config.Config,
 
     loop = asyncio.get_event_loop()
     loop.set_debug(True)
-
-    # TODO: THIS NEEDS TO BE TRIGGERED FROM MAIN PROCESS
 
     def on_shutdown_underway_cleanup():
         logger.info("Watching for shutdown event")

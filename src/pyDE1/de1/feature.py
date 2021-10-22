@@ -16,10 +16,6 @@ class Feature:
     def __init__(self):
         self._de1 = DE1()
 
-    # TODO: Manage cache of firmware version and GHC presence
-    #       * Load when received
-    #       * Clear on disconnect
-
     # TODO: What should "unknown" return?
 
     @property

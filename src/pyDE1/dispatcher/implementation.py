@@ -9,7 +9,6 @@ SPDX-License-Identifier: GPL-3.0-only
 # TODO: Can't read a device if is is not connected
 #       need a "resource temporarily unavailable" exception
 
-# TODO: Wipe cached state on disconnect
 import asyncio
 import copy
 import inspect
@@ -129,7 +128,7 @@ async def _get_isat_value(isat: IsAt):
     flow_sequencer = FlowSequencer()
     scale_processor = ScaleProcessor()
     scale = scale_processor.scale
-    # TODO: Does calling DiscoveredDevices() freeze if no DE1?
+    # TODO: Why does calling DiscoveredDevices() freeze if no DE1?
     dd = DiscoveredDevices()
 
     retval = None
@@ -183,6 +182,7 @@ async def _get_isat_value(isat: IsAt):
                 retval = None
             if retval is None:
                 t0 = time.time()
+                # TODO: Can this be simplified/clarified?
                 ready = await de1.read_one_mmr0x80(target)
                 await ready.wait()
                 retval = de1._mmr_dict[target].data_decoded
@@ -260,7 +260,7 @@ async def _get_mapping_to_dict(partial_dict: dict) -> dict:
 
     return retval
 
-# TODO: set and get versions
+# TODO: set and get versions (no recollection of what this means)
 
 def _get_target_sets_inner(partial_dict: dict,
                            dict_of_sets: Dict[
@@ -340,6 +340,7 @@ async def get_resource_to_dict(resource: Resource) -> dict:
 # For PUT it is required that each element in the mappig dictionary
 # have a corresponding entry in the request dictionary (completeness)
 #
+
 # TODO: How to handle read-only attributes in the PUT case is TBD
 
 async def patch_resource_from_dict(resource: Resource, values_dict: dict):
@@ -356,8 +357,8 @@ async def patch_resource_from_dict(resource: Resource, values_dict: dict):
 
     # target_sets = get_target_sets(values_dict, include_can_write=True)
 
-    # TODO: Fix this -- this needs a mapping, the way it is written now
-    #       It really should only return those that are being changed
+    # TODO: Optimize this -- this needs a mapping, the way it is written now
+    #       It really should only retrieve those that are being changed
     #       in the case of a PATCH
 
     target_sets = get_target_sets(mapping, include_can_write=True)

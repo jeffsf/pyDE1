@@ -48,13 +48,6 @@ from pyDE1.utils import cancel_tasks_by_name
 
 logger = pyDE1.getLogger('FlowSequencer.Impl')
 
-# These apply to Espresso only, at this time. Others return 0
-# Allow a grace period after flow begins during which scale continues to tare.
-# 1 or 2 bar OK for slower-flowing profiles. "Turbo" shots 0, or maybe 1 bar.
-
-
-# TODO: These didn't neatly become inner classes
-
 
 class FlowSequencerImpl (Singleton, FlowSequencer):
 
@@ -411,7 +404,7 @@ class FlowSequencerImpl (Singleton, FlowSequencer):
 ###
 
     # TODO: These should be sensitive to the kind of flow
-    #       just get them in for espresso for now
+    #       Just get them in for espresso for now
 
     async def _sequence_volume_tracking(self):
         de1 = self.de1
@@ -697,7 +690,7 @@ class FlowSequencerImpl (Singleton, FlowSequencer):
                     and (target := flow_sequencer.active_control.stop_at_weight)
                     is not None):
                 stop_lag = flow_sequencer.de1.stop_lead_time
-                # TODO: Should this be switchable?
+                # TODO: Should the choice of flow estimate be switchable?
                 flow = wafu.average_flow
                 dw = target - wafu.current_weight
                 if flow > 0:
@@ -739,10 +732,6 @@ class FlowSequencerImpl (Singleton, FlowSequencer):
             current_value=current,
             active_state=self.active_state
         ))
-
-    # Implement I_TargetSetter
-
-    # TODO: Handle profile lock. try/except AttributeError?
 
     def stop_at_time_set(self, state: API_MachineStates, duration: float):
         bmc = self.active_control_for_state(state)
@@ -983,6 +972,7 @@ class HotWaterRinseControl (StopAtTime, ByModeControl):
             send_val = value
             if send_val is None:
                 send_val = 0
+            # TODO: Can this be simplified/clarified?
             await de1.write_one_mmr0x80(MMR0x80LowAddr.FLUSH_TIMEOUT, send_val)
             ready_event = await de1.read_one_mmr0x80(MMR0x80LowAddr.FLUSH_TIMEOUT)
             await ready_event.wait()

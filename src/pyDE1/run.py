@@ -28,7 +28,7 @@ def run():
     # if __name__ == '__main__':
     #   Not enough if importing something that imports multiprocessing
     #   to avoid RuntimeError: context has already been set
-    # TODO: Replace this rather ugly hack
+    # TODO: Replace this rather ugly hack on set_start_method, if possible
 
     import multiprocessing
     multiprocessing.set_start_method('spawn', force=True)
@@ -172,8 +172,9 @@ def run():
     supervised_database_logger_process.start()
 
     # Core logic
+
     # TODO: Not clear how this should restart
-    #       As the DE1 will need to be reinitialized
+    #       as the DE1 will need to be reinitialized
     supervised_controller_process = SupervisedProcess(
         target=run_controller,
         kwargs={

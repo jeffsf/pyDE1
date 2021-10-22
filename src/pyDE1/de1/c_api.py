@@ -214,7 +214,7 @@ class FWVersion (PackedAttr):
             self._Release,  # F8_1_7
             self._Commits,
             self._Changes,
-            self._BLESha,  # TODO: This is sort of wrong; 7 nibbles + dirty
+            self._BLESha,  # TODO: Interpret as 7 nibbles + dirty
          ) = unpack('>BBHBL', wire_bytes)
         self._Release = f8_1_7_decode(self._Release)
 
@@ -316,8 +316,6 @@ class Versions (PackedAttr):
             self._BLEVersion.log_string(),
             self._LVVersion.log_string(),
         )
-
-    # TODO: Reevaluate: These are read-only, so return a copy
 
     @property
     def BLEVersion(self):
@@ -1022,7 +1020,7 @@ class AllSensors (PackedAttr):
         self._WaterHeater = validate_u_p_noneok(value, 16, 8)
 
 
-# TODO; T_StoredShots, u1, NumberOfStoredShots
+# TODO; T_StoredShots, u1, NumberOfStoredShots (DE1 unimplemented?)
 
 
 class TotalVOrWFlags (enum.IntFlag):
@@ -1030,7 +1028,7 @@ class TotalVOrWFlags (enum.IntFlag):
     UseWeight = 0x8000
 
 
-# TODO: TotalVOrW
+# TODO: TotalVOrW (DE1 unimplemented?)
 
 
 class FrameFlags (enum.IntFlag):
@@ -1258,9 +1256,6 @@ class ShotTail (PackedAttr):
             raise DE1APIValueError("Expecting a bool for ignore_pi")
 
 
-# TODO: Is there a better way to constant-ify
-#       short of defining an enum?
-
 MAX_FRAMES = 20
 
 
@@ -1376,7 +1371,7 @@ class ShotDescHeader (PackedAttr):
 
 
 
-# TODO: Deprecated
+# TODO: Deprecated (DE1 unimplemented?)
     """
     CUUID.Deprecated
     """
@@ -1827,10 +1822,10 @@ class ShotSample (PackedAttr):
         return self._State.SteamTemp
 
 
-# TODO: ShotData
+# TODO: ShotData (DE1 unimplemented?)
 
 
-# TODO: ShotDirectory
+# TODO: ShotDirectory (DE1 unimplemented?)
     """
     CUUID.ShotDirectory
     """
@@ -1877,7 +1872,7 @@ class FWImageInfo (PackedAttr):
         self._Hash = validate_u_p_noneok(value, 64, 0)
 
 
-# TODO: FirmwareImages
+# TODO: FirmwareImages (DE1 unimplemented?)
 
 
 class MoveMMRWindow (PackedAttr):
@@ -1957,9 +1952,7 @@ class MMRData (PackedAttr):
 
         return self
 
-    ###
-    ### TODO: Fix this hack
-    ###
+    # TODO: Is padding to 16 bytes a hack or not?
 
     def as_wire_bytes(self):
         retval = bytearray(pack('>BBH',
@@ -2178,7 +2171,7 @@ class WriteToMMR (MMRData):
             )
 
 
-# TODO: ShotMapRequest
+# TODO: ShotMapRequest (DE1 unimplemented?)
     """
     CUUID.ShotMapRequest
     """
@@ -2357,7 +2350,7 @@ class FWMapRequest(PackedAttr):
 
 
 
-# TODO: DeleteShotRange
+# TODO: DeleteShotRange (DE1 unimplemented?)
     """
     CUUID.DeleteShotRange
     """
@@ -2406,7 +2399,7 @@ class SetTime (PackedAttr):
 
 
 
-# TODO: TestReq
+# TODO: TestReq (DE1 unimplemented?)
 
 
 # TODO: CalTargets
@@ -2619,7 +2612,6 @@ def pack_one_mmr0x80_write(addr_low: MMR0x80LowAddr,
                              value: Union[float, int]) -> WriteToMMR:
 
     if not addr_low.can_write:
-        # TODO: Reconsider this exclusion for testing
         raise DE1APIValueError(
             f"Not encoding a non-writable MMR target address: {addr_low}")
 

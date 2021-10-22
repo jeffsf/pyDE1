@@ -235,8 +235,6 @@ class ProfileByFrames (Profile):
 
         self._source_format = SourceFormat.JSONv2
 
-        # TODO: Confirm or determine:
-
         # ShotDescHeader
         _header_v = 1
         _minimum_pressure_default = 0
@@ -247,13 +245,6 @@ class ProfileByFrames (Profile):
 
         # ShotTail
         _ignore_pi_default = True
-
-        # TODO: Decide how to handle non-DE1 parameters:
-        #       beverage_type
-        #       target_weight
-        #       target_volume
-        #       metadata; title, author, notes,
-        #                 hidden, reference file, ...
 
         self._ShotDescHeader = ShotDescHeader(
             HeaderV=_header_v,

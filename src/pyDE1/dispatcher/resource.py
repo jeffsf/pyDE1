@@ -18,7 +18,7 @@ class Resource (enum.Enum):
     SCAN = 'scan'
     SCAN_DEVICES = 'scan/devices'
 
-    LOG = 'log/{id}'  # TODO: OK, how to I match this?
+    LOG = 'log/{id}'
     LOGS = 'logs'
 
     DE1 = 'de1'

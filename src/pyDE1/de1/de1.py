@@ -5,9 +5,6 @@ License for this software, part of the pyDE1 package, is granted under
 GNU General Public License v3.0 only
 SPDX-License-Identifier: GPL-3.0-only
 """
-
-# TODO: Notifying locks on profile and firmware upload
-
 import asyncio
 import hashlib
 import inspect
@@ -70,10 +67,9 @@ class DE1 (Singleton):
         self._name = None
         self._bleak_client: Optional[BleakClientWrapped] = None
 
-        # TODO: Should the handlers be able to be changed on the fly?
         self._handlers = pyDE1.de1.handlers.default_handler_map(self)
 
-        # TODO: Where is "last heard from"?
+        # TODO: These would benefit from accessor methods
         self._cuuid_dict: Dict[CUUID, NotificationState] = dict()
         self._mmr_dict: Dict[Union[MMR0x80LowAddr, int], MMR0x80Data] = dict()
 
@@ -201,12 +197,8 @@ class DE1 (Singleton):
 
         event_list.append(self._cuuid_dict[CUUID.StateInfo].ready_event)
 
-        # TODO: How to detect all the info has come back
-        #       and what to do if it doesn't?
-
         gather_list = [event.wait() for event in event_list]
 
-        # TODO: Timeout!!
         logger.info(f"Waiting for {len(event_list)} responses")
         try:
             results = await asyncio.wait_for(asyncio.gather(*gather_list),
@@ -361,7 +353,7 @@ class DE1 (Singleton):
             ble_device = DiscoveredDevices().ble_device_from_id(ble_device_id)
             if ble_device is None:
                 logger.warning(f"No record of {ble_device_id}, initiating scan")
-                # TODO: find_device_by_filter doesn't add to DiscoveredDevices
+                # NB: find_device_by_filter doesn't add to DiscoveredDevices
                 ble_device = await BleakScannerWrapped.find_device_by_address(
                     ble_device_id, timeout=config.bluetooth.CONNECT_TIMEOUT)
             if ble_device is None:
@@ -475,14 +467,11 @@ class DE1 (Singleton):
                     self._connectivity_change(arrival_time=time.time(),
                                               state=ConnectivityState.DISCONNECTED))
 
-    # TODO: Decide how to handle  self._disconnected_callback
-    #   disconnected_callback (callable): Callback that will be scheduled in the
-    #   event loop when the client is disconnected. The callable must take one
-    #   argument, which will be this client object.
+    #  disconnected_callback (callable): Callback that will be scheduled in the
+    #  event loop when the client is disconnected. The callable must take one
+    #  argument, which will be this client object.
 
-    # The callback seems to be expected to be a "plain" function
-    # RuntimeWarning: coroutine 'DE1._create_disconnect_callback.<locals>.disconnect_callback'
-    #                 was never awaited
+    # The callback seems to be expected to be a "plain" function (not awaitable)
 
     def _create_disconnect_callback(self) -> Callable:
         de1 = self
@@ -602,8 +591,6 @@ class DE1 (Singleton):
         #                     include_can_write=True, )['PackedAttr'])
         # coro_list = map(lambda pa: self.start_notifying(pa.cuuid), cuuid_list)
         # await asyncio.gather(*coro_list)
-
-    # TODO: Remember to read CUUID.StateInfo on connect/reconnect
 
     async def start_standard_periodic_notifiers(self):
         """
@@ -755,7 +742,7 @@ class DE1 (Singleton):
         rs = RequestedState(State)
         await self.write_packed_attr(rs)
 
-    # TODO: Should this be public or private?
+    # TODO: Should this be public or private? (private)
     async def read_mmr(self, length, addr_high, addr_low, data_bytes=b''
                        ) -> List[asyncio.Event]:
         mmr = ReadFromMMR(Len=length, addr_high=addr_high, addr_low=addr_low,
@@ -785,7 +772,6 @@ class DE1 (Singleton):
         await self.write_packed_attr(mmr)
         return ready_events
 
-    # TODO: Public or private?
     async def read_one_mmr0x80(self, mmr0x80: MMR0x80LowAddr) -> asyncio.Event:
         ready_events = await self.read_mmr(
             length=0,
@@ -941,7 +927,8 @@ class DE1 (Singleton):
             if not profile.validate():
                 raise DE1ProfileValidationError
 
-            # async with asyncio.wait_for(self._profile_lock.acquire(), timeout=3):
+            # async with asyncio.wait_for(
+            #     self._profile_lock.acquire(), timeout=3):
             # TODO: Should there be some way to acquire lock on the two CUUIDs?
 
             async with self._profile_lock:
@@ -1039,7 +1026,8 @@ class DE1 (Singleton):
     # Firmware updating
     #
 
-    # TODO: Does it need a lock?
+    # TODO: Does it need an explicit lock
+    #       or is the presence of the process "safe enough"?
 
     async def upload_firmware_from_content(self,
                                            content: Union[bytes, bytearray]):
@@ -1413,12 +1401,6 @@ class DE1 (Singleton):
             # TODO: Really should wait here until Idle seen
             #       If so, how to deal with it if it doesn't idle soon?
         await self._request_state(API_MachineStates.Sleep)
-
-    # TODO: Support for starting the four modes for non-GHC machines
-
-    # TODO: Support for clean, descale, travel
-
-    # TODO: Settings object that then uploads if needed
 
     # For API
     @property

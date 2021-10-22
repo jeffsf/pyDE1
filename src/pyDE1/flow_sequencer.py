@@ -278,6 +278,5 @@ class StopAtWeight (ByModeControl):
     def stop_at_weight(self, value):
         self._stop_at_weight = self._validate_stop_at(value)
 
-#
-# TODO: Create importable for mode-specific control classes
-#
+# Create importable for mode-specific control classes?
+# No, just import locally, if needed, from flow_sequencer_impl

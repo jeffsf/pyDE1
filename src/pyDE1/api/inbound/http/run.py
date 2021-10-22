@@ -14,7 +14,6 @@ import multiprocessing
 import multiprocessing.connection as mpc
 
 import pyDE1.config
-# TODO: import * is only allowed at the  module level
 from pyDE1.exceptions import *
 
 
@@ -48,8 +47,7 @@ def run_api_inbound(config: pyDE1.config.Config,
     from pyDE1.dispatcher.resource import Resource
     from pyDE1.dispatcher.payloads import APIRequest, APIResponse, HTTPMethod
     from pyDE1.dispatcher.validate import validate_patch_return_targets
-    # These are needed as they have specific fields that need to be unpickled
-    # TODO: Confirm if still needed with module-level import of *
+    # These two needed as they have specific fields that need to be unpickled
     from pyDE1.exceptions import (
         DE1APIUnsupportedStateTransitionError, DE1APIUnsupportedFeatureError
     )
@@ -148,9 +146,7 @@ def run_api_inbound(config: pyDE1.config.Config,
                 retval.append(details._asdict())
         return retval
 
-    #
     # TODO: This should somehow be "automated" and driven off Resource
-    #
 
     resources_with_params: Dict[Resource, Pattern] = {
         Resource.LOG: re.compile('^log/(?P<id>[a-zA-Z0-9._-]+)$')
@@ -191,8 +187,6 @@ def run_api_inbound(config: pyDE1.config.Config,
                 # resource = Resource(self.path.removeprefix(SERVER_ROOT))
                 resource = Resource(root_relative)
             except ValueError:
-                # TODO: How to match against blah/{id}/blah
-                #       and how to pass the ID on?
                 for res, pattern in resources_with_params.items():
                     res: Resource
                     pattern: Pattern

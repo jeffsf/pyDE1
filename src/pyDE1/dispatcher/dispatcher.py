@@ -71,7 +71,6 @@ async def _response_queue_processor(response_queue: asyncio.Queue,
 
 # Process received APIRequests from the request queue,
 # write to the outbound queue.
-# TODO: Move the outbound to an asyncio.Queue() later
 
 def start_request_queue_processor(request_queue: asyncio.Queue,
                                   response_queue: asyncio.Queue):

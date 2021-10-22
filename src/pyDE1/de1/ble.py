@@ -46,8 +46,7 @@ class CUUID (enum.Enum):
         # super(CUUID, self).__init__(value)
         #     NameError: name 'CUUID' is not defined
         enum.Enum.__init__(value)
-        # TODO: Determine if locking should be by CUUID
-        #       or by device.
+        # TODO: Confirm that locking by CUUID is sufficient
         # TODO: Decide if locking the "profile" is sufficient
         self._lock = asyncio.Lock()
 

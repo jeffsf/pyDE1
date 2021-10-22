@@ -31,8 +31,6 @@ from pyDE1.dispatcher.resource import (
 
 MAPPING_VERSION = "4.0.0"
 
-# TODO: Work through main and remote thread imports
-
 logger = pyDE1.getLogger('Inbound.Mapping')
 
 # There are a handful of requests related to the DE1 and Scale
@@ -208,7 +206,7 @@ MAPPING[Resource.SCAN] = {
                   setter_path='scan_from_api', v_type=bool)
 }
 
-# TODO: This is an async getter because of the lock
+# Note: This is an async getter because of the lock
 MAPPING[Resource.SCAN_DEVICES] = {
     'devices': IsAt(target=TO.DiscoveredDevices, attr_path='devices_for_json',
                     read_only=True,
@@ -516,7 +514,6 @@ MAPPING[Resource.DE1_CALIBRATION] = {
     # 'internal': Mapping[Resource.DE1_CALIBRATION_INTERNAL],
 }
 
-# TODO: How to handle GET if non-GET items? NaN? null?
 MAPPING[Resource.DE1] = {
     'id': MAPPING[Resource.DE1_ID],
     'mode': MAPPING[Resource.DE1_MODE],

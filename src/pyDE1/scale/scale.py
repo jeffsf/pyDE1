@@ -190,6 +190,7 @@ class Scale:
                 asyncio.create_task(self.standard_initialization())
 
                 # TODO: Does the ScaleProcessor get properly reset?
+                #       Looks OK on scale replacement, what about reconnect?
 
             else:
                 logger.error(
@@ -274,8 +275,6 @@ class Scale:
                 self._connectivity_change(
                     arrival_time=time.time(),
                     state=ConnectivityState.DISCONNECTED))
-
-    # TODO: Decide how to handle  self._disconnected_callback
 
     @property
     def is_connected(self):
@@ -432,15 +431,11 @@ class Scale:
         #
         # logger.info(f"0x{id(self):x} is_finalized: {gc.is_finalized(self)}")
 
-    # TODO: Decide how to handle  self._disconnected_callback
-    #   disconnected_callback (callable): Callback that will be scheduled in the
-    #   event loop when the client is disconnected. The callable must take one
-    #   argument, which will be this client object.
+    #  disconnected_callback (callable): Callback that will be scheduled in the
+    #  event loop when the client is disconnected. The callable must take one
+    #  argument, which will be this client object.
 
     # The callback seems to be expected to be a "plain" function
-    #     task.add_done_callback(
-    #         lambda _: self._disconnected_callback(self)
-    #     )
 
     def _create_disconnect_callback(self) -> Callable:
         scale = self
@@ -608,8 +603,6 @@ class Scale:
                 logger.info(
                     "No previous scale-period estimate for "
                     f"{self.address} found")
-
-    # TODO: Deal with connectivity as a mixin
 
     # For API
     @property

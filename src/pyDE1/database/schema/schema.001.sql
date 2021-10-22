@@ -209,7 +209,7 @@ CREATE TABLE sequencer_gate_notification (
 CREATE INDEX idx_sequencer_gate_notification_sequence_id
     ON sequencer_gate_notification(sequence_id);
 
--- TODO: Why is sender None here?
+-- TODO: Why is sender NoneType for stop_at_notification?
 
 -- pyDE1/StopAtNotification {"arrival_time": 1626407781.443385,
 -- "create_time": 1626407781.443385, "stop_at": "weight",
@@ -275,7 +275,7 @@ CREATE TABLE scale_tare_seen (
 CREATE INDEX idx_scale_tare_seen_sequence_id
     ON scale_tare_seen(sequence_id);
 
--- TODO: Why is sender None here?
+-- TODO: Why is sender NoneType on auto_tare_notification?
 
 -- pyDE1/AutoTareNotification {"arrival_time": 1626407756.6536725,
 -- "create_time": 1626407756.6536725, "action": "disabled",
