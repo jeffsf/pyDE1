@@ -103,20 +103,6 @@ class Config (ConfigYAML):
         self.logging = _Logging()
         self.mqtt = _MQTT()
 
-    def set_logging(self, log_file_handler: Optional[logging.Handler] = None,
-                    stderr_handler: Optional[logging.Handler] = None):
-        # TODO: LOGGING
-        logging.getLogger().setLevel(logging.DEBUG)
-        # TODO: Clean up logging, in general
-        if log_file_handler:
-            formatter_file = logging.Formatter(fmt=self.logging.FORMAT_FILE)
-            log_file_handler.setFormatter(formatter_file)
-            log_file_handler.setLevel(self.logging.LEVEL_FILE)
-        if stderr_handler:
-            formatter_stderr = logging.Formatter(fmt=self.logging.FORMAT_STDERR)
-            stderr_handler.setFormatter(formatter_stderr)
-            stderr_handler.setLevel(self.logging.LEVEL_STDERR)
-
 
 # This craziness is so pyCharm autocompletes
 # Otherwise typing.SimpleNamespace() would be sufficient
