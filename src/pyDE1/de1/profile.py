@@ -320,7 +320,7 @@ class ProfileByFrames (Profile):
             if _ignore_limit_default:
                 flag |= FrameFlags.IgnoreLimit
             else:
-                flag |= FrameFlags.DontIgnoreLimit
+                flag |= FrameFlags.ObserveLimit
 
             # if flag & FrameFlags.CtrlP:  # Fails as .CtrlP is the "0" bit
             if pump == 'pressure':

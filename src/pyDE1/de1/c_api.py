@@ -1047,7 +1047,24 @@ class FrameFlags (enum.IntFlag):
     TBasketTemp     = 0x00
 
     DontCompare     = 0x00
-    DontIgnoreLimit = 0x00
+    ObserveLimit    = 0x00
+
+    def not_flag_name(self):
+        """
+        Only works for bit-set flags, but only needed there
+        """
+        map = {
+            FrameFlags.CtrlF:       'CtrlP',
+            FrameFlags.DoCompare:   'DontCompare',
+            FrameFlags.DC_GT:       'DC_LT',
+            FrameFlags.DC_CompF:    'DC_CompP',
+            FrameFlags.TMixTemp:    'TBasketTemp',
+            FrameFlags.Interpolate: 'DontInterpolate',
+            FrameFlags.IgnoreLimit: 'ObserveLimit',
+        }
+        return map.get(self, f"NOT{self.name}")
+
+
 
 
 class ShotFrame (PackedAttr):
@@ -1090,11 +1107,12 @@ class ShotFrame (PackedAttr):
                     )
 
     def log_string(self):
-        # TODO; This could be more friendly with the "not" names
         flag_list = []
         for flag in FrameFlags:
             if flag.value and self._Flag & flag.value:
                 flag_list.append(flag.name)
+            elif flag.value:
+                flag_list.append(flag.not_flag_name())
         if len(flag_list) > 1:
             flags = ','.join(flag_list)
         else:
