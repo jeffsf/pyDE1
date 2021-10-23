@@ -434,28 +434,24 @@ class FlowSequencerImpl (Singleton, FlowSequencer):
         if self.active_state not in self.autotare_states:
             scale.hold_at_tare = False
             logger.debug(f"Scale: release - {self.active_state.name}")
-            await send_to_outbound_pipes(AutoTareNotification(
-                AutoTareNotificationAction.DISABLED))
+            await self.auto_tare_notify(AutoTareNotificationAction.DISABLED)
             return
         try:
             await self._gate_sequence_start.wait()
             scale.hold_at_tare = True
             logger.debug("Scale: hold at tare")
-            await send_to_outbound_pipes(AutoTareNotification(
-                AutoTareNotificationAction.ENABLED))
+            await self.auto_tare_notify(AutoTareNotificationAction.ENABLED)
 
             await self._gate_expect_drops.wait()
             scale.hold_at_tare = False
             logger.debug("Scale: release")
-            await send_to_outbound_pipes(AutoTareNotification(
-                AutoTareNotificationAction.DISABLED))
+            await self.auto_tare_notify(AutoTareNotificationAction.DISABLED)
 
         except asyncio.CancelledError:
             scale = self._scale_processor.scale
             scale.hold_at_tare = False
             logger.info("Scale: release - on cancel")
-            await send_to_outbound_pipes(AutoTareNotification(
-                AutoTareNotificationAction.DISABLED))
+            await self.auto_tare_notify(AutoTareNotificationAction.DISABLED)
             raise
 
     async def _sequence_stop_at_volume(self):
@@ -725,13 +721,21 @@ class FlowSequencerImpl (Singleton, FlowSequencer):
             target = self.active_control.stop_at_weight
         else:
             target = None
-        await send_to_outbound_pipes(StopAtNotification(
+        notification = StopAtNotification(
             stop_at=stop_at,
             action=action,
             target_value=target,
             current_value=current,
             active_state=self.active_state
-        ))
+        )
+        # Usinf FlowSequencer() here still results in FlowSequencerImpl
+        notification._sender = self
+        await send_to_outbound_pipes(notification)
+
+    async def auto_tare_notify(self, action: AutoTareNotificationAction):
+        notification = AutoTareNotification(action=action)
+        notification._sender = self
+        await send_to_outbound_pipes(notification)
 
     def stop_at_time_set(self, state: API_MachineStates, duration: float):
         bmc = self.active_control_for_state(state)
