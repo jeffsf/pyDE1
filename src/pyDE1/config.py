@@ -133,6 +133,7 @@ class _HTTP (ConfigLoadable):
         self.ASYNC_TIMEOUT = 1.0
         # Seconds, 20*2 frames + head + tail at ~100 ms each
         self.PROFILE_TIMEOUT = 4.5
+        self.FIRMWARE_TIMEOUT = 15  # Seconds for upload and start (~260 kbps)
         self._response_timeout = None
 
         # If true, don't output nodes that have no value (write-only)

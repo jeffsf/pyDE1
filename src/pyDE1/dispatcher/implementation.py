@@ -76,7 +76,7 @@ def get_timeout(prop, value):
         timeout = config.http.ASYNC_TIMEOUT * 2
 
     elif name == 'upload_firmware_from_content':
-        timeout = config.http.PROFILE_TIMEOUT   # TODO: Needs own timeout
+        timeout = config.http.FIRMWARE_TIMEOUT
 
     if DE1().uploading_firmware:
         timeout += config.de1.CUUID_LOCK_WAIT_TIMEOUT
