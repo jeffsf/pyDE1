@@ -39,26 +39,17 @@ def run():
     import os
     import signal
     import time
-
     from types import FrameType
 
     import pyDE1.shutdown_manager as sm
-
+    from pyDE1.api.outbound.mqtt import run_api_outbound
+    from pyDE1.api.inbound.http import run_api_inbound
+    from pyDE1.controller import run_controller
+    from pyDE1.database.run import run_database_logger
     from pyDE1.database.manage import check_schema
     from pyDE1.supervise import SupervisedProcess
 
     logger = pyDE1.getLogger('Run')
-
-    logger.info("<== run_api_outbound")
-    from pyDE1.api.outbound.mqtt import run_api_outbound
-    logger.info("<== run_api_inbound")
-    from pyDE1.api.inbound.http import run_api_inbound
-    logger.info("<== run_database_logger")
-    from pyDE1.database.run import run_database_logger
-    logger.info("<== run_controller")
-    from pyDE1.controller import run_controller
-
-    # logger = pyDE1.getLogger('Run')
 
     log_queue = multiprocessing.Queue()
     pyde1_logging.setup_queue_and_listener(config.logging, log_queue)
