@@ -84,8 +84,8 @@ class Scale:
 
         self._ready = asyncio.Event()
 
-        self._reconnect_delay = 0
-        self._logging_reconnect = True
+        self._reconnect_count = 0
+        self._log_reconnect_attempts = True
 
         asyncio.get_event_loop().create_task(
             self._event_connectivity.publish(
@@ -463,42 +463,39 @@ class Scale:
         return disconnect_callback
 
     def _reset_reconnect(self):
-        self._reconnect_delay = 0
-        self._logging_reconnect = True
+        self._reconnect_count = 0
+        self._log_reconnect_attempts = True
 
     async def _reconnect(self):
         """
-        Will try immediately, then 1, 2, 3, ...,
-            config.bluetooth.RECONNECT_MAX_INTERVAL seconds later
-            in between CONNECT_TIMEOUT periods
+        Will try immediately config.bluetooth.RECONNECT_RETRY_COUNT times
+            of CONNECT_TIMEOUT each. It will then stop logging and retry
+            with RECONNECT_GAP seconds in between attempts
         """
-        # TODO: Is there a better pattern?
-        if DE1().current_state == API_MachineStates.Sleep:
-            logger.info("DE1 is sleeping, not retrying to connect")
-            return
 
         # Workaround for https://github.com/hbldh/bleak/issues/376
         self._bleak_client.services = BleakGATTServiceCollection()
 
         class_name = type(self).__name__
-        if self._logging_reconnect:
+        if self._log_reconnect_attempts:
             logger.info(
-                f"Will try reconnecting to {class_name} at {self.address} "
-                f"after waiting {self._reconnect_delay} seconds.")
-        await asyncio.sleep(self._reconnect_delay)
+                f"Will try reconnecting to {class_name} at {self.address}")
+        if self._reconnect_count >= config.bluetooth.RECONNECT_RETRY_COUNT:
+            await asyncio.sleep(config.bluetooth.RECONNECT_GAP)
 
         await self.connect()
         if self.is_connected:
-            self._reset_reconnect()
+            self._reconnect_count = 0
+            self._log_reconnect_attempts = True
         else:
-            if self._reconnect_delay <= config.bluetooth.RECONNECT_MAX_INTERVAL:
-                self._reconnect_delay = self._reconnect_delay +1
-            if self._reconnect_delay == config.bluetooth.RECONNECT_MAX_INTERVAL:
+            if self._reconnect_count <= config.bluetooth.RECONNECT_RETRY_COUNT:
+                self._reconnect_count = self._reconnect_count + 1
+            if self._reconnect_count == config.bluetooth.RECONNECT_RETRY_COUNT:
                 logger.info("Suppressing further reconnect messages. "
                             "Will keep trying at {}-second intervals.".format(
-                    config.bluetooth.RECONNECT_MAX_INTERVAL)
+                    config.bluetooth.RECONNECT_GAP)
                 )
-                self._logging_reconnect = False
+                self._log_reconnect_attempts = False
             asyncio.get_event_loop().create_task(
                 self._reconnect(), name='ReconnectScale')
 
