@@ -42,7 +42,7 @@ def run():
     from types import FrameType
 
     import pyDE1.shutdown_manager as sm
-    from pyDE1.api.outbound.mqtt import run_api_outbound
+    from pyDE1.api.outbound.mqtt import run_mqtt_outbound, OutboundMode
     from pyDE1.api.inbound.http import run_api_inbound
     from pyDE1.controller import run_controller
     from pyDE1.database.run import run_database_logger
@@ -52,7 +52,11 @@ def run():
     logger = pyDE1.getLogger('Run')
 
     log_queue = multiprocessing.Queue()
-    pyde1_logging.setup_queue_and_listener(config.logging, log_queue)
+    log_mqtt_pipe_read, log_mqtt_pipe_write = multiprocessing.Pipe(
+        duplex=False)
+    pyde1_logging.setup_queue_and_listener(config.logging,
+                                           log_queue,
+                                           log_mqtt_pipe_write)
     pyde1_logging.setup_queue_logging(config.logging, log_queue)
     pyde1_logging.config_logger_levels(config.logging)
 
@@ -80,6 +84,7 @@ def run():
         def _the_rest_sync():
             logger.info("Setting do_not_restart")
             for sp in (
+                    supervised_outbound_log_process,
                     supervised_outbound_api_process,
                     supervised_inbound_api_process,
                     supervised_controller_process,
@@ -123,13 +128,27 @@ def run():
     outbound_pipe_read, outbound_pipe_write = multiprocessing.Pipe(
         duplex=False)
 
+    # MQTT logging
+    supervised_outbound_log_process = SupervisedProcess(
+        target=run_mqtt_outbound,
+        kwargs={
+            'config': config,
+            'log_queue': log_queue,
+            'outbound_pipe': log_mqtt_pipe_read,
+            'mode': OutboundMode.LogRecord,
+        },
+        name='LogMQTT',
+        daemon=False)
+    supervised_outbound_log_process.start()
+
     # MQTT API
     supervised_outbound_api_process = SupervisedProcess(
-        target=run_api_outbound,
+        target=run_mqtt_outbound,
         kwargs={
             'config': config,
             'log_queue': log_queue,
             'outbound_pipe': outbound_pipe_read,
+            'mode': OutboundMode.EventPayload,
         },
         name='OutboundAPI',
         daemon=False)

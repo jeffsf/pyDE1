@@ -14,15 +14,23 @@ logging every update_period seconds (and resetting the count)
 #   nothing: loop.add_reader()
 
 # Only import the minimal here, as it potentially ends up in all processes.
+
+import enum
 import multiprocessing
 import multiprocessing.connection as mpc
 
 import pyDE1.config
 
 
-def run_api_outbound(config: pyDE1.config.Config,
-                     log_queue: multiprocessing.Queue,
-                     outbound_pipe: mpc.Connection):
+class OutboundMode (enum.Enum):
+    EventPayload = enum.auto()
+    LogRecord = enum.auto()
+
+
+def run_mqtt_outbound(config: pyDE1.config.Config,
+                      log_queue: multiprocessing.Queue,
+                      outbound_pipe: mpc.Connection,
+                      mode: OutboundMode):
 
     import asyncio
     import json
@@ -42,12 +50,16 @@ def run_api_outbound(config: pyDE1.config.Config,
     from pyDE1.supervise import SupervisedTask
 
 
-    logger = pyDE1.getLogger('Outbound')
+    if mode == OutboundMode.LogRecord:
+        logger = pyDE1.getLogger('LogMQTT')
+    else:
+        logger = pyDE1.getLogger('Outbound')
+
 
     pyde1_logging.setup_queue_logging(config.logging, log_queue)
     pyde1_logging.config_logger_levels(config.logging)
 
-    client_logger = pyDE1.getLogger('Outbound.MQTTClient')
+    client_logger = logger.getChild('MQTTClient')
     client_logger.level = logging.INFO
 
     # https://github.com/eclipse/paho.mqtt.c/issues/864
@@ -75,7 +87,8 @@ def run_api_outbound(config: pyDE1.config.Config,
     loop.set_exception_handler(sm.exception_handler)
 
     async def heartbeat():
-        hlog = pyDE1.getLogger('Heartbeat.OutboundAPI')
+        hlog = pyDE1.getLogger(
+            f"Heartbeat.{multiprocessing.current_process().name}")
         while not sm.shutdown_underway.is_set():
             await asyncio.sleep(10)
             hlog.debug("===== BEEP =====")
@@ -154,6 +167,7 @@ def run_api_outbound(config: pyDE1.config.Config,
             password=config.mqtt.PASSWORD
         )
 
+    # TODO: Detect and report auth failures
     mqtt_client.connect(host=config.mqtt.BROKER_HOSTNAME,
                         port=config.mqtt.BROKER_PORT,
                         keepalive=config.mqtt.KEEPALIVE,
@@ -168,7 +182,7 @@ def run_api_outbound(config: pyDE1.config.Config,
     update_period = 10  # in seconds
     counts = {}
 
-    def create_pipe_reader() -> Callable:
+    def create_pipe_reader_event_payload() -> Callable:
 
         def outbound_pipe_reader():
 
@@ -199,6 +213,39 @@ def run_api_outbound(config: pyDE1.config.Config,
 
         return outbound_pipe_reader
 
-    loop.add_reader(outbound_pipe.fileno(), create_pipe_reader())
+    def create_pipe_reader_log_record() -> Callable:
+
+        def outbound_pipe_reader():
+
+            nonlocal last_update, update_period, counts
+            nonlocal outbound_pipe, mqtt_client
+
+            record: logging.LogRecord = outbound_pipe.recv()
+
+            mqtt_client.publish(
+                topic=f"{config.mqtt.TOPIC_ROOT}/log",
+                payload=record.getMessage(),
+                qos=0,
+                retain=False,
+                properties=None
+            )
+
+            record_as_json = pyde1_logging.log_record_to_json(record)
+            mqtt_client.publish(
+                topic=f"{config.mqtt.TOPIC_ROOT}/log/record",
+                payload=record_as_json,
+                qos=0,
+                retain=False,
+                properties=None
+            )
+
+        return outbound_pipe_reader
+
+    if mode == OutboundMode.LogRecord:
+        reader = create_pipe_reader_log_record()
+    else:
+        reader = create_pipe_reader_event_payload()
+
+    loop.add_reader(outbound_pipe.fileno(), reader)
 
     loop.run_forever()

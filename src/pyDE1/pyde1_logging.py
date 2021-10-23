@@ -5,6 +5,9 @@ License for this software, part of the pyDE1 package, is granted under
 GNU General Public License v3.0 only
 SPDX-License-Identifier: GPL-3.0-only
 """
+import collections
+import json
+
 """
 Logging Objectives:
 
@@ -92,6 +95,7 @@ Note: Can't 'from import pyDE1.config import config'
 import copy
 import logging
 import multiprocessing
+import multiprocessing.connection as mpc
 import os
 import warnings
 from logging.handlers import QueueHandler, MemoryHandler
@@ -122,7 +126,7 @@ def setup_initial_logger():
     initial_handler.setLevel(logging.DEBUG)
     initial_handler.name = 'initial_logger'
 
-    memory_handler = MemoryHandler(
+    memory_handler = MemoryHandlerMulti(
         capacity=CAPACITY,
         flushLevel=(logging.CRITICAL + 1),
         target = None,
@@ -193,12 +197,14 @@ class ConfigLoggingFormatters (ConfigLoadable):
         self.STYLE = '%'
         self.LOGFILE = '%(asctime)s ' \
                        '%(levelname)s [%(processName)s] %(name)s: %(message)s'
+        self.MQTT = self.LOGFILE
         self.STDERR  = '%(levelname)s [%(processName)s] %(name)s: %(message)s'
 
 
 class ConfigLoggingHandlers (ConfigLoadable):
     def __init__(self):
         self.LOGFILE = 'INFO'
+        self.MQTT  = 'ERROR'
         self.STDERR  = 'WARNING'
 
 
@@ -209,18 +215,22 @@ class ConfigLoggingHandlers (ConfigLoadable):
 log_queue_listener = None
 memory_handler = None
 stderr_handler = None
+mqtt_handler = None
 logfile_handler = None
 
 
 def setup_queue_and_listener(config_logging: ConfigLogging, 
-                             log_queue: multiprocessing.Queue):
+                             log_queue: multiprocessing.Queue,
+                             mqtt_connection: mpc.Connection):
     """
     Call only from the process that will be doing the logging
 
     NB: Call *after* config has been read
     :param config_logging: 
     """
-    _setup_logging_internal(config_logging, log_queue=log_queue)
+    _setup_logging_internal(config_logging,
+                            log_queue=log_queue,
+                            mqtt_connection=mqtt_connection)
 
 
 def setup_direct_logging(config_logging: ConfigLogging):
@@ -236,17 +246,21 @@ def setup_direct_logging(config_logging: ConfigLogging):
             "setup_direct_logging() called in a multiprocessing environment",
             RuntimeWarning
         )
-    _setup_logging_internal(config_logging, log_queue=None)
+    _setup_logging_internal(config_logging,
+                            log_queue=None,
+                            mqtt_connection=None)
 
 
 def _setup_logging_internal(config_logging: ConfigLogging,
-                            log_queue: Optional[multiprocessing.Queue]):
+                            log_queue: Optional[multiprocessing.Queue],
+                            mqtt_connection: Optional[mpc.Connection]):
     """
     If log_queue is present, set up queue and listener
     If None, set up direct logging
     :param config_logging: 
     """
-    global log_queue_listener, memory_handler, stderr_handler, logfile_handler
+    global log_queue_listener, \
+        memory_handler, stderr_handler, mqtt_handler, logfile_handler
 
     # log_queue = multiprocessing.Queue()
 
@@ -260,6 +274,18 @@ def _setup_logging_internal(config_logging: ConfigLogging,
 
     root_logger.info(
         f"Configured stderr_handler: {stderr_handler}")
+
+    if mqtt_connection:
+        mqtt_handler = PipeHandler(pipe_connection=mqtt_connection)
+        mqtt_formatter = Formatter(fmt=config_logging.formatters.MQTT)
+        mqtt_handler.setFormatter(mqtt_formatter)
+        mqtt_handler.setLevel(config_logging.handlers.MQTT)
+    else:
+        mqtt_handler = logging.NullHandler()
+    mqtt_handler.name = 'mqtt_handler'
+
+    root_logger.info(
+        f"Configured mqtt_handler: {mqtt_handler}")
 
     if not os.path.exists(config_logging.LOG_DIRECTORY):
         root_logger.error(
@@ -288,6 +314,7 @@ def _setup_logging_internal(config_logging: ConfigLogging,
         log_queue_listener = logging.handlers.QueueListener(
             log_queue,
             stderr_handler,
+            mqtt_handler,
             logfile_handler,
             respect_handler_level=True
         )
@@ -302,11 +329,13 @@ def _setup_logging_internal(config_logging: ConfigLogging,
         for handler in root_logger.handlers:
             root_logger.removeHandler(handler)
         root_logger.addHandler(stderr_handler)
+        # TODO: Is there a meaningful way to add the mqtt_handler?
+        # root_logger.addHandler(mqtt_handler)
         root_logger.addHandler(logfile_handler)
 
     if memory_handler:
         root_logger.removeHandler(memory_handler)
-        memory_handler.target = logfile_handler
+        memory_handler.target = (logfile_handler, mqtt_handler)
         memory_handler.close()
         memory_handler = None
 
@@ -320,6 +349,7 @@ def get_int_from_level(logging_level: Union[int, str]):
     else:
         return logging_level
 
+
 def set_root_logger_levels(config_logging: ConfigLogging):
     # No easy way to "DRY" this that I can think of today
     try:
@@ -327,10 +357,14 @@ def set_root_logger_levels(config_logging: ConfigLogging):
     except AttributeError:
         level_stderr = get_int_from_level(config_logging.handlers.STDERR)
     try:
+        level_mqtt = mqtt_handler.level
+    except AttributeError:
+        level_mqtt = get_int_from_level(config_logging.handlers.STDERR)
+    try:
         level_logfile = logfile_handler.level
     except AttributeError:
         level_logfile = get_int_from_level(config_logging.handlers.LOGFILE)
-    level = min(level_logfile, level_stderr)
+    level = min(level_logfile, level_mqtt, level_stderr)
     pyDE1.getLogger().setLevel(level)
     pyDE1.getLogger('root').setLevel(level)
 
@@ -369,3 +403,62 @@ def config_logger_levels(config_logging: ConfigLogging):
     for logger_name, logger_level in config_logging.LOGGERS.items():
         logger.info(f"Setting {logger_name} to {logger_level}")
         pyDE1.getLogger(logger_name).setLevel(logger_level)
+
+
+def log_record_to_json(record: logging.LogRecord):
+    """
+    Used by the MQTT process to send an easily parsable representation
+    in addition to the formatted string
+
+    NB: message -- "The logged message, computed as msg % args.
+                    This is set when Formatter.format() is invoked."
+    """
+    to_send = {'version': '1.0.0'}
+    for attr in (
+            'created',
+            'levelname',
+            'levelno',
+            'message',
+            'name',
+            'process',
+            'processName',
+            'thread',
+            'threadName'
+    ):
+        to_send[attr] = record.__getattribute__(attr)
+    return json.dumps(to_send)
+
+
+class PipeHandler (QueueHandler):
+    """
+    Just like a QueueHandler, except it uses a multiprocessing.Pipe's
+    connection to .send() to instead of Queue.put_nowait()
+    """
+
+    def __init__(self, pipe_connection: mpc.Connection):
+        logging.Handler.__init__(self)
+        self.pipe_connection = pipe_connection
+
+    def enqueue(self, record):
+        self.pipe_connection.send(record)
+
+
+class MemoryHandlerMulti (MemoryHandler):
+    """
+    Like a MemoryHandler, but uses an iterable list of targets
+    """
+
+    def flush(self):
+        self.acquire()
+        if self.target is None:
+            return
+        if isinstance(self.target, logging.Handler):
+            super(MemoryHandlerMulti, self).flush()
+        else:
+            try:
+                for this_target in self.target:
+                    for record in self.buffer:
+                        this_target.handle(record)
+                self.buffer.clear()
+            finally:
+                self.release()
