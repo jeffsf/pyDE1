@@ -159,8 +159,8 @@ async def send_to_outbound_pipes(payload: EventPayload):
     try:
         SubscribedEvent.database_queue.put_nowait(q_payload)
     except queue.Full:
-        pass  # TODO: Do something useful here
-        # signal.raise_signal(signal.SIGTERM)  # Causes looping
+        logger.error("Database queue full")
+        # Not much else to do. Killing a shot in progress seems excessive
 
 
 class SubscribedEvent:
