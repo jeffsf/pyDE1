@@ -15,10 +15,9 @@ from bleak.backends.device import BLEDevice
 from bleak.backends.service import BleakGATTServiceCollection
 
 import pyDE1
+import pyDE1.shutdown_manager as sm
 from pyDE1.bleak_client_wrapper import BleakClientWrapped
 from pyDE1.config import config
-from pyDE1.de1 import DE1
-from pyDE1.de1.c_api import API_MachineStates
 from pyDE1.dispatcher.resource import ConnectivityEnum
 from pyDE1.event_manager import SubscribedEvent
 from pyDE1.event_manager.events import ConnectivityState, ConnectivityChange
@@ -456,7 +455,7 @@ class Scale:
                         state=ConnectivityState.DISCONNECTED)),
                 return_exceptions=True)
             )
-            # TODO: Don't try to reconnect on shutdown
+
             if not client.willful_disconnect:
                 asyncio.get_event_loop().create_task(self._reconnect())
 
@@ -473,20 +472,24 @@ class Scale:
             with RECONNECT_GAP seconds in between attempts
         """
 
-        # Workaround for https://github.com/hbldh/bleak/issues/376
-        self._bleak_client.services = BleakGATTServiceCollection()
+        if sm.shutdown_underway.is_set():
+            return
 
-        class_name = type(self).__name__
-        if self._log_reconnect_attempts:
-            logger.info(
-                f"Will try reconnecting to {class_name} at {self.address}")
         if self._reconnect_count >= config.bluetooth.RECONNECT_RETRY_COUNT:
             await asyncio.sleep(config.bluetooth.RECONNECT_GAP)
 
+        if self._log_reconnect_attempts:
+            class_name = type(self).__name__
+            logger.info(
+                f"Will try reconnecting to {class_name} at {self.address}")
+
+        # Workaround for https://github.com/hbldh/bleak/issues/376
+        self._bleak_client.services = BleakGATTServiceCollection()
+
         await self.connect()
         if self.is_connected:
-            self._reconnect_count = 0
-            self._log_reconnect_attempts = True
+            self._reset_reconnect()
+
         else:
             if self._reconnect_count <= config.bluetooth.RECONNECT_RETRY_COUNT:
                 self._reconnect_count = self._reconnect_count + 1

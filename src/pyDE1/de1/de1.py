@@ -19,6 +19,7 @@ from bleak.backends.service import BleakGATTServiceCollection
 
 import pyDE1.database.insert as db_insert
 import pyDE1.de1.handlers
+import pyDE1.shutdown_manager as sm
 from pyDE1.bleak_client_wrapper import BleakClientWrapped
 from pyDE1.config import config
 from pyDE1.de1.ble import UnsupportedBLEActionError, CUUID
@@ -46,7 +47,6 @@ from pyDE1.scanner import (
 )
 from pyDE1.singleton import Singleton
 from pyDE1.utils import task_name_exists, cancel_tasks_by_name
-
 
 logger = pyDE1.getLogger('DE1')
 
@@ -493,13 +493,16 @@ class DE1 (Singleton):
                         state=ConnectivityState.DISCONNECTED)),
                 return_exceptions=True
             ))
-            # TODO: if not shutdown underway:
             de1.prepare_for_connection(wipe_address=client.willful_disconnect)
             if not client.willful_disconnect:
                 # await self._bleak_client.disconnect()
                 asyncio.get_event_loop().create_task(self._reconnect())
 
         return disconnect_callback
+
+    def _reset_reconnect(self):
+        self._reconnect_count = 0
+        self._log_reconnect_attempts = True
 
     async def _reconnect(self):
         """
@@ -508,20 +511,23 @@ class DE1 (Singleton):
             with RECONNECT_GAP seconds in between attempts
         """
 
-        # Workaround for https://github.com/hbldh/bleak/issues/376
-        self._bleak_client.services = BleakGATTServiceCollection()
+        if sm.shutdown_underway.is_set():
+            return
 
-        class_name = type(self).__name__
-        if self._log_reconnect_attempts:
-            logger.info(
-                f"Will try reconnecting to {class_name} at {self.address}")
         if self._reconnect_count >= config.bluetooth.RECONNECT_RETRY_COUNT:
             await asyncio.sleep(config.bluetooth.RECONNECT_GAP)
 
+        if self._log_reconnect_attempts:
+            logger.info(
+                f"Will try reconnecting to DE1 at {self.address}")
+
+        # Workaround for https://github.com/hbldh/bleak/issues/376
+        self._bleak_client.services = BleakGATTServiceCollection()
+
         await self.connect()
         if self.is_connected:
-            self._reconnect_count = 0
-            self._log_reconnect_attempts = True
+            self._reset_reconnect()
+
         else:
             if self._reconnect_count <= config.bluetooth.RECONNECT_RETRY_COUNT:
                 self._reconnect_count = self._reconnect_count + 1
