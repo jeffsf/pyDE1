@@ -73,8 +73,9 @@ def run():
 
     signal.signal(signal.SIGCHLD, _sigchild_handler)
 
-    # TODO Move process definition, but not starting them
-    #      up here so that there isn't NameError on early exit
+    # Add as defined, to prevent NameError from a static list
+    # and an early termination
+    supervised_process_set = set()
 
     def on_shutdown_underway_cleanup():
         sm.shutdown_underway.wait()
@@ -83,14 +84,11 @@ def run():
         # modifies the loop's readers
         def _the_rest_sync():
             logger.info("Setting do_not_restart")
-            for sp in (
-                    supervised_outbound_log_process,
-                    supervised_outbound_api_process,
-                    supervised_inbound_api_process,
-                    supervised_controller_process,
-                    supervised_database_logger_process,
-            ):
-                sp.do_not_restart = True
+            for sp in supervised_process_set:
+                try:
+                    sp.do_not_restart = True
+                except AttributeError:
+                    pass
 
             if sm.signal_rcvd is None:
                 sig = signal.SIGTERM
@@ -139,6 +137,7 @@ def run():
         },
         name='LogMQTT',
         daemon=False)
+    supervised_process_set.add(supervised_outbound_log_process)
     supervised_outbound_log_process.start()
 
     # MQTT API
@@ -152,6 +151,7 @@ def run():
         },
         name='OutboundAPI',
         daemon=False)
+    supervised_process_set.add(supervised_outbound_api_process)
     supervised_outbound_api_process.start()
 
     # HTTP API
@@ -164,6 +164,7 @@ def run():
         },
         name='InboundAPI',
         daemon=False)
+    supervised_process_set.add(supervised_inbound_api_process)
     supervised_inbound_api_process.start()
 
     # 20 packets per second, 20 seconds ~ 400
@@ -179,6 +180,7 @@ def run():
         },
         name='DatabaseLogger',
         daemon=False)
+    supervised_process_set.add(supervised_database_logger_process)
     supervised_database_logger_process.start()
 
     # Core logic
@@ -197,6 +199,7 @@ def run():
         name="Controller",
         daemon=False
     )
+    supervised_process_set.add(supervised_controller_process)
     supervised_controller_process.start()
 
     logger.info('About to start loop')
