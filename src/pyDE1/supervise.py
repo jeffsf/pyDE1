@@ -6,15 +6,9 @@ GNU General Public License v3.0 only
 SPDX-License-Identifier: GPL-3.0-only
 """
 
-# TODO: When bored, camelcase() isn't quite perfect
-#       <Thread(Httpserver.ServeForever_0, started 1965048928)>
-
-# TODO: callbacks and outbound notification on fail and restart?
-
-
-
 import asyncio
 import multiprocessing
+import re
 import time
 import traceback
 from concurrent.futures import Executor, ThreadPoolExecutor
@@ -24,8 +18,14 @@ import pyDE1
 import pyDE1.shutdown_manager as sm
 
 
-def camelcase(underscored: str):
-    return underscored.title().replace('_', '')
+re_us_char = re.compile('_\w')
+
+def upcase_us_char_match(m: re.Match):
+    return m.group()[-1].upper()
+
+def camelcase_from_underscore(underscored: str):
+    all_but_first = re.sub(re_us_char, upcase_us_char_match, underscored)
+    return all_but_first[0].upper() + all_but_first[1:]
 
 
 T_Work = Union[asyncio.Future, asyncio.Task, Awaitable]
@@ -136,7 +136,7 @@ class SupervisedTask (SupervisedWork):
 
         work = loop.create_task(
             wrapped(self),
-            name=camelcase(self._name)
+            name=camelcase_from_underscore(self._name)
         )
         return work
 
@@ -168,7 +168,7 @@ class SupervisedExecutor (SupervisedWork):
         if executor is None:
             executor = ThreadPoolExecutor(
                 max_workers=1,
-                thread_name_prefix=camelcase(self._name))
+                thread_name_prefix=camelcase_from_underscore(self._name))
         self._executor = executor
         self._start()
 
