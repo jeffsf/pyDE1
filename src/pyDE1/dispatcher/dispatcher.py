@@ -88,6 +88,22 @@ async def _request_queue_processor(request_queue: asyncio.Queue,
     de1 = DE1()
     scale_processor = ScaleProcessor()
 
+    def _check_connectivity(for_got: APIRequest,
+                            check_de1 = True,
+                            check_scale = True):
+        if for_got.connectivity_required['DE1'] and check_de1:
+            if not de1.is_connected:
+                raise DE1NotConnectedError("DE1 not connected")
+            elif not de1.is_ready:
+                raise DE1NotConnectedError("DE1 not ready")
+        if for_got.connectivity_required['Scale'] and check_scale:
+            if scale_processor.scale is None:
+                raise DE1NotConnectedError("No scale present")
+            elif not scale_processor.scale.is_connected:
+                raise DE1NotConnectedError("Scale not connected")
+            elif not scale_processor.scale.is_ready:
+                raise DE1NotConnectedError("Scale not ready")
+
     while True:
         got: APIRequest = await request_queue.get()
         logger.debug(f"{got.method.name} {got.resource.name} requires "
@@ -95,16 +111,13 @@ async def _request_queue_processor(request_queue: asyncio.Queue,
         resource_dict = {}
         exception = None
         tbe = None
+
+
+
         if got.method is HTTPMethod.GET:
+
             try:
-                # TODO: Should be "ready" and not just "connected"
-                if (got.connectivity_required['DE1']
-                        and not de1.is_connected):
-                    raise DE1NotConnectedError("DE1 not connected")
-                if (got.connectivity_required['Scale']
-                        and (scale_processor.scale is None
-                             or not scale_processor.scale.is_connected)):
-                    raise DE1NotConnectedError("Scale not connected")
+                _check_connectivity(got)
                 resource_dict = await get_resource_to_dict(got.resource)
             except Exception as e:
                 exception = e
@@ -118,15 +131,17 @@ async def _request_queue_processor(request_queue: asyncio.Queue,
                            f"{got.method} {got.resource} {repr(exception)}")
                 logger.log(level,
                            ''.join(tbe.format()))
+
             response = APIResponse(original_timestamp=got.timestamp,
                                    timestamp=time.time(),
                                    payload=resource_dict,
                                    exception=exception,
                                    tbe=tbe)
 
+
+
         elif got.method is HTTPMethod.PATCH:
 
-            # TODO: Refactor these checks somewhere clearer to API readers
             if got.resource in (Resource.DE1_ID, Resource.SCALE_ID):
                 if 'first_if_found' in got.payload:
                     # Only acceptable patch, if present
@@ -136,32 +151,31 @@ async def _request_queue_processor(request_queue: asyncio.Queue,
                             f"needs to be exclusive: {got.payload}")
 
             results_list = None
+            check_de1 = True
+            check_scale = True
             try:
-                if (got.connectivity_required['DE1']
-                        and not de1.is_ready):
-                    # Need a pass for setting the DE1 id
-                    if (got.resource is Resource.DE1_ID
+                if (got.resource is Resource.DE1_ID
+                    and len(got.payload.keys()) == 1
+                    and ('id' in got.payload
+                         or 'first_if_found' in got.payload)
+                    and not de1.is_ready
+                ):
+                    logger.debug("DE1 gets a pass while disconnected")
+                    check_de1 = False
+
+                elif (got.resource is Resource.SCALE_ID
                         and len(got.payload.keys()) == 1
                         and ('id' in got.payload
                              or 'first_if_found' in got.payload)
-                    ):
-                        logger.debug("DE1 gets a pass while disconnected")
-                    else:
-                        raise DE1NotConnectedError("DE1 not connected")
-
-                if (got.connectivity_required['Scale']
                         and (scale_processor.scale is None
-                             or not scale_processor.scale.is_ready)):
-                    # Need a pass for setting the scale
-                    if (got.resource is Resource.SCALE_ID
-                        and len(got.payload.keys()) == 1
-                        and ('id' in got.payload
-                             or 'first_if_found' in got.payload)
-                    ):
-                        logger.debug("Scale gets a pass while disconnected")
-                    else:
-                        raise DE1NotConnectedError("Scale not connected")
+                             or not scale_processor.scale.is_ready)
+                ):
+                    logger.debug("Scale gets a pass while disconnected")
+                    check_scale = False
 
+
+                _check_connectivity(
+                    got, check_de1=check_de1, check_scale=check_scale)
                 results_list = await patch_resource_from_dict(got.resource,
                                                               got.payload)
             except Exception as e:
@@ -171,25 +185,27 @@ async def _request_queue_processor(request_queue: asyncio.Queue,
                     f"Exception in processing {got.method} {got.resource}"
                     f" {repr(exception)}")
                 logger.error(''.join(tbe.format()))
+
             response = APIResponse(original_timestamp=got.timestamp,
                                    timestamp=time.time(),
                                    payload=results_list,
                                    exception=exception,
                                    tbe=tbe)
 
-        elif got.method is HTTPMethod.PUT \
-                and got.resource is Resource.DE1_PROFILE:
+
+
+        elif got.method is HTTPMethod.PUT:
+
             results_list = None
             try:
-                # TODO: Should be "ready" and not just "connected"
-                if (got.connectivity_required['DE1'] and not de1.is_connected):
-                    raise DE1NotConnectedError("DE1 not connected")
-                if (got.connectivity_required['Scale']
-                        and (scale_processor.scale is None
-                             or not scale_processor.scale.is_connected)):
-                    raise DE1NotConnectedError("Scale not connected")
+                if got.resource not in (Resource.DE1_PROFILE,
+                                        Resource.DE1_FIRMWARE):
+                    raise NotImplementedError(
+                        "Only profile and firmware PUT supported at this time")
+                    # As there's no validation that a different PUT target
+                    # is a complete replacement.
 
-                # TODO: Implement PUT properly (check for completeness)
+                _check_connectivity(got)
                 results_list = await patch_resource_from_dict(got.resource,
                                                               got.payload)
             except Exception as e:
@@ -199,6 +215,7 @@ async def _request_queue_processor(request_queue: asyncio.Queue,
                     f"Exception in processing {got.method} {got.resource}"
                     f" {repr(exception)}")
                 traceback.print_tb(tbe)
+
             response = APIResponse(original_timestamp=got.timestamp,
                                    timestamp=time.time(),
                                    payload=results_list,
@@ -206,6 +223,7 @@ async def _request_queue_processor(request_queue: asyncio.Queue,
                                    tbe=tbe)
 
         else:
+
             response = APIResponse(original_timestamp=got.timestamp,
                                    timestamp=time.time(), payload={},
                                    exception=NotImplementedError(
