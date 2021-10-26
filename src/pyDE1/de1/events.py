@@ -126,7 +126,7 @@ class ShotSampleWithVolumesUpdate (ShotSampleUpdate):
             frame_number=shot_sample_update.frame_number,
             steam_temp=shot_sample_update.steam_temp,
         )
-        # NB: Future TODO: manage carefully as depends on super
+        # NB: (Future) TODO: manage carefully as depends on super
         self._version = "1.2.0"  # Major version incremented on breaking change
 
         self.de1_time = self.arrival_time

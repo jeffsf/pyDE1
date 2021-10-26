@@ -197,8 +197,9 @@ def configure_mqtt() -> mqtt.Client:
             if action == EventNotificationAction.CLEAR.value:
                 pass
 
-            # TODO: Confirm or make gate notifications track state-change times
-            #       (Concern is that gate is slightly after state is received)
+            # Note: Gate notifications slightly lag state-change times
+            #       as they are the time of Event().set(),
+            #       and don't take the time from another notification
 
             elif not userdata['in_sequence']:
                 if name == SequencerGateName.GATE_SEQUENCE_START.value \

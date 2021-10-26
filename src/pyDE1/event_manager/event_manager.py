@@ -251,6 +251,7 @@ class SubscribedEvent:
 
         TODO: Consider if a deepcopy of the EventPayload is justified
               (It probably is, as it gets passed by reference)
+              (Or not, as it isn't exposed as a writable object through an API)
         """
         payload._sender = self._sender
         async with self._subscriber_list_lock:
@@ -269,9 +270,6 @@ class SubscribedEvent:
                 # t = asyncio.create_task(s[1](copy(payload)))
                 # tasks.append(t)
                 # await s[1](copy(payload))
-
-                # TODO: Figure out if/how to protect payload
-                #       from unintentional damage from others
 
                 await s[1](payload)
         internal_done = time.time()

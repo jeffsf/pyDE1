@@ -747,7 +747,8 @@ class DE1 (Singleton):
         rs = RequestedState(State)
         await self.write_packed_attr(rs)
 
-    # TODO: Should this be public or private? (private)
+    # TODO: Should this be public or private?
+    #       Revisit if cleaning up MMR/CUUID internals
     async def read_mmr(self, length, addr_high, addr_low, data_bytes=b''
                        ) -> List[asyncio.Event]:
         mmr = ReadFromMMR(Len=length, addr_high=addr_high, addr_low=addr_low,
@@ -755,7 +756,7 @@ class DE1 (Singleton):
         ready_events = list()
         if addr_high == 0x80:
             #
-            # TODO: Revisit this
+            # TODO: Revisit this if refactoring
             #
             # The stride of MMR0x80Data is going to be 4 bytes except
             # in the debug log region, where it will be 16 bytes
@@ -915,7 +916,6 @@ class DE1 (Singleton):
         await profile_upload_stopped.wait()
         if (e := upload_task.exception()) is not None:
             logger.info(f"Upload task exception: {upload_task.exception()}")
-            # TODO: This will raise on cancelled, is that "right"?
             raise e
 
 

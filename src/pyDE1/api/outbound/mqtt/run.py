@@ -167,7 +167,6 @@ def run_mqtt_outbound(config: pyDE1.config.Config,
             password=config.mqtt.PASSWORD
         )
 
-    # TODO: Detect and report auth failures
     mqtt_client.connect(host=config.mqtt.BROKER_HOSTNAME,
                         port=config.mqtt.BROKER_PORT,
                         keepalive=config.mqtt.KEEPALIVE,

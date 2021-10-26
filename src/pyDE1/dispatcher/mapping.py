@@ -272,10 +272,8 @@ MAPPING[Resource.DE1_CONNECTIVITY] = {
 }
 
 # DE1_CONTROL = 'de1/control' -- aggregate
+# TODO: Work through how to get the aggregate to operate
 
-# TODO: Work through how to get this to work
-
-# TODO: Allow stop_at_xxxx for everything, None means don't apply
 
 MAPPING[Resource.DE1_CONTROL_ESPRESSO] = {
     'stop_at_time': IsAt(target=TO.FlowSequencer,
@@ -394,7 +392,8 @@ MAPPING[Resource.DE1_SETTING_STEAM] = {
     'high_flow_time': IsAt(target=MMR0x80LowAddr.STEAM_START_SECS, attr_path='', v_type=float),
 }
 
-# TODO: What is ShotSettings.TargetGroupTemp and where does it really belong?
+# TODO: What is ShotSettings.TargetGroupTemp in the current DE1 firmware
+#       and where does it really belong?
 MAPPING[Resource.DE1_SETTING_TARGET_GROUP_TEMP] = {
     'temperature': IsAt(target=ShotSettings, attr_path='TargetGroupTemp', v_type=int),
 }

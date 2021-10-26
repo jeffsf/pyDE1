@@ -329,7 +329,7 @@ def _setup_logging_internal(config_logging: ConfigLogging,
         for handler in root_logger.handlers:
             root_logger.removeHandler(handler)
         root_logger.addHandler(stderr_handler)
-        # TODO: Is there a meaningful way to add the mqtt_handler?
+        # TODO: Is there a use case and meaningful way to add the mqtt_handler?
         # root_logger.addHandler(mqtt_handler)
         root_logger.addHandler(logfile_handler)
 

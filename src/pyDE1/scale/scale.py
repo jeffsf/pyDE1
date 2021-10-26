@@ -27,9 +27,6 @@ from pyDE1.scanner import _registered_ble_prefixes
 
 logger = pyDE1.getLogger('Scale')
 
-# TODO: Can/should this be related to the class?
-#       If so, how should subclasses respond?
-
 # Used for factory and for BLE detection and filtering
 _prefix_to_constructor = dict()
 _recognized_scale_prefixes = set()
@@ -53,6 +50,9 @@ class ScaleNotConnectedError(ScaleError):
     def __init__(self, *args, **kwargs):
         super(ScaleNotConnectedError, self).__init__(args, kwargs)
 
+
+# TODO: Experimentaly confirm that weight and mass-flow estimates
+#       are reasonably time aligned - NB: DE1.fall_time
 
 class Scale:
 
@@ -104,16 +104,11 @@ class Scale:
             '_event_tare_seen',
         )
 
-        # TODO: Think about how to manage "tare seen"
+        # TODO: Think about how to manage a "tare seen" event
+        #       and what the use cases for it would be.
         #       Could use asyncio.Event(), but what are the states
         #       and how do you "release" if it never arrives?
-        #       It seems like the use case would be:
-        #           request tare
-        #           wait for tare
-        #           if seen:
-        #               continue
-        #           else:
-        #               do something else
+
         self._tare_requested = False
         self._period_estimator = self.PeriodEstimator(self)
 
@@ -535,7 +530,7 @@ class Scale:
 
         def __init__(self, my_scale):
 
-            # TODO: How to update this for subclass changes?
+            # TODO: How to update this PeriodEstimator for subclass changes?
 
             self._scale = my_scale
 

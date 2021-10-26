@@ -6,9 +6,6 @@ GNU General Public License v3.0 only
 SPDX-License-Identifier: GPL-3.0-only
 """
 
-# TODO: Can't read a device if is is not connected
-#       need a "resource temporarily unavailable" exception
-
 import asyncio
 import copy
 import inspect
@@ -117,7 +114,7 @@ async def _prop_value_getter(prop):
 
 async def _get_isat_value(isat: IsAt):
 
-    # TODO: if IsAt.use_getter is enabled in the future, changes needed here
+    # TODO: if IsAt.use_getter is implemented in the future, change here
 
     target = isat.target
     attr_path = isat.attr_path
@@ -128,7 +125,6 @@ async def _get_isat_value(isat: IsAt):
     flow_sequencer = FlowSequencer()
     scale_processor = ScaleProcessor()
     scale = scale_processor.scale
-    # TODO: Why does calling DiscoveredDevices() freeze if no DE1?
     dd = DiscoveredDevices()
 
     retval = None
@@ -503,7 +499,6 @@ async def _patch_dict_to_mapping_inner(partial_value_dict: dict,
                         #     {1: {2: {3: {4: {5: 'val'}}}}}
                         result_dict = reduce(lambda a, b: {b: a},
                                              running_path,
-                                             # TODO: Really a type mismatch?
                                              retval)
                         results_list.append(result_dict)
 
@@ -511,6 +506,7 @@ async def _patch_dict_to_mapping_inner(partial_value_dict: dict,
                     rsetattr(this_target, attr_path, new_value)
 
             # TODO: Is there a better way to work with an unbound function?
+            #       Maybe attach it to a module, rathern than a special case?
             elif target is None:
                 if setter_path == 'scan_from_api':
                     retval = await scan_from_api(new_value)
@@ -548,7 +544,8 @@ async def _patch_dict_to_mapping_inner(partial_value_dict: dict,
                 await de1.write_packed_attr(mmr_write)
 
                 # TODO: Should this wait on ready.wait() ??
-                #       Or is there a way to collect them all for later?
+                #       Or is there a way to collect them all for later
+                #       as a speed optimization?
                 ns: MMR0x80Data = de1._mmr_dict[target]
                 await ns.ready_event.wait()
 
@@ -557,7 +554,7 @@ async def _patch_dict_to_mapping_inner(partial_value_dict: dict,
                 #     and that those that are read don't change on their own
 
                 packed_attr = (de1._cuuid_dict[target.cuuid]).last_value
-                # TODO: Is this the right way to deal with these?
+                # TODO: Can this be sped up reliably?
                 if packed_attr is None:
                     packed_attr = await de1.read_cuuid(target.cuuid)
                 old_value = rgetattr(packed_attr, attr_path)
@@ -573,7 +570,7 @@ async def _patch_dict_to_mapping_inner(partial_value_dict: dict,
                     f"Mapping target of {target} is not recognized")
 
         elif isinstance(mapping_isat, dict):
-            # TODO: Where did "this_val" (unused?) come from?
+            # TODO: Where did "this_val" (unused) come from?
             this_val = await _patch_dict_to_mapping_inner(
                 partial_value_dict[key],
                 partial_mapping_dict[key],

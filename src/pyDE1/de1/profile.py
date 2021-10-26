@@ -238,7 +238,7 @@ class ProfileByFrames (Profile):
         # ShotDescHeader
         _header_v = 1
         _minimum_pressure_default = 0
-        _maximum_flow_default = 10   # What is the internal limit?
+        _maximum_flow_default = 10   # TODO: Reconfirm that this is sufficient
 
         # ShotFrame
         _ignore_limit_default = True
@@ -275,7 +275,7 @@ class ProfileByFrames (Profile):
                 raise DE1ProfileValidationErrorJSON(
                     f"Unrecognized pump: {pump}")
 
-            # TODO: Confirm DoCompare
+            # TODO: Confirm DoCompare functionality in DE1 firmware for docs
             if 'exit' in step:
                 flag |= FrameFlags.DoCompare
 

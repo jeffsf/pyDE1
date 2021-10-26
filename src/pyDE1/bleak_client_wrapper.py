@@ -103,8 +103,6 @@ class BleakClientWrapped (BleakClient):
             remove_connection_file(self.address)
         return retval
 
-    # TODO: How to handle unexpected disconnects?
-    #       Handling auto-wrapping the on-disconnect handler seems excessive.
 
 
 
