@@ -188,9 +188,6 @@ class Scale:
                 # At least BlueZ doesn't like concurrent connection requests
                 asyncio.create_task(self.standard_initialization())
 
-                # TODO: Does the ScaleProcessor get properly reset?
-                #       Looks OK on scale replacement, what about reconnect?
-
             else:
                 logger.error(
                     f"Connection failed to {class_name} at {self.address}")

@@ -265,10 +265,13 @@ class ScaleProcessor (Singleton):
 
     async def _reset(self):
         async with self._history_lock:
-            self._history_time = []
-            self._history_weight = []
-            # probably should clear any pending updates
-            # as they may be pre-tare
+            self._reset_have_lock()
+
+    def _reset_have_lock(self):
+        self._history_time = []
+        self._history_weight = []
+        # TODO: Perhaps should clear any pending updates
+        #       as they may be pre-tare
 
     @property
     def _history_available(self):
@@ -296,6 +299,20 @@ class ScaleProcessor (Singleton):
             # "Acquiring a lock is fair: the coroutine that proceeds
             #  will be the first coroutine that started waiting on the lock."
             async with self._history_lock:
+                # Detect a gap in reporting being "too long"
+                # (typically from a disconnect/reconnect)
+                # A skip of three at 150 ms per update with the Skale II
+                TOO_LONG = 0.8 # seconds
+                try:
+                    if ((dt := swu.scale_time
+                               - scale_processor._history_time[-1]) > TOO_LONG):
+                        logger.warning(
+                            "Resetting scale due to gap in reports: "
+                            f"{dt:0.3f} > {TOO_LONG} s")
+                        scale_processor._reset_have_lock()
+                        return
+                except IndexError:
+                    pass  # (No elements in the history list)
                 scale_processor._history_time.append(swu.scale_time)
                 scale_processor._history_weight.append(swu.weight)
                 # Unlikely, but possibly the case that history_max shrunk
