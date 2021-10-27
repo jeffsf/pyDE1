@@ -31,7 +31,7 @@ def run_database_logger(config: pyDE1.config.Config,
     from pyDE1.supervise import SupervisedTask
 
 
-    logger = pyDE1.getLogger('DatabaseLogger')
+    logger = pyDE1.getLogger('Database.Logger')
 
     pyde1_logging.setup_queue_logging(config.logging, log_queue)
     pyde1_logging.config_logger_levels(config.logging)
@@ -63,7 +63,7 @@ def run_database_logger(config: pyDE1.config.Config,
     loop.set_exception_handler(sm.exception_handler)
 
     async def heartbeat():
-        hlog = pyDE1.getLogger('Heartbeat.DatabaseLogger')
+        hlog = pyDE1.getLogger('Heartbeat.Database.Logger')
         while True:
             await asyncio.sleep(10)
             hlog.debug("===== BRAP =====")

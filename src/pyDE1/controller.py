@@ -71,7 +71,7 @@ def run_controller(config: pyDE1.config.Config,
                 if device is not None:
                     await device.disconnect()
             t1 = time.time()
-            logger.info(f"Controller elapsed: {t1 - t0:0.3f} sec")
+            logger.info(f"Controller shutdown took {t1 - t0:0.3f} sec")
             logger.info("Setting cleanup_complete")
             sm.cleanup_complete.set()
 

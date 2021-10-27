@@ -116,26 +116,30 @@ def run_mqtt_outbound(config: pyDE1.config.Config,
             loop.call_soon_threadsafe(_start_shutdown)
 
     def on_publish_callback(client, userdata, mid):
-        client_logger.info(f"CB: Published: mid: {mid}")
+        client_logger.debug(f"CB: Published: mid: {mid}")
 
     # Caught exception in on_disconnect:
     #     on_disconnect_callback() missing 1 required positional argument:
     #         'properties'
     def on_disconnect_callback(client, userdata, reasonCode, properties=None):
-        client_logger.info(f"CB: Disconnect: reasonCode: {reasonCode}, "
-                    f"properties {properties}")
+        if sm.shutdown_underway.is_set():
+            level = logging.INFO
+        else:
+            level = logging.ERROR
+        client_logger.log(level, f"CB: Disconnect: reasonCode: {reasonCode}, "
+                                 f"properties {properties}")
 
     def on_socket_open_callback(client, userdata, socket):
-        client_logger.info(f"CB: Socket open: socket: {socket}")
+        client_logger.debug(f"CB: Socket open: socket: {socket}")
 
     def on_socket_close_callback(client, userdata, socket):
-        client_logger.info(f"CB: Socket close: socket: {socket}")
+        client_logger.debug(f"CB: Socket close: socket: {socket}")
 
     def on_socket_register_write_callback(client, userdata, socket):
-        client_logger.info(f"CB: Socket register write: socket: {socket}")
+        client_logger.debug(f"CB: Socket register write: socket: {socket}")
 
     def on_socket_unregister_write_callback(client, userdata, socket):
-        client_logger.info(f"CB: Socket unregister write: socket: {socket}")
+        client_logger.debug(f"CB: Socket unregister write: socket: {socket}")
 
     mqtt_client = mqtt.Client(
         client_id="{}@{}[{}]".format(

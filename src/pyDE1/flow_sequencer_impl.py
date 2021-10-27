@@ -395,7 +395,7 @@ class FlowSequencerImpl (Singleton, FlowSequencer):
 
         cancel_tasks_by_name() won't cancel its own task
         """
-        logger.info("Canceling stragglers")
+        logger.debug("Canceling stragglers")
         cancel_tasks_by_name(self._sequence_task_name, starts_with=False)
 
 

@@ -399,7 +399,7 @@ def setup_queue_logging(config_logging: ConfigLogging,
 
 def config_logger_levels(config_logging: ConfigLogging):
     set_root_logger_levels(config_logging)
-    logger = pyDE1.getLogger('ConfigLoggerLevels')
+    logger = pyDE1.getLogger('Logging.Config')
     for logger_name, logger_level in config_logging.LOGGERS.items():
         logger.info(f"Setting {logger_name} to {logger_level}")
         pyDE1.getLogger(logger_name).setLevel(logger_level)
