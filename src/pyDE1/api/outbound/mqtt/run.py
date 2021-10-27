@@ -27,6 +27,13 @@ class OutboundMode (enum.Enum):
     LogRecord = enum.auto()
 
 
+# See will_topic, below
+class MQTTStatusText (enum.Enum):
+    on_connection = 'Here'
+    on_graceful_disconnect = 'Gone'
+    on_will = 'Died'
+
+
 def run_mqtt_outbound(config: pyDE1.config.Config,
                       log_queue: multiprocessing.Queue,
                       outbound_pipe: mpc.Connection,
@@ -49,12 +56,16 @@ def run_mqtt_outbound(config: pyDE1.config.Config,
 
     from pyDE1.supervise import SupervisedTask
 
-
     if mode == OutboundMode.LogRecord:
         logger = pyDE1.getLogger('LogMQTT')
+        will_subtopic = 'logging'
     else:
         logger = pyDE1.getLogger('Outbound')
+        will_subtopic = 'notification'
 
+    will_topic = "/".join((
+        config.mqtt.TOPIC_ROOT, 'status/mqtt', will_subtopic,
+    ))
 
     pyde1_logging.setup_queue_logging(config.logging, log_queue)
     pyde1_logging.config_logger_levels(config.logging)
@@ -86,6 +97,9 @@ def run_mqtt_outbound(config: pyDE1.config.Config,
 
     loop.set_exception_handler(sm.exception_handler)
 
+    def _start_shutdown(sig = None):
+        loop.create_task(sm.shutdown(sig, loop))
+
     async def heartbeat():
         hlog = pyDE1.getLogger(
             f"Heartbeat.{multiprocessing.current_process().name}")
@@ -98,9 +112,6 @@ def run_mqtt_outbound(config: pyDE1.config.Config,
     def on_log_callback(client: mqtt.Client, userdata, level, buf):
         client_logger.info(f"CB: Log: level: {level} '{buf}' ({type(buf)})")
 
-    def _start_shutdown(sig = None):
-        loop.create_task(sm.shutdown(sig, loop))
-
     def on_connect_callback(client, userdata, flags, reasonCode, properties):
         if reasonCode == 0:
             level = logging.INFO
@@ -109,11 +120,39 @@ def run_mqtt_outbound(config: pyDE1.config.Config,
         client_logger.log(level,
             f"CB: Connect: flags: {flags}, reasonCode: {reasonCode}, "
             f"properties {properties}")
-        if reasonCode != 0:
+        # Split "action" from logging for clarity
+        if reasonCode == 0:
+            _send_on_connection_status()
+        else:
             client_logger.critical(
                 f"Connection to MQTT broker failed: {str(reasonCode)}, "
                 "initiating process shutdown." )
             loop.call_soon_threadsafe(_start_shutdown)
+
+    def _send_on_connection_status():
+        mqtt_client.publish(
+            topic=will_topic,
+            payload=MQTTStatusText.on_connection.value,
+            qos=0,
+            retain=True,
+        )
+
+    def _send_on_graceful_disconnect():
+        logger.info("Publishing graceful disconnect status")
+        rc = mqtt_client.publish(
+            topic=will_topic,
+            payload=MQTTStatusText.on_graceful_disconnect.value,
+            qos=0,
+            retain=True,
+        )
+        rc.wait_for_publish()
+
+    class ClientSendsGracefulDisconnect (mqtt.Client):
+
+        def disconnect(self, *args, **kwargs):
+            _send_on_graceful_disconnect()
+            super(ClientSendsGracefulDisconnect,
+                  self).disconnect(*args, **kwargs)
 
     def on_publish_callback(client, userdata, mid):
         client_logger.debug(f"CB: Published: mid: {mid}")
@@ -141,7 +180,7 @@ def run_mqtt_outbound(config: pyDE1.config.Config,
     def on_socket_unregister_write_callback(client, userdata, socket):
         client_logger.debug(f"CB: Socket unregister write: socket: {socket}")
 
-    mqtt_client = mqtt.Client(
+    mqtt_client = ClientSendsGracefulDisconnect(
         client_id="{}@{}[{}]".format(
             config.mqtt.CLIENT_ID_PREFIX,
             gethostname(),
@@ -170,6 +209,13 @@ def run_mqtt_outbound(config: pyDE1.config.Config,
             username=config.mqtt.USERNAME,
             password=config.mqtt.PASSWORD
         )
+
+    mqtt_client.will_set(topic=will_topic,
+                         payload=MQTTStatusText.on_will.value,
+                         qos=0,
+                         retain=True,
+                         properties=None
+                         )
 
     mqtt_client.connect(host=config.mqtt.BROKER_HOSTNAME,
                         port=config.mqtt.BROKER_PORT,
