@@ -1,22 +1,122 @@
 
 # Changelog
 
+## 0.9.0 – 2021-10-31
+
+### Overview
+
+Functionality for the beta release completed and tested.
+
+### New
+
+* The flush-control features of *experimental* Firmware 1283 were implemented
+  and include control of target duration, temperature, and flow. 46c0481
+
+* Clean, Descale, and Transport functionality is now available through the API.
+  65f2ac9
+
+* Provide asynchronous firmware upload through API. d6a2dbc, 32436a9
+
+* GET of DE1_STATE enabled. 2b4435e
+
+* Rewrite of logging and logging configuration. "Early" logging is captured
+  and routed to the log file, once it is opened. Log levels and formatters
+  can be easily configured through the YAML config files. b759168, 39c714d,
+  7df0397, d3e128c, cabab97
+
+* Provide logging over MQTT for client use (in addition to console and
+  log file). 019bed0
+
+* Profile frame logging provides "not" names for unset FrameFlags to clarify
+  log messages. For example, the absence of `CtrlF` is now rendered as `CtrlP`.
+  c842565
+
+* MQTT "Will" implemented, reporting unexpected MQTT disconnects. 22d06b4
+
+* Feature flags have been added to formalize access to DE1 and firmware
+  abilities. d7405b0
+
+
+### Fixed
+
+* Loop-level, exception-initiated shutdowns now terminate more cleanly. 0b593d0
+
+* An error condition when no scale was present during a "shot"
+  has been resolved. ffae2f
+
+* An error condition when a DE1 connected and the profile was not yet known
+  has been resolved 58bbfad
+
+* AutoTareNotification and StopAtNotification now populate sender. 9f39d08
+
+* A very early termination of the program (before processes are defined) now
+  terminates more cleanly. 4f95c34
+
+* ScaleProcessor: Reset the history if a gap in reports is too long, such as
+  from a disconnect-reconnect sequence. 48a35ca
+
+
+
+### Changed
+
+* `c_api` was updated with new information. 46c0481
+
+* The firmware version is read early in the DE1 initialization to determine
+  the range of valid MMRs and how to efficiently read them. 46c0481
+
+* The `ModeControl` class was refactored into `flow_sequencer`. 46c0481
+
+* MMRs that are not able to be decoded (such as not implemented), are logged
+  along with the value received. 2d0fa24
+
+* Return 400 Bad Request for PATCH/PUT with no content. d00bd24
+
+* Change MQTT to not request retaining messages from pyDE1. 8a8ba5e
+
+* Logging level and wording changes. 99ec22f, b31c850
+
+* **MAPPING 4.0.0** rewrites `IsAt` to use an enum, rather than the class
+  to define the target, simplifying package inclusion. 78cea85
+
+* Rework imports to remove order dependencies and simplify. c895f7d, b31c850
+
+* Improve reconnection algorithm for DE1 and Scale. 6be3e5a
+
+* Improve camelcase_from_underscore(). 0b40fe9
+
+* Do not try to reconnect DE1 or Scale while shutting down. bd21a93
+
+* Inbound (HTTP) API: Check DE1 and scale is_ready instead of is_connected.
+  5de28e7
+
+
+### Deprecated
+
+### Removed
+
+* Remove unused Config.set_logging(). 2b104e6
+
+* Remove feature.py as previously incorporated into FeatureFlag. 469ee96
+
+
+
+
 ## 0.8.0 – 2021-09-28
 
 ### Overview
 
-This release focused on converting command-line executables to robust, 
-self-starting, and supervised services. Both the core pyDE1 controller 
-and the Visualizer uploader now can be started with `systemd` 
-automatically at boot. Configuration of many parameters can be done 
-through YAML files (simple, human-friendly syntax), by default in 
-`/usr/local/pyde1/`. Command-line parameters, usable by the service unit files, 
+This release focused on converting command-line executables to robust,
+self-starting, and supervised services. Both the core pyDE1 controller
+and the Visualizer uploader now can be started with `systemd`
+automatically at boot. Configuration of many parameters can be done
+through YAML files (simple, human-friendly syntax), by default in
+`/usr/local/pyde1/`. Command-line parameters, usable by the service unit files,
 can be used to override the config-file location.
 
-Logging configuration may change prior to "beta". At this time it is only 
+Logging configuration may change prior to "beta". At this time it is only
 configurable in the output format and level for the *stderr* and *file* loggers.  
-By default, the *stderr* logger is at the WARNING level abd without timestamps, 
-as it is managed through `systemd` when being run as a service. A command-line 
+By default, the *stderr* logger is at the WARNING level abd without timestamps,
+as it is managed through `systemd` when being run as a service. A command-line
 parameter allows for timestamped output at the DEBUG level for interactive use.
 
 ### New
@@ -25,7 +125,7 @@ parameter allows for timestamped output at the DEBUG level for interactive use.
     * Service ("unit") files for `pyde1.service` and `pyde1-visualizer.service`
     * Config files in YAML form
 * Auto-off, configurable
-* Track the IDs of connected Bluetooth devices for cleanup under Linux and 
+* Track the IDs of connected Bluetooth devices for cleanup under Linux and
     disconnect them at the Bluez level in the case of a non-graceful exit
 * MQTT supports authorization and access-control lists
 * Visualizer: Don't upload short "shots", such as for flushing (configurable)
@@ -33,16 +133,16 @@ parameter allows for timestamped output at the DEBUG level for interactive use.
 * Database:
     * Self-initialize, if needed
     * Check for the proper schema at start
-* Replay: config file and command-line switches allow easier configuration, 
+* Replay: config file and command-line switches allow easier configuration,
     including sequence ID and MQTT topic root
 
 
 ### Fixed
 
-* MQTT (outbound) API will now detect connection or authentication failures 
+* MQTT (outbound) API will now detect connection or authentication failures
     with the broker and terminate pyDE1
-* FlowSequencer no longer raises exception when trying to report that 
-    the steam time is not managed directly by the software. 
+* FlowSequencer no longer raises exception when trying to report that
+    the steam time is not managed directly by the software.
     (It is managed by the DE1 firmware.)
 * Mass-flow estimates had an off-by-one error that was corrected
 * Replay now properly reports sequence_id on gate notifications
@@ -54,33 +154,33 @@ parameter allows for timestamped output at the DEBUG level for interactive use.
     by default (configurable)
 * Refactored and unified shutdown processes
     * **NB: SIGHUP is no longer used for log rotation. It is a termination signal.**
-* Refactored supervised processes to handle uncaught exceptions and 
+* Refactored supervised processes to handle uncaught exceptions and
     properly terminate for automated restart
 * Visualizer: log to `pyde1-visualizer.log` by default
-* Stop-at-weight internally includes 170 ms to account for the "fall-time" 
+* Stop-at-weight internally includes 170 ms to account for the "fall-time"
     from the basket to the cup.
 * Logging:
-    * Switched to a file-watcher handler so that log rotation should 
+    * Switched to a file-watcher handler so that log rotation should
         be transparent, without the need of a signal
-    * Provide better control of formatting and level for use with `systemd` 
+    * Provide better control of formatting and level for use with `systemd`
         (service) infrastructure
     * Change default file name to `pyde1.log`
-    * Add `--console` command-line flag to provide timestamped, 
+    * Add `--console` command-line flag to provide timestamped,
         DEBUG-level output to assist in development and debugging
-    * Adjust some log levels so that INFO-level logs are more meaningful 
+    * Adjust some log levels so that INFO-level logs are more meaningful
     * Removed last usages of `aiologger`
 * The outbound API reports "disconnected" for the DE1 and scale when initialized
 
 ### Deprecated
 
-* `find_first_and_load.py` (Use the APIs. It would have already been removed 
+* `find_first_and_load.py` (Use the APIs. It would have already been removed
     if previously deprecated)
 
 ### Removed
 
 * `ugly_bits.py` (previously deprecated)
 * `try_de1.py` (previously deprecated)
-* `DE1._recorder_active` and dependencies, including `shot_file.py` 
+* `DE1._recorder_active` and dependencies, including `shot_file.py`
     (previously deprecated)
 * Profile `from_json_file()` (previously deprecated)
 * `replay_vis_test.py` -- Use `replay.py` with config or command-line options
@@ -90,22 +190,22 @@ parameter allows for timestamped output at the DEBUG level for interactive use.
 
 ### Schema Upgrade Required
 
-> NB: Backup your database before updating the schema. 
+> NB: Backup your database before updating the schema.
 
 See SQLite `.backup` for details if you are not familiar.
 
 This adds columns for the `id` and `name` fields that are now being sent
-with `ConnectivityUpdate` 
+with `ConnectivityUpdate`
 
 ### New
 
 * Stand-alone app automatically uploads to Visualizer on shot completion
 * PUT and GET of DE1_PROFILE_ID allows setting of profile by ID
-* A stand-alone "replay" utility can be used to exercise clients, 
+* A stand-alone "replay" utility can be used to exercise clients,
 	such as web apps
 * Both the DE1 and scale will try to reconnect on unexpected disconnect
 * Add `DE1IncompleteSequenceRecordError` for when write is not yet complete
-* Variants of the EB6 profile at different temperatures 
+* Variants of the EB6 profile at different temperatures
 
 ### Fixed
 
@@ -125,16 +225,16 @@ with `ConnectivityUpdate`
 
 * Better logging when waiting for a sequence to complete times out
 * Capture pre-sequence history at all times so "sync" is possible on replay
-* Removed read-back of CUUID.RequestedState as StateInfo 
+* Removed read-back of CUUID.RequestedState as StateInfo
   provides current state
 * Removed "extra" last-drops check
 * Allow more API requests when DE1 or scale is not ready
-* Use "ready" and not just "connected" to determine if the 
+* Use "ready" and not just "connected" to determine if the
 	DE1 or scale can be queried
 * Allow [dis]connect while [dis]connected
-* `ConnectivityChange` notification includes `id` and `name` to remove 
+* `ConnectivityChange` notification includes `id` and `name` to remove
 	the need to call the API for them
-* Improve error message on JSON decode by including a snippet 
+* Improve error message on JSON decode by including a snippet
   around the error
 * Set the default first-drops threshold to 0.0 for fast-flowing shots
 
@@ -142,7 +242,7 @@ with `ConnectivityUpdate`
 #### Resource Version 3.0.0
 
 * Changes previously unimplemented _UPLOAD to _ID
-    
+
         DE1_PROFILE_ID
         DE1_FIRMWARE_ID
 
@@ -166,7 +266,7 @@ END TRANSACTION;
 
 **The Mimoja Release**
 
-> I am not sure how / where to store shots and profiles. 
+> I am not sure how / where to store shots and profiles.
 > I hate it to only have it browser local.
 
 *So do I. Wonder no longer.*
@@ -179,13 +279,13 @@ as well as capturing virtually all real-time data during all flow sequences,
 including a brief set of data from *before* the state transition.
 
 Profiles are unique by the content of their "raw source" and also have
-a "fingerprint" that is common across all profiles that produce 
-the same "program" for the DE1. Changing a profile's name alone 
+a "fingerprint" that is common across all profiles that produce
+the same "program" for the DE1. Changing a profile's name alone
 does not change this fingerprint. Changing the frames in a profile
 without changing the name changes both the ID of the profile,
 as well as its fingerprint. These are both calculated using SHA1
 from the underlying data, so should be consistent across installs
-for the same source data or frame set. 
+for the same source data or frame set.
 
 Profiles can also be searched by the customary metadata:
 
@@ -199,14 +299,14 @@ Profiles can also be searched by the customary metadata:
 `aiosqlite` and its dependencies are now required.
 
 Legacy-style shot data can be extracted from the database by an application
-other than that which is running the DE1. Creating a Visualizer-compatible 
-"file" for upload can be done in around 80-100 ms on a RPi 3B. 
-If written to a physical file, it is also compatible with John Weiss' 
-shot-plotting programs. See `pyDE1/shot_file/legacy.py` 
+other than that which is running the DE1. Creating a Visualizer-compatible
+"file" for upload can be done in around 80-100 ms on a RPi 3B.
+If written to a physical file, it is also compatible with John Weiss'
+shot-plotting programs. See `pyDE1/shot_file/legacy.py`
 
-The database retains the last-known profile uploaded to the DE1. 
-If a flow sequence beings prior to uploading a profile, it is used 
-as the "most likely" profile and identified in the database 
+The database retains the last-known profile uploaded to the DE1.
+If a flow sequence beings prior to uploading a profile, it is used
+as the "most likely" profile and identified in the database
 with the `profile_assumed` flag.
 
 **NB: The database needs to be manually initialized prior to use.**
@@ -215,7 +315,7 @@ One approach is
 
 ```
 sudo -u <user> sqlite3 /var/lib/pyDE1/pyDE1.sqlite3 \
-< path/to/pyDE1/src/pyDE1/database/schema/schema.001.sql 
+< path/to/pyDE1/src/pyDE1/database/schema/schema.001.sql
 
 ```
 
@@ -228,15 +328,15 @@ In `find_first_and_load.py`, `set_saw()` now uses the passed mass
 Upload limit changed to 16 kB to accommodate larger profiles.
 
 FlowSequencer events are now notified over `SequencerGateNotification`
-and include a `sequence_id` and the `active_state` 
+and include a `sequence_id` and the `active_state`
 for use with history logging.
 
-`Profile.from_json()` now expects a string or bytes-like object, 
-rather than a dict. This change is to ease capture of the 
+`Profile.from_json()` now expects a string or bytes-like object,
+rather than a dict. This change is to ease capture of the
 profile "source" for use with history logging.
 
 `ProfileByFrames.from_json()` no longer rounds the floats to maintain
-the integrity of the original source. They will still be rounded 
+the integrity of the original source. They will still be rounded
 at the time that they are encoded into binary payloads.
 
 Standard initialization of the DE1 now includes reading `CUUID.Versions`
@@ -254,7 +354,7 @@ able to upload profiles. If needed within the code base, read
 the file, and pass to `Profile.from_json()` to ensure that
 the profile source and signatures are properly updated.
 
-`DE1._recorder_active` and the contents of `shot_file.py` have been 
+`DE1._recorder_active` and the contents of `shot_file.py` have been
 superseded by database logging.
 
 ### Known Issues
@@ -489,7 +589,7 @@ steps are now in `ugly_bits.py`. See also `run.py`
 
 * Adds to `DE1ModeEnum` Espresso, HotWaterRinse, Steam, HotWater for
   use by non-GHC machines
-  
+
 * `.can_post` now returns False, reflecting that POST is and was not supported
 
 #### Response Codes
@@ -573,7 +673,7 @@ to its private internals.
 * Adds `IsAt.internal_type` to help validate the string values for
   `DE1ModeEnum` and `ConnectivityEnum`. JSON producers and consumers
   should still expect and provide `IsAt.v_type`
-  
+
 * Enables `de1/profile` for PUT
 
 #### Resource Version 1.1.0
@@ -659,22 +759,22 @@ authentication, and authorization, as well as a more
   and `scale_time` are preferred over `arrival_time` as, in a future
   version, these will be estimates that remove some of the jitter
   relative to packet-arrival time.
-  
+
 * To be able to keep cached values of DE1 variables current, a
   read-back is requested on each write.
-  
+
 * `NoneSet` and `NONE_SET` added to some `enum.IntFlag` to provide
   clearer representations
-  
+
 * Although `is_read_once` and `is_stable` have been roughed in,
   optimizations using them have not been done
-  
+
 * Disabled reads of `CUUID.ReadFromMMR` as it returns the request
   itself, which is not easily distinguishable from the data
   read. These two interpret their `Length` field differently, making
   it difficult to determine if `5` is an unexpected value or if it was
   just that 6 words were requested to be read.
-  
+
 * Scaling on `MMR0x80LowAddr.TANK_WATER_THRESHOLD` was corrected.
 
 
@@ -738,5 +838,5 @@ DRY, the scanner should be able to return the proper scale from any of
 the alternatives.
 
 Refactoring of this is pending the formal release of
-`BleakScanner.find_device_by_filter(filterfunc)` from 
+`BleakScanner.find_device_by_filter(filterfunc)` from
 [bleak PR #565](https://github.com/hbldh/bleak/pull/565)
