@@ -46,7 +46,7 @@ from pyDE1.scale.processor import ScaleProcessor
 from pyDE1.singleton import Singleton
 from pyDE1.utils import cancel_tasks_by_name
 
-logger = pyDE1.getLogger('FlowSequencer.Impl')
+logger = pyDE1.getLogger('FlowSequencer')
 
 
 class FlowSequencerImpl (Singleton, FlowSequencer):
