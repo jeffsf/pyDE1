@@ -37,60 +37,6 @@ class AtomaxSkaleII(Scale):
         # Linux, at least on an RPi 3B, needs response=True for write_gatt_char
         self._write_gatt_char_response = sys.platform == 'linux'
 
-    class Char(enum.Enum):
-
-        CONFIGURATION_EF80 =    'ef80'  # W
-        WEIGHT_NOTIFY_EF81 =    'ef81'  # N
-        BUTTON_NOTIFY_EF82 =    'ef82'  # N
-        UNKNOWN_EF83 =          'ef83'  # R
-
-        BATTERY_LEVEL =         '2a19'  # 0-63
-
-        MODEL_NUMBER =          '2a24'  # "SkaleII"
-
-        FW_REVISION =           '2a26'
-        HW_REVISION =           '2a27'
-        SW_REVISION =           '2a28'
-        MANUFACTURER_NAME =     '2a29'  # "ATOMAX INC."
-
-        UNKNOWN =               '0f050002-3225-44b1-b97d-d3274acb29de'  # R
-
-        @property
-        def cuuid(self):
-            return f"0000{self.value}-0000-1000-8000-00805f9b34fb"
-
-
-    # These typically get written to CONFIGURATION_EF80
-    class Command(enum.Enum):
-
-        DISPLAY_WEIGHT = b'\xec'
-        DISPLAY_ON = b'\xed'
-        DISPLAY_OFF = b'\xee'
-
-        OUNCES = b'\x02'
-        GRAMS = b'\x03'
-        PERSIST_UNITS = b'\04'
-
-        TARE = b'\x10'
-
-        TIMER_ZERO = b'\xd0'
-        TIMER_START = b'\xd1'
-        TIMER_STOP = b'\xd2'
-
-        # Place cal weight on Skale, send command
-        CALIBRATE_500G = b'\xca\x05'
-        CALIBRATE_1000G = b'\xca\x0a'
-
-        # Undocumented at this time
-        FILTER_WEAK = b'\x09\x00'
-        FILTER_DEFAULT = b'\x09\x01'
-        FILTER_STRONG = b'\x09\x02'
-        FILTER_STRONGER = b'\x09\x03'
-
-        @property
-        def cuuid(self):
-            return AtomaxSkaleII.Char.CONFIGURATION_EF80.cuuid
-
     async def standard_initialization(self, hold_notification=False):
         await super(AtomaxSkaleII, self).standard_initialization(
             hold_notification=True)
@@ -100,51 +46,51 @@ class AtomaxSkaleII(Scale):
 
     async def update_self_from_device(self):
         self._model_number = await self._bleak_client.read_gatt_char(
-            self.Char.MODEL_NUMBER.cuuid)
+            Characteristic.MODEL_NUMBER.cuuid)
         self._fw_revision = await self._bleak_client.read_gatt_char(
-            self.Char.FW_REVISION.cuuid)
+            Characteristic.FW_REVISION.cuuid)
         self._hw_revision = await self._bleak_client.read_gatt_char(
-            self.Char.HW_REVISION.cuuid)
+            Characteristic.HW_REVISION.cuuid)
         self._sw_revision = await self._bleak_client.read_gatt_char(
-            self.Char.SW_REVISION.cuuid)
+            Characteristic.SW_REVISION.cuuid)
         self._manufacturer_name = await self._bleak_client.read_gatt_char(
-            self.Char.MANUFACTURER_NAME.cuuid)
+            Characteristic.MANUFACTURER_NAME.cuuid)
 
     async def start_sending_weight_updates(self):
         await self._bleak_client.start_notify(
-            self.Char.WEIGHT_NOTIFY_EF81.cuuid,
+            Characteristic.WEIGHT_NOTIFY_EF81.cuuid,
             self._create_weight_update_hander())
         logger.info("Sending weight updates")
 
     async def stop_sending_weight_updates(self):
         await self._bleak_client.stop_notify(
-            self.Char.WEIGHT_NOTIFY_EF81.cuuid)
+            Characteristic.WEIGHT_NOTIFY_EF81.cuuid)
         logger.info("Stopped weight updates")
 
     def is_sending_weight_updates(self):
         return NotImplementedError
 
     async def _tare_internal(self):
-        await self.send_command(self.Command.TARE)
+        await self.send_command(Command.TARE)
         logger.info("Internal tare sent")
 
     async def current_weight(self):
         # await self._bleak_client.read_gatt_char(
-        #     self.Char.UNKNOWN_EF83.uuid)
+        #     Characteristic.UNKNOWN_EF83.uuid)
         # # That CUUID doesn't look like weight
         raise NotImplementedError
 
     async def display_on(self):
-        await self.send_command(self.Command.DISPLAY_WEIGHT)
-        await self.send_command(self.Command.DISPLAY_ON)
+        await self.send_command(Command.DISPLAY_WEIGHT)
+        await self.send_command(Command.DISPLAY_ON)
         logger.info("Display on")
 
     async def display_off(self):
-        await self.send_command(self.Command.DISPLAY_OFF)
+        await self.send_command(Command.DISPLAY_OFF)
         logger.info("Display off")
 
     async def set_grams(self):
-        await self.send_command(self.Command.GRAMS)
+        await self.send_command(Command.GRAMS)
         logger.info("Grams selected")
 
     @property
@@ -153,16 +99,16 @@ class AtomaxSkaleII(Scale):
 
     async def start_sending_button_updates(self):
         await self._bleak_client.start_notify(
-            self.Char.BUTTON_NOTIFY_EF82.cuuid,
+            Characteristic.BUTTON_NOTIFY_EF82.cuuid,
             self._create_button_press_hander())
         logger.info("Sending button updates")
 
     async def stop_sending_button_updates(self):
         await self._bleak_client.stop_notify(
-            self.Char.BUTTON_NOTIFY_EF82.cuuid)
+            Characteristic.BUTTON_NOTIFY_EF82.cuuid)
         logger.info("Stopped button updates")
 
-    async def send_command(self, command: Command):
+    async def send_command(self, command: "Command"):
         await self._bleak_client.write_gatt_char(command.cuuid, command.value,
             response=self._write_gatt_char_response)
 
@@ -218,6 +164,61 @@ class AtomaxSkaleII(Scale):
 
         self._button_1_tare_subscriber_id \
             = await self._event_button_press.subscribe(button_1_tare)
+        
+
+class Characteristic(enum.Enum):
+
+    CONFIGURATION_EF80 =    'ef80'  # W
+    WEIGHT_NOTIFY_EF81 =    'ef81'  # N
+    BUTTON_NOTIFY_EF82 =    'ef82'  # N
+    UNKNOWN_EF83 =          'ef83'  # R
+
+    BATTERY_LEVEL =         '2a19'  # 0-63
+
+    MODEL_NUMBER =          '2a24'  # "SkaleII"
+
+    FW_REVISION =           '2a26'
+    HW_REVISION =           '2a27'
+    SW_REVISION =           '2a28'
+    MANUFACTURER_NAME =     '2a29'  # "ATOMAX INC."
+
+    UNKNOWN =               '0f050002-3225-44b1-b97d-d3274acb29de'  # R
+
+    @property
+    def cuuid(self):
+        return f"0000{self.value}-0000-1000-8000-00805f9b34fb"
+
+
+# These typically get written to CONFIGURATION_EF80
+class Command(enum.Enum):
+
+    DISPLAY_WEIGHT = b'\xec'
+    DISPLAY_ON = b'\xed'
+    DISPLAY_OFF = b'\xee'
+
+    OUNCES = b'\x02'
+    GRAMS = b'\x03'
+    PERSIST_UNITS = b'\04'
+
+    TARE = b'\x10'
+
+    TIMER_ZERO = b'\xd0'
+    TIMER_START = b'\xd1'
+    TIMER_STOP = b'\xd2'
+
+    # Place cal weight on Skale, send command
+    CALIBRATE_500G = b'\xca\x05'
+    CALIBRATE_1000G = b'\xca\x0a'
+
+    # Undocumented at this time
+    FILTER_WEAK = b'\x09\x00'
+    FILTER_DEFAULT = b'\x09\x01'
+    FILTER_STRONG = b'\x09\x02'
+    FILTER_STRONGER = b'\x09\x03'
+
+    @property
+    def cuuid(self):
+        return Characteristic.CONFIGURATION_EF80.cuuid
 
 
 Scale.register_constructor(AtomaxSkaleII, 'Skale')

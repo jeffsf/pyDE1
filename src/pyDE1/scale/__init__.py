@@ -7,7 +7,6 @@ SPDX-License-Identifier: GPL-3.0-only
 """
 
 from .scale import (
-    Scale, scale_factory, recognized_scale_prefixes,
-    ScaleError, ScaleNoAddressError, ScaleNotConnectedError
+    Scale, scale_factory, recognized_scale_prefixes
 )
 from .atomax_skale_ii import AtomaxSkaleII

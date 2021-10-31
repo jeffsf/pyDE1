@@ -35,22 +35,6 @@ _recognized_scale_prefixes = set()
 def recognized_scale_prefixes():
     return _recognized_scale_prefixes.copy()
 
-
-class ScaleError(RuntimeError):
-    def __init__(self, *args, **kwargs):
-        super(ScaleError, self).__init__(args, kwargs)
-
-
-class ScaleNoAddressError(ScaleError):
-    def __init__(self, *args, **kwargs):
-        super(ScaleNoAddressError, self).__init__(args, kwargs)
-
-
-class ScaleNotConnectedError(ScaleError):
-    def __init__(self, *args, **kwargs):
-        super(ScaleNotConnectedError, self).__init__(args, kwargs)
-
-
 # TODO: Experimentaly confirm that weight and mass-flow estimates
 #       are reasonably time aligned - NB: DE1.fall_time
 
@@ -110,7 +94,7 @@ class Scale:
         #       and how do you "release" if it never arrives?
 
         self._tare_requested = False
-        self._period_estimator = self.PeriodEstimator(self)
+        self._period_estimator = PeriodEstimator(self)
 
         # Don't need to await this on instantiation
         asyncio.get_event_loop().create_task(
@@ -503,59 +487,6 @@ class Scale:
         self._nominal_period = value
         self._period_estimator.reset(self._nominal_period)
 
-    # Inner class
-    class PeriodEstimator:
-        """
-        Estimate inter-arrival period from stream of arrivals
-
-        Presently just an exponential moving average
-
-        Skale II usually "bulks up" two or more reports on a 150-ms clock
-        300 ms burbles aren't uncommon. A "normal" 50-ms stretch before its
-        other half arrives would generate a (50/100) * k change.
-        The other half then would generate (-100/100) * k change
-        So k on the order of 1/1000 should be reasonable (10 sec, ~1 min settle)
-        k of 1/10000 would be even better (100 sec, 10 min settle)
-        Another way to look at this is 600 ms error / 600 s measurement ~ 0.1%
-
-        Hand-in-hand with this is how long to consider a gap vs. a burble
-        Nearly 5% of 150-ms windows from a SkaleII had 3 reports.
-        Up to 6 in a window were observed. It dropped to 0.1% at 4 reports
-        per window. Ignoring too many of these can lead to the estimate being off.
-        Based on this, 300 ms (two periods) seems too short.
-        300 + 150/2 = 375 ms is probably OK.
-        450 + 150/2 = 525 ms is probablu conservative
-        Try 500 ms to be reasonable.
-        """
-
-        def __init__(self, my_scale):
-
-            # TODO: How to update this PeriodEstimator for subclass changes?
-
-            self._scale = my_scale
-
-            self._k = 1/10000   # tau ~ 17 min at 10 samples/sec
-            self._ma = self._scale.nominal_period
-            self._too_long = 0.5  # seconds before considered a gap
-
-            self._persist_every_n = 1000  # about 100 seconds
-            self._n_counter = 0
-
-        def reset(self, nominal_period: float):
-            self._ma = nominal_period
-
-        async def process_arrival(self, delta_arrival_time: float):
-
-            if delta_arrival_time < self._too_long:
-                self._ma = ((1 - self._k) * self._ma) \
-                           + (self._k * delta_arrival_time)
-                self._scale.nominal_period = self._ma
-                self._n_counter += 1
-                if self._n_counter >= self._persist_every_n:
-                    self._n_counter = 0
-                    logger.debug(f"Scale period: {self._ma}")
-                    await self._scale._persist_period_to_db()
-
     async def _persist_period_to_db(self):
         if not self.address:
             raise DE1NoAddressError(
@@ -612,6 +543,61 @@ class Scale:
         _prefix_to_constructor[prefix] = constructor
         _recognized_scale_prefixes.add(prefix)
         _registered_ble_prefixes.add(prefix)
+
+
+# Used by Scale instances
+class PeriodEstimator:
+    """
+    Estimate inter-arrival period from stream of arrivals
+
+    Presently just an exponential moving average
+
+    Skale II usually "bulks up" two or more reports on a 150-ms clock
+    300 ms burbles aren't uncommon. A "normal" 50-ms stretch before its
+    other half arrives would generate a (50/100) * k change.
+    The other half then would generate (-100/100) * k change
+    So k on the order of 1/1000 should be reasonable (10 sec, ~1 min settle)
+    k of 1/10000 would be even better (100 sec, 10 min settle)
+    Another way to look at this is 600 ms error / 600 s measurement ~ 0.1%
+
+    Hand-in-hand with this is how long to consider a gap vs. a burble
+    Nearly 5% of 150-ms windows from a SkaleII had 3 reports.
+    Up to 6 in a window were observed. It dropped to 0.1% at 4 reports
+    per window. Ignoring too many of these can lead to the estimate being off.
+    Based on this, 300 ms (two periods) seems too short.
+    300 + 150/2 = 375 ms is probably OK.
+    450 + 150/2 = 525 ms is probablu conservative
+    Try 500 ms to be reasonable.
+    """
+
+    def __init__(self, my_scale):
+
+        # TODO: How to update this PeriodEstimator for subclass changes?
+
+        self._scale = my_scale
+
+        self._k = 1/10000   # tau ~ 17 min at 10 samples/sec
+        self._ma = self._scale.nominal_period
+        self._too_long = 0.5  # seconds before considered a gap
+
+        self._persist_every_n = 1000  # about 100 seconds
+        self._n_counter = 0
+
+    def reset(self, nominal_period: float):
+        self._ma = nominal_period
+
+    async def process_arrival(self, delta_arrival_time: float):
+
+        if delta_arrival_time < self._too_long:
+            self._ma = ((1 - self._k) * self._ma) \
+                       + (self._k * delta_arrival_time)
+            self._scale.nominal_period = self._ma
+            self._n_counter += 1
+            if self._n_counter >= self._persist_every_n:
+                self._n_counter = 0
+                logger.debug(f"Scale period: {self._ma}")
+                await self._scale._persist_period_to_db()
+
 
 
 def scale_factory(ble_device: BLEDevice)-> Scale:

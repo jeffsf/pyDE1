@@ -20,9 +20,7 @@ from pyDE1.dispatcher.resource import ConnectivityEnum
 from pyDE1.event_manager import SubscribedEvent
 from pyDE1.event_manager.events import ConnectivityState
 from pyDE1.exceptions import DE1NoAddressError, DE1APIValueError
-from pyDE1.scale import (
-    Scale, ScaleError, scale_factory, recognized_scale_prefixes
-)
+from pyDE1.scale import Scale, scale_factory, recognized_scale_prefixes
 from pyDE1.scale.events import (
     ScaleWeightUpdate, ScaleTareSeen, WeightAndFlowUpdate
 )
@@ -32,10 +30,6 @@ from pyDE1.scanner import (
 from pyDE1.singleton import Singleton
 
 logger = pyDE1.getLogger('Scale.Processor')
-
-
-class ScaleProcessorError (ScaleError):
-    pass
 
 
 class ScaleProcessor (Singleton):
