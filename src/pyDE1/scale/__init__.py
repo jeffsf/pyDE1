@@ -11,3 +11,4 @@ from .scale import (
     ScaleError, ScaleNoAddressError, ScaleNotConnectedError
 )
 from .atomax_skale_ii import AtomaxSkaleII
+from .decent_scale import DecentScale
