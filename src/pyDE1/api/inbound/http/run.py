@@ -154,13 +154,30 @@ def run_api_inbound(config: pyDE1.config.Config,
 
     class RequestHandler (http.server.BaseHTTPRequestHandler):
 
-        logger = pyDE1.getLogger('HTTP')
+        def __init__(self, *args, **kwargs):
+            # Calling super().__init__() starts processing, set up logger first
+            self._start = time.time()
+            self._logger = pyDE1.getLogger('Inbound.HTTP')
+            super(RequestHandler, self).__init__(*args, **kwargs)
+
+        def _format_log_message(self, fmt, *args) -> str:
+            # No need for CLF here
+            dt = (time.time() - self._start) * 1000
+            return "%.0f %s %s" % (dt,
+                                   fmt % args,
+                                   self.address_string())
 
         def log_message(self, fmt, *args):
-            logger.info("%s - - [%s] %s" %
-                        (self.address_string(),
-                         self.log_date_time_string(),
-                         fmt % args))
+            self._logger.info(self._format_log_message(fmt, *args))
+
+        def log_error(self, fmt, *args):
+            self._logger.error(self._format_log_message(fmt, *args))
+
+        def log_request(self, code='-', size='-'):
+            if isinstance(code, HTTPStatus):
+                code = f'{code.value} "{code.phrase}"'
+            self.log_message('%s %s %s',
+                             str(code), str(size), self.requestline)
 
         def send_error_response(self,
                                 code: Union[HTTPStatus, int], resp_str: str,
@@ -177,7 +194,7 @@ def run_api_inbound(config: pyDE1.config.Config,
             self.wfile.write(resp_bytes)
 
         def get_resource(self) -> (Optional[Resource], Dict):
-            logger.info(f"Request: {self.requestline}")
+            self._logger.info(f"Request: {self.requestline}")
             resource: Optional[Resource] = None
             parameter_dict = {}
             code = None
@@ -333,7 +350,7 @@ def run_api_inbound(config: pyDE1.config.Config,
                                          timestamp=resp.timestamp)
 
             rtt = (time.time() - resp.original_timestamp) * 1000
-            logger.debug(
+            self._logger.debug(
                 f"RTT: {rtt:0.1f} ms {self.requestline}"
             )
             return
