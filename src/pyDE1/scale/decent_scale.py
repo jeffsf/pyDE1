@@ -264,11 +264,23 @@ class DecentScale(Scale):
                         #
                         #        As they're already packed, I'll just pass them
 
-                            packed = int.from_bytes(data[2:4],
-                                                    byteorder='big',
-                                                    signed=False)
+                        # jmk -- Meh, not thrilled about that idea, here's
+                        #        going back four buttons, but numbered 1,2
+                        #        then 3,4 for the long presses.
+
+                            if shape == Button.CIRCLE:
+                                if duration == ButtonDuration.SHORT:
+                                    bm = ButtonMapped.CIRCLE_SHORT
+                                else:
+                                    bm = ButtonMapped.CIRCLE_LONG
+                            else:
+                                if duration == ButtonDuration.SHORT:
+                                    bm = ButtonMapped.SQUARE_SHORT
+                                else:
+                                    bm = ButtonMapped.SQUARE_LONG
+
                             sbp = ScaleButtonPress(arrival_time=now,
-                                                   button=packed)
+                                                   button=bm)
                             await scale.event_button_press.publish(sbp)
 
                 elif command == Command.TIMER:
@@ -302,10 +314,10 @@ class DecentScale(Scale):
 
         async def button_event_handler(sbp: ScaleButtonPress) -> None:
             nonlocal scale
-            # Button and length of press in two bytes, copied from payload
-            # Checking for circle and short would be
-            #   == Button.CIRCLE << 8 + ButtonDuration.SHORT
-            if sbp.button >> 8 == Button.CIRCLE:
+
+            # jmk -- using the enum means no "magic numbers" to remember
+            if sbp.button in (ButtonMapped.CIRCLE_SHORT,
+                              ButtonMapped.CIRCLE_LONG):
                 # await scale.tare()
                 logger.info(
                     "Round button press noted. Scale probably set tare.")
@@ -367,6 +379,13 @@ class ButtonDuration (enum.IntEnum):
 
     SHORT = 0x01
     LONG  = 0x02
+
+
+class ButtonMapped (enum.IntEnum):
+    CIRCLE_SHORT = 1
+    SQUARE_SHORT = 2
+    CIRCLE_LONG  = 3
+    SQUARE_LONG  = 4
 
 
 # NOTE: No longer required for v1.0 firmware due to bugs in said firmware.
