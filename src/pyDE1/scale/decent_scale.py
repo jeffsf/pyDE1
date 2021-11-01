@@ -45,33 +45,16 @@ firmware version beyond v1.0.
 
 import asyncio
 import enum
-import logging
 import sys
 import time
-from typing import Callable
+from typing import Callable, Union
 
-from bleak.backends.device import BLEDevice
-from bleak.backends.scanner import AdvertisementData
-
+import pyDE1
 from pyDE1.scale import Scale
 from pyDE1.scale.events import ScaleWeightUpdate, ScaleButtonPress
+from pyDE1.utils import data_as_hex
 
-from pyDE1.event_manager import EventPayload, SubscribedEvent
-
-logger = logging.getLogger('Scale.DecentScale')
-logger.setLevel(logging.DEBUG)
-
-
-# TODO: make use the DecentScale's MESSAGE class rather than generic type, if
-#       practical
-# Class to represent the event payload of a message received from the scale.
-# Nominally used by Tare and Display responses as these aren't covered by
-# existing generic events defined in
-class ScaleResponse(EventPayload):
-    def __init__(self, arrival_time: float, type: bytes, data: bytes):
-        super(ScaleResponse, self).__init__(arrival_time=arrival_time)
-        self.message_type = type
-        self.message_data = data
+logger = pyDE1.getLogger('Scale.DecentScale')
 
 
 class DecentScale(Scale):
@@ -83,30 +66,23 @@ class DecentScale(Scale):
         # Decent Scale sends weight updates at 10Hz
         self._nominal_period = 0.1
 
+        # jmk -- leaving this as it determines the timing in the FlowSequencer
+        #        and am removing the retry here. Either the scale tares,
+        #        or it doesn't. The FlowSequencer will take care of it
+        #        during a sequence. Dealing with it from a button will be
+        #        annoying, and will likely require a mutex
+        self._minimum_tare_request_interval = 2.5 * self._nominal_period
+
         # seconds, including all transit delays
         # TODO:Determine correct value experimentally for Decent Scale v1.0
         self._sensor_lag = 0.4
 
-        # Linux, at least on an RPi 3B, needs response=True for write_gatt_char
-        # TODO:Confirm if required for Decent Scale (assumption is yes)
-        self._write_gatt_char_response = sys.platform == 'linux'
+        self._tare_timeout = 1.0  # seconds until considered coincidence
+        self._tare_threshold = 0.05  # grams, within this, considered "at zero"
 
-        # Decent Scale sends messages in big endian byte format
-        self._byte_order = 'big'
-
-        # Attempt each command this many times before giving up; needs to be at
-        # least 2 given quirks in the v1.0 firmware (first message sometimes
-        # ignored).
-        self._command_attempts = 3
-
-        # TODO: Implement a check to confirm connected scale version and flag
-        # TODO: error or warning (as appropriate) if unsupported (Depends on
-        # TODO: version check mechanism to be confirmed in firmware v1.1)
-        # Latest version of scale firmware this code has been tested for
-        self._tested_api_version = "1.0"
-
-        # Various status indicators for messages to resubmit as events
-        self._message_handler_created = False
+        # jmk -- The Decent Scale apparently always sends weight and button
+        #        updates. These flags determine if to generate events when
+        #        they arrive.
         self._send_weight_events = False
         self._send_button_events = False
 
@@ -116,284 +92,74 @@ class DecentScale(Scale):
         self._button_tare_subscriber_id = None
         asyncio.get_event_loop().create_task(self._subscribe_button_press())
 
-        # Enable internal tare response events, hold UUID if need to unsubscribe
-        self._event_tare_subscriber_id = None
-        # TODO: work out what this really does, and if any cleanup required
-        self._event_tare_response: SubscribedEvent = SubscribedEvent(self)
-
-        # Grams, within this, considered "at zero"; official accuracy is to
-        # nearest 0.1g, so 0.05 is correct as this is the median between ticks
-        self._tare_threshold = 0.05
-
-        # Time to wait before resending a request.
-        # NB: Should normally take roughly half a cycle (~30-70ms), but in
-        # extreme cases can take as high as 200ms (2 cycles) or more.
-        # Aggressively setting limit to 150ms (1.5 cycles) is ok given the retry
-        # attempts in sending commands, which compensates for any extremely
-        # delayed response, and useful given retries are frequently necessary
-        # due to a firmware bug in v1.0 scales (refer API documentation).
-        self._minimum_tare_wait_interval = 0.15
-
-        # Seconds until considered coincidence.  Note that this is
-        # theoretically not required for the Decent Scale due to it sending an
-        # explicit confirmation, but in practice this response is buggy so
-        # makes sense to keep this as a backup for firmware v1.0
-        self._tare_timeout = 1.0
-
-        # Allows for 3 command retries with some buffer
-        self._minimum_tare_request_interval = 5 * self._nominal_period
-
-        # --- Display setup ---
-        # Enable internal display response events, hold UUID if need to
-        # unsubscribe
-        self._event_display_subscriber_id = None
-        # TODO: work out what this really does, and if any cleanup required
-        self._event_display_response: SubscribedEvent = SubscribedEvent(self)
-
-        # Time to wait before resending a request.
-        # Seems to take around one second, but given firmware bugs, aggressively
-        # resend command
-        self._minimum_display_wait_interval = 0.15
-
-    # As per Decent's spec, common Characteristic UUID's for all commands
-    class _CUUID(enum.Enum):
-        READ  = f"0000fff4-0000-1000-8000-00805f9b34fb"  # Read data FROM scale
-        WRITE = f"000036f5-0000-1000-8000-00805f9b34fb"  # Write data TO scale
-
-    # Outbound commands to the scale.  Given these are fixed in format, they do
-    # not need to be dynamically generated.
-    class _COMMAND(enum.Enum):
-        # Only weight LEDs turned on with these commands. The timer display is
-        # left off in both cases as it's not being used
-        DISPLAY_ON  = b'\x03\x0a\x01\x00\x00\x00\x08'
-        DISPLAY_OFF = b'\x03\x0a\x00\x00\x00\x00\x09'
-
-        # Request scale to tare. Note that this is sufficient for v1.0 API due
-        # to a firmware bug (i.e. can ignore setting a valid counter value in
-        # byte 3)
-        TARE        = b'\x03\x0f\x00\x00\x00\x00\x0c'
-
-        # pyDE1 does not currently support timer functions, so these are unused
-        # but left here for completeness in case this is enabled in the future
-        # TIMER_ZERO  = b'\x03\x0b\x02\x00\x00\x00\x08'
-        # TIMER_START = b'\x03\x0b\x03\x00\x00\x00\x09'
-        # TIMER_STOP  = b'\x03\x0b\x00\x00\x00\x00\x0a'
-
-    # Inbound message types from the scale
-    # TODO:Make this work (declared in the handler at the moment)
-    # class _Message(enum.Enum):
-    #     WEIGHT_STABLE    = b'\xce'
-    #     WEIGHT_CHANGING  = b'\xca'
-    #     DISPLAY_RESPONSE = b'\x0a'
-    #     TIMER            = b'\x0c'
-    #     TARE_RESPONSE    = b'\x0f'
-    #     BUTTON_TAP       = b'\xaa'
-
-    # NOTE: No longer required for v1.0 firmware due to bugs in said firmware.
-    #       Retaining as will probably be useful for v1.1 and onwards
-    # Per API, calculates the checksum required in byte 7 of a message as the
-    # byte-by-byte xor of six sequential bytes.  This code doesn't assume a
-    # specific length of the message, however.
-    # def calc_serial_byte_xor(self, byte_str):
-    #     _xor = bytearray(b'\x00')
-    #     _byte_array = bytearray(byte_str)
-    #     i = 0
-    #     while i < len(_byte_array):
-    #         _xor[0] ^= _byte_array[i]
-    #         i += 1
-    #     return _xor
-
-    # Per API, confirms that the checksum (byte 7 of a message) is the correct
-    # serial byte-by-byte xor of the first 6 bytes.
-    # TODO: Can this be internal (first char "_")?
-    def check_serial_byte_xor(self, byte_array):
-        _xor = bytearray(b'\x00')
-        if len(byte_array) != 7:
-            logger.warning(f"Message was not the required 7 bytes long, can't" +
-                           " validate checksum: {byte_array}")
-            return False
-        i = 0
-        while i < 6:
-            _xor[0] ^= byte_array[i]
-            i += 1
-        return _xor[0] == byte_array[6]
+        # Linux, at least on an RPi 3B, needs response=True for write_gatt_char
+        # TODO:Confirm if required for Decent Scale (assumption is yes)
+        self._write_gatt_char_response = sys.platform == 'linux'
 
     async def standard_initialization(self, hold_notification=False):
+        # jmk -- Here is where the CUUID listener needs to go
+        await self._bleak_client.start_notify(CUUID.READ.value,
+                                              self._create_message_handler())
         await super(DecentScale, self).standard_initialization(
             hold_notification=True)
         if not hold_notification:
             await self._notify_ready()
 
-        # create the message handler to parse all data coming from the scale
-        if not self._message_handler_created:
-            self._message_handler_created = True
-            # create the message handler to parse all data coming from the scale
-            await self._bleak_client.start_notify(self._CUUID.READ.value,
-                                                 self._create_message_handler())
-
-    async def disconnect(self):
-        # dismantle the message handler
-        await self._bleak_client.stop_notify(self._CUUID.READ.value)
-        self._message_handler_created = False
-        logger.info("Stopped message handler")
-
-        # now call the standard disconnection routine
-        await super(DecentScale, self).standard_initialization(
-            hold_notification=True)
-
     async def start_sending_weight_updates(self):
+        # jmk -- TODO: connection-aware
         self._send_weight_events = True
         logger.info("Sending weight updates")
 
     async def stop_sending_weight_updates(self):
+        # jmk -- TODO: connection-aware
         self._send_weight_events = False
         logger.info("Stopped weight updates")
 
     def is_sending_weight_updates(self):
-        return self._send_weight_events
+        # jmk -- just because it was asked to, doesn't mean that it is
+        # jmk -- Might be implemented in the future for multiple scales
+        #        Not in use as this time
+        return NotImplementedError
 
     # TODO: Consider adding additional logic to capture the most recent weight
     #       and timestamp, and if still fresh, return it here.  Seems redundant
     #       though given this data is flooding through constantly if on.
+    # jmk -- Might be implemented in the future for multiple scales
+    #        Not in use as this time
     async def current_weight(self):
         raise NotImplementedError
 
+    # jmk -- If the scale doesn't work right when running on a sane BLE stack
+    #        we'll deal with it later. That it is conveniently not decoupling
+    #        local, button-driven tare when connected means that, hopefully,
+    #        tare will take care of itself from the button. The FlowSequencer
+    #        will cover the hold-at-zero behavior, without resorting to another
+    #        task to monitor. A late tare is problematic as it may be into
+    #        a period where it is expected that the weight will be increasing.
+    #        Display on/off I'm less worried about as it typically isn't
+    #        a time-sensitive action. I'd rather not assume that we've got to
+    #        add a mutex everywhere and schedule tasks to keep retrying.
+
     async def _tare_internal(self):
-        attempts = self._command_attempts
-        tare_response_received = False
-
-        async def tare_response(response: ScaleResponse):
-            nonlocal tare_response_received
-            logger.debug(f"tare_response triggered with " +
-                         "{response.message_data}")
-            tare_response_received = True
-
-        # Make sure the function above is listening for tare response events
-        # from the message handler
-        # noinspection PyTypeChecker
-        self._event_tare_subscriber_id =\
-            await self._event_tare_response.subscribe(tare_response)
-
-        while attempts > 0:
-            # make tare request
-            # TODO: catch and deal with all relevant await exceptions
-            await self._bleak_client.write_gatt_char(self._CUUID.WRITE.value,
-                self._COMMAND.TARE.value,
-                response=self._write_gatt_char_response)
-            logger.debug(f"Tare request sent to scale, {attempts-1}" +
-                         "attempt(s) remaining")
-
-            # Now wait while a response comes in.  Should take roughly half a
-            # cycle (~30-70ms), but in extreme cases can take as high as 140ms
-            # (1.4 cycles).  Aggressively setting limit to 100ms (1 cycle) given
-            # retries will compensate for any extremely delayed response, and
-            # given retries are frequently necessary due to a firmware bug in
-            # v1.0 scales (refer API documentation).
-            try:
-                await asyncio.sleep(self._minimum_tare_wait_interval)
-            except asyncio.exceptions.CancelledError:
-                # Not sure exactly why this might occur
-                logger.debug("Sleep timer cancelled")
-
-            # NB: this should have been updated by tare_response if a valid
-            # message came back
-            if tare_response_received:
-                break
-            else:
-                logger.debug("Timed out waiting for a tare response to " +
-                             "request attempt " +
-                             f"{self._command_attempts - attempts + 1}" +
-                             ", retrying...")
-                attempts -= 1
-
-        if attempts == 0:
-            logger.info("Tare request failed")
-        else:
-            logger.info("Tare request succeeded")
-
-        # TODO: make the subscribe/unsubscribe happen only once, and globally
-        await self._event_tare_response.unsubscribe(
-            self._event_tare_subscriber_id)
-
-    # Internal display change command. Waits (async) for confirmation event that
-    # the change was successful, as sent out by the inbound "message_handler".
-    async def _display_change(self, on: bool):
-        attempts = self._command_attempts
-        display_response_received = False
-        if on:
-            state_str = "on"
-        else:
-            state_str = "off"
-
-        # TODO: Investigate the display response.  Most of the time, they don't
-        #       appear to come through.
-        async def display_response(response: ScaleResponse):
-            nonlocal display_response_received
-
-            logger.debug("display_response triggered with " +
-                         f"{response.message_data}")
-
-            # The tare response from the scale doesn't include the command " +
-            # "value as the API specifies, so just assume this response is the
-            # right one
-            display_response_received = True
-
-        # Make sure the function above is listening for tare response events
-        # from the message handler
-        # noinspection PyTypeChecker
-        self._event_display_subscriber_id =\
-            await self._event_display_response.subscribe(display_response)
-
-        while attempts > 0:
-            # make display request
-            if on:
-                await self._bleak_client.write_gatt_char(
-                    self._CUUID.WRITE.value,
-                    self._COMMAND.DISPLAY_ON.value,
-                    response=self._write_gatt_char_response)
-            else:
-                await self._bleak_client.write_gatt_char(
-                    self._CUUID.WRITE.value,
-                    self._COMMAND.DISPLAY_OFF.value,
-                    response=self._write_gatt_char_response)
-
-            logger.debug(f"Display {state_str} request sent to scale, " +
-                         f"{attempts - 1} attempt(s) remaining")
-
-            # Now wait while a response comes in
-            try:
-                await asyncio.sleep(self._minimum_display_wait_interval)
-            except asyncio.exceptions.CancelledError:
-                logger.debug("Sleep timer cancelled")
-
-            # NB: this should have been updated by display_response if a valid
-            # message came back
-            if display_response_received:
-                break
-            else:
-                logger.debug("Timed out waiting for a display response to " +
-                             "request attempt " +
-                             f"{self._command_attempts - attempts + 1}" +
-                             ", retrying...")
-                attempts -= 1
-
-        if attempts == 0:
-            # Due to firmware v1.0 bug, only ~10% of display responses are
-            # actually sent back, hence can't assume failed if no response
-            logger.info(f"Display {state_str} request was not confirmed; may " +
-                        "have failed (but hard to know on v1.0 firmware)")
-        else:
-            logger.info(f"Display {state_str} request succeeded")
-
-        # TODO: make the subscribe/unsubscribe happen only once, and globally
-        await self._event_display_response.unsubscribe(
-            self._event_display_subscriber_id)
+        await self._bleak_client.write_gatt_char(
+            CUUID.WRITE.value,
+            PackedCommand.TARE.value,
+            response=self._write_gatt_char_response)
+        logger.info("Internal tare sent")
 
     async def display_on(self):
-        await self._display_change(True)
+        await self._bleak_client.write_gatt_char(
+            CUUID.WRITE.value,
+            PackedCommand.DISPLAY_ON.value,
+            response=self._write_gatt_char_response)
+        logger.info("Display on")
 
     async def display_off(self):
-        await self._display_change(False)
+        await self._bleak_client.write_gatt_char(
+            CUUID.WRITE.value,
+            PackedCommand.DISPLAY_OFF.value,
+            response=self._write_gatt_char_response)
+        logger.info("Display off")
 
     async def set_grams(self):
         # This function is not available via the v1.0 API for the Decent scale.
@@ -405,10 +171,12 @@ class DecentScale(Scale):
         return True
 
     async def start_sending_button_updates(self):
+        # jmk -- TODO: connection-aware
         self._send_button_events = True
         logger.info("Sending button updates")
 
     async def stop_sending_button_updates(self):
+        # jmk -- TODO: connection-aware
         self._send_button_events = False
         logger.info("Stopped button updates")
 
@@ -418,73 +186,68 @@ class DecentScale(Scale):
     def _create_message_handler(self) -> Callable:
         scale = self
 
-        self._message_handler_created = True
-        
-        logger.debug("New message handler requested")
-
         async def message_handler(sender, data):
             nonlocal scale
 
             now = time.time()
 
-            # Message type constants
-            WEIGHT_STABLE    = b'\xce'
-            WEIGHT_CHANGING  = b'\xca'
-            DISPLAY_RESPONSE = b'\x0a'
-            TIMER            = b'\x0c'
-            TARE_RESPONSE    = b'\x0f'
-            BUTTON_TAP       = b'\xaa'
-
-            # BUTTON_TAP message constants - for readability later
-            BUTTON_CIRCLE    = b'\x01'
-            BUTTON_SQUARE    = b'\x02'
-            SHORT_TAP        = b'\x01'
-            LONG_PRESS       = b'\x02'
-
             # Byte 7 of the message is a checksum of the first 6 - ensure it
             # checks out
-            if not self.check_serial_byte_xor(data):
-                logger.warning(f"Invalid checksum in message {data} -  ignored")
+
+            if (ld := len(data)) != 7:
+                logger.error(
+                    f"Scale payload {ld} bytes, expected 7. Skipping")
+
+            elif not confirm_trailing_checksum(data):
+                logger.error(
+                    f"Invalid checksum in {data_as_hex(data)}, Skipping")
+
+            elif (model := data[0]) != 0x03:
+                logger.error(
+                    f"Invalid model byte, 0x{model:02x}, Skipping")
 
             else:
                 # Determine message type (stored in byte 2) and action
 
-                # Both of these message types have the same format and
-                # contents, as noted in the API documentation
-                if (data[1:2] == WEIGHT_STABLE) or\
-                   (data[1:2] == WEIGHT_CHANGING):
-                    if not self._send_weight_events:
-                        logger.debug("As weight updates are not requested, " +
-                                     "ignoring weight message from scale")
+                try:
+                    command = Command(data[1])
+                except ValueError:
+                    command = None
 
-                    else:
-                        # Per API advice, ignoring the "change in weight" data
-                        # as dodgy.
+                if command in (Command.WEIGHT_STABLE, Command.WEIGHT_CHANGING):
+                    # Per API advice, ignoring the "change in weight" data
+                    # as dodgy.
+
+                    if self._send_weight_events:
                         self._update_scale_time_estimator(now)
 
                         w = int.from_bytes(data[2:4],
-                                           self._byte_order,
+                                           'big',
                                            signed=True) / 10.0
 
                         await scale.event_weight_update.publish(
-                            ScaleWeightUpdate(arrival_time=now,
-                                              scale_time=
-                                    self._scale_time_from_latest_arrival(now),
-                                              weight=w)
-                            )
+                            ScaleWeightUpdate(
+                                arrival_time=now,
+                                scale_time=self._scale_time_from_latest_arrival(now),
+                                weight=w)
+                        )
 
-                        # Weight data just spam in the log if not changing
-                        if data[1:2] == WEIGHT_CHANGING:
-                            logger.debug(f"Got weight data of: {w}" +
-                                         f"using bytes {data[2:4]}" +
-                                         f"from message {data}")
+                elif command == Command.BUTTON_TAP:
+                    if self._send_button_events:
+                        try:
+                            shape = Button(data[2])
+                        except ValueError:
+                            shape = None
+                            logger.error(
+                                f"Invalid button shape: {data[2]}, skipping")
+                        try:
+                            duration = ButtonDuration(data[3])
+                        except ValueError:
+                            duration = None
+                            logger.error(
+                                f"Invalid button duration: {data[3]}, skipping")
+                        if shape and duration:  # jmk - works as neither is 0
 
-                elif data[1:2] == BUTTON_TAP:
-                    if not self._send_button_events:
-                        logger.debug("As button updates are not requested, " +
-                                     "ignoring button message from scale")
-
-                    else:
                         # The Decent Scale sends byte 3 to indicate the button
                         # pressed.  It also sends byte 4 to indicate a short
                         # tap or long press.  For simplicity with the Scale
@@ -494,57 +257,33 @@ class DecentScale(Scale):
                         # BUTTON_CIRCLE & LONG_PRESS = \b01 = 1
                         # BUTTON_SQUARE & SHORT_TAP  = \b10 = 2
                         # BUTTON_SQUARE & LONG_PRESS = \b11 = 3
-                        button_enum = None
-                        if data[2:3] == BUTTON_CIRCLE:
-                            button_enum = 0
-                        elif data[2:3] == BUTTON_SQUARE:
-                            button_enum = 2
-                        else:
-                            logger.warning("Unknown button type of " +
-                                           f"{data[2:3]} - ignoring")
 
-                        if button_enum is not None:
-                            if data[3:4] == LONG_PRESS:
-                                button_enum += 1
-                            elif data[3:4] != SHORT_TAP:
-                                button_enum = None
-                                logger.warning("Unknown button tap duration " +
-                                               f"of {data[3:4]} - ignoring")
+                        # jmk -- I like the idea here.
+                        #        I'd pack these so that there's an easy test
+                        #        for "button 1, short or long" or "any long"
+                        #
+                        #        As they're already packed, I'll just pass them
 
-                        if button_enum is not None:
+                            packed = int.from_bytes(data[2:4],
+                                                    byteorder='big',
+                                                    signed=False)
                             sbp = ScaleButtonPress(arrival_time=now,
-                                                   button=button_enum)
-
-                            logger.debug("Button press message received of " +
-                                         f"type: {button_enum}")
-
+                                                   button=packed)
                             await scale.event_button_press.publish(sbp)
 
-                elif data[1:2] == TIMER:
+                elif command == Command.TIMER:
                     # Not supported by pyDE1, nor relevant given much better
                     # quality sources of timing exist
-                    logger.debug("Ignoring timer update from scale as scale " +
-                                 "time updates not supported by pyDE1")
+                    pass
 
-                elif data[1:2] == TARE_RESPONSE:
-                    logger.debug("Received successful tare response from " +
-                                 f"scale - {data}")
-                    await scale._event_tare_response.publish(ScaleResponse(
-                        arrival_time=now,
-                        type=TARE_RESPONSE,
-                        data=data[2:3]))
-
-                elif data[1:2] == DISPLAY_RESPONSE:
-                    logger.debug("Received successful display change " +
-                                 f"response from scale - {data}")
-                    await scale._event_display_response.publish(ScaleResponse(
-                        arrival_time=now,
-                        type=DISPLAY_RESPONSE,
-                        data=data[3:5]))
+                elif command in (Command.TARE_RESPONSE,
+                                 Command.DISPLAY_RESPONSE):
+                    logger.info(f"{command} received")
 
                 else:  # unknown
-                    logger.warning(f"Unknown message from scale: {data[1:2]}" +
-                                   ", taken from {data}")
+                    logger.error(
+                        f"Unrecognized scale message type, {command}, skipping"
+                    )
 
         return message_handler
 
@@ -552,23 +291,103 @@ class DecentScale(Scale):
     # regardless of what the software says.  May still be valuable though, just
     # so that the dataset will show a tare command around the right time.  Will
     # also be important for API v1.1.  As such, retaining for now.
+
+    # jmk -- If the scale is already flaky, asking for it to tare after
+    #        it has already done so seems unhelpful
+
     async def _subscribe_button_press(self):
         scale = self
 
         logger.info("Starting button press handler")
 
-        async def circle_button_tare(sbp: ScaleButtonPress) -> None:
+        async def button_event_handler(sbp: ScaleButtonPress) -> None:
             nonlocal scale
-            if sbp.button == 0:
-                await scale.tare()
-                logger.debug("Tare requested via short tap of circle button" +
-                             "on scale")
+            # Button and length of press in two bytes, copied from payload
+            # Checking for circle and short would be
+            #   == Button.CIRCLE << 8 + ButtonDuration.SHORT
+            if sbp.button >> 8 == Button.CIRCLE:
+                # await scale.tare()
+                logger.info(
+                    "Round button press noted. Scale probably set tare.")
             else:
-                logger.warning(f"Button {sbp.button} - Not implemented")
+                logger.debug(f"Button {sbp.button} - Not implemented")
 
         # noinspection PyTypeChecker
-        self._button_tare_subscriber_id =\
-            await self._event_button_press.subscribe(circle_button_tare)
+        self._button_tare_subscriber_id = \
+            await self._event_button_press.subscribe(button_event_handler)
+
+
+# As per Decent's spec, common Characteristic UUID's for all commands
+class CUUID(enum.Enum):
+
+    READ  = "0000fff4-0000-1000-8000-00805f9b34fb"  # Read data FROM scale
+    WRITE = "000036f5-0000-1000-8000-00805f9b34fb"  # Write data TO scale
+
+
+class Command (enum.IntEnum):
+
+    DISPLAY_RESPONSE    = 0x0a
+    TIMER               = 0x0c
+    TARE_RESPONSE       = 0x0f
+    BUTTON_TAP          = 0xaa
+    WEIGHT_STABLE       = 0xce
+    WEIGHT_CHANGING     = 0xca
+
+
+# Outbound commands to the scale.  Given these are fixed in format, they do
+# not need to be dynamically generated.
+
+class PackedCommand(enum.Enum):
+
+    # Only weight LEDs turned on with these commands. The timer display is
+    # left off in both cases as it's not being used
+    DISPLAY_ON  = b'\x03\x0a\x01\x00\x00\x00\x08'
+    DISPLAY_OFF = b'\x03\x0a\x00\x00\x00\x00\x09'
+
+    # Request scale to tare. Note that this is sufficient for v1.0 API due
+    # to a firmware bug (i.e. can ignore setting a valid counter value in
+    # byte 3)
+    TARE        = b'\x03\x0f\x00\x00\x00\x00\x0c'
+
+    # pyDE1 does not currently support timer functions, so these are unused
+    # but left here for completeness in case this is enabled in the future
+    # jmk -- the checksums appear to be wrong in these
+    TIMER_ZERO  = b'\x03\x0b\x02\x00\x00\x00\x08'
+    TIMER_START = b'\x03\x0b\x03\x00\x00\x00\x09'
+    TIMER_STOP  = b'\x03\x0b\x00\x00\x00\x00\x0a'
+
+
+class Button (enum.IntEnum):
+
+    CIRCLE = 0x01
+    SQUARE = 0x02
+
+
+class ButtonDuration (enum.IntEnum):
+
+    SHORT = 0x01
+    LONG  = 0x02
+
+
+# NOTE: No longer required for v1.0 firmware due to bugs in said firmware.
+#       Retaining as will probably be useful for v1.1 and onwards
+# Per API, calculates the checksum required in byte 7 of a message as the
+# byte-by-byte xor of six sequential bytes.  This code doesn't assume a
+# specific length of the message, however.
+
+# jmk -- No need to repeat the calculation code twice
+def xor_checksum(some_bytes: Union[bytes, bytearray]):
+    checksum = 0x00
+    for b in some_bytes:
+        checksum ^= b
+    return checksum
+
+
+def confirm_trailing_checksum(some_bytes: Union[bytes, bytearray]):
+    if len(some_bytes) < 2:
+        return False
+    else:
+        return some_bytes[-1] == xor_checksum(some_bytes[0:-2])
 
 
 Scale.register_constructor(DecentScale, 'Decent Scale')
