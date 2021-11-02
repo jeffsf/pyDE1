@@ -27,7 +27,8 @@ from pyDE1.de1.c_api import (
     PackedAttr, RequestedState, ReadFromMMR, WriteToMMR, StateInfo,
     FWMapRequest, FWErrorMapRequest, FWErrorMapResponse,
     API_MachineStates, API_Substates, MAX_FRAMES, get_cuuid, MMR0x80LowAddr,
-    packed_attr_from_cuuid, pack_one_mmr0x80_write, MMRGHCInfoBitMask
+    packed_attr_from_cuuid, pack_one_mmr0x80_write, MMRGHCInfoBitMask,
+    CalCommand, CalTargets, Calibration
 )
 from pyDE1.de1.events import ShotSampleUpdate, ShotSampleWithVolumesUpdate
 from pyDE1.de1.firmware_file import FirmwareFile
@@ -72,6 +73,9 @@ class DE1 (Singleton):
         # TODO: These would benefit from accessor methods
         self._cuuid_dict: Dict[CUUID, NotificationState] = dict()
         self._mmr_dict: Dict[Union[MMR0x80LowAddr, int], MMR0x80Data] = dict()
+        # Needs to be consistent with create_Calibration_callback()
+        self._cal_factory = CalData()
+        self._cal_local = CalData()
 
         self._latest_profile: Optional[Profile] = None
 
@@ -161,6 +165,9 @@ class DE1 (Singleton):
             SubState=API_Substates.NoState
         )
 
+        self._cal_factory = CalData()
+        self._cal_local = CalData()
+
         self._tracking_volume_dispensed = False
         self._volume_dispensed_total = 0
         self._volume_dispensed_preinfuse = 0
@@ -192,7 +199,7 @@ class DE1 (Singleton):
             self.read_standard_mmr_registers(),
             self.read_cuuid(CUUID.StateInfo),
             self.read_cuuid(CUUID.Versions),
-            self.read_cuuid(CUUID.ShotSettings)
+            self.read_cuuid(CUUID.ShotSettings),
         )
 
         event_list.append(self._cuuid_dict[CUUID.StateInfo].ready_event)
@@ -232,6 +239,9 @@ class DE1 (Singleton):
 
         # NB: This gets sent if all there or not
         await self._notify_ready()
+
+        # Don't need to wait on this one
+        asyncio.create_task(self.fetch_calibration())
 
         return
 
@@ -278,6 +288,14 @@ class DE1 (Singleton):
     @property
     def feature_flags(self):
         return self._feature_flag.as_dict()
+
+    @property
+    def cal_factory(self):
+        return copy(self._cal_factory)
+
+    @property
+    def cal_local(self):
+        return copy(self._cal_local)
 
     @property
     def address(self):
@@ -643,10 +661,11 @@ class DE1 (Singleton):
         cuuid_logger = pyDE1.getLogger(f"DE1.{cuuid.__str__()}.Write")
 
         # See write_packed_attr_return_notification() which acquires the lock
-        # Presently only used for FWMapRequest
+        # Presently only used for FWMapRequest and Calibration
         # to ensure ready for firmware upload
 
         if have_lock:
+            cuuid_logger.info(obj.log_string())
             await self._bleak_client.write_gatt_char(cuuid.uuid,
                                                      obj.as_wire_bytes())
         else:
@@ -685,7 +704,9 @@ class DE1 (Singleton):
                 CUUID.RequestedState,   # Comes back in StateInfo
                 CUUID.WriteToMMR,       # Decode not implemented
                 CUUID.HeaderWrite,      # Decode not implemented
-                CUUID.FrameWrite):      # Decode not implemented
+                CUUID.FrameWrite,       # Decode not implemented
+                CUUID.Calibration,      # Comes back as a notification
+        ):
             wait_for = self.read_cuuid(cuuid)
 
         else:
@@ -716,11 +737,11 @@ class DE1 (Singleton):
                 "write_cuuid_return_notification not supported for "
                 + cuuid.__str__()
             )
-        cuuid_logger.info(f"Acquiring write/return lock")
+        cuuid_logger.debug(f"Acquiring write/notify lock")
 
         async def _write_packed_attr_return_notification_inner():
             async with cuuid.lock:
-                cuuid_logger.info("Acquired write/return lock")
+                cuuid_logger.info("Acquired write/notify lock")
                 # TODO: This order should work, though potential race condition
                 notification_state = self._cuuid_dict[cuuid]
                 await self.write_packed_attr(obj, have_lock=True)
@@ -735,13 +756,15 @@ class DE1 (Singleton):
                 f"Awaiting lock to write and return {cuuid.name}")
 
         try:
-            await asyncio.wait_for(
+            retval = await asyncio.wait_for(
                 _write_packed_attr_return_notification_inner(),
                 timeout=config.de1.CUUID_LOCK_WAIT_TIMEOUT)
         except asyncio.TimeoutError as e:
             cuuid_logger.critical(
                 "Timeout waiting for lock. Aborting process.")
             raise e
+
+        return retval
 
     async def _request_state(self, State: API_MachineStates):
         rs = RequestedState(State)
@@ -1355,6 +1378,19 @@ class DE1 (Singleton):
 
         return de1_self_callback
 
+    async def fetch_calibration(self):
+        for tgt in (CalTargets.CalFlow,
+                       CalTargets.CalPressure,
+                       CalTargets.CalTemp):
+            for cmd in (CalCommand.Read, CalCommand.ReadFactory):
+                req = Calibration(WriteKey=0,
+                                  CalCommand=cmd,
+                                  CalTarget=tgt,
+                                  DE1ReportedValue=0,
+                                  MeasuredVal=0
+                                  )
+                retval = await self.write_packed_attr_return_notification(req)
+
     async def skip_to_next(self):
         """
         Requests the next frame if in Espresso mode.
@@ -1641,6 +1677,50 @@ class DE1 (Singleton):
                         f"Sleeping with auto-off of {self._auto_off_time} sec")
                     await self.sleep()
             await asyncio.sleep(RECHECK_TIME)
+
+
+class CalData:
+    """
+    Holder for the set of (normalized) data from the Calibration CUUID
+    """
+
+    # setters need to be consistent with create_Calibration_callback()
+
+    def __init__(self):
+        self._flow = None
+        self._pressure = None
+        self._temperature = None
+
+    @property
+    def flow(self):
+        return self._flow
+
+    def record_flow(self, de1_value: float, measured: float):
+        # "record_" to be very clear it doesn't change the DE1
+        if de1_value != 1:
+            logger.error(
+                f"Setting cal flow ratio expected 1, got {de1_value}")
+        self._flow = measured / de1_value
+
+    @property
+    def pressure(self):
+        return self._pressure
+
+    def record_pressure(self, de1_value: float, measured: float):
+        if de1_value != 1:
+            logger.error(
+                f"Setting cal press ratio expected 1, got {de1_value}")
+        self._pressure = measured / de1_value
+
+    @property
+    def temperature(self):
+        return self._pressure
+
+    def record_temperature(self, de1_value: float, measured: float):
+        if de1_value != 0:
+            logger.error(
+                f"Setting cal temp offset expected 0, got {de1_value}")
+        self._temperature = measured - de1_value
 
 
 class FeatureFlag:

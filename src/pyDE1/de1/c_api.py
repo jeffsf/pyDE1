@@ -2423,9 +2423,162 @@ class SetTime (PackedAttr):
 # TODO: CalTargets
 # TODO: CalCommand
 # TODO: Calibration
+
+
+"""
+CUUID.Calibration
+"""
+
+class CalTargets (enum.IntEnum):
+    CalFlow     = 0     # ratiometric
+    CalPressure = 1     # ratiometric
+    CalTemp     = 2     # differential, degrees C
+    CalError    = 255   # return value indicating bad request
+
+
+class CalCommand (enum.IntEnum):
+    Read        = 0
+    Write       = 1
+    Reset       = 2     # to factory value
+    ReadFactory = 3
+
+
+class Calibration (PackedAttr):
     """
-    CUUID.Calibration
+    Used to read and write internal DE1 calibration parameters
+
+    The WriteKey is None, by default, which is not valid to write
+    It is available for configuration through the config instance
     """
+
+    cuuid = CUUID.Calibration
+    can_read = bool(cuuid is not None and cuuid.can_read)
+    can_write = bool(cuuid is not None and cuuid.can_write)
+    can_notify = bool(cuuid is not None and cuuid.can_notify)
+    can_write_then_return = bool(cuuid is not None
+                                 and cuuid.can_write_then_return)
+
+    def __init__(self, WriteKey = 0,
+                 CalCommand: Optional[CalCommand] = None,
+                 CalTarget: Optional[CalTargets] = None,
+                 DE1ReportedValue = 0,
+                 MeasuredVal = 0):
+
+        super(Calibration, self).__init__()
+
+        self.WriteKey = WriteKey
+        self._cal_command = None
+        self._cal_target = None
+        self._reported = 0
+        self._measured = 0
+
+        self.CalCommand = CalCommand
+        self.CalTarget = CalTarget
+        self.DE1ReportedVal = DE1ReportedValue
+        self.MeasuredVal = MeasuredVal
+
+    @property
+    def CalCommand(self):
+        return self._cal_command
+
+    @CalCommand.setter
+    def CalCommand(self, value):
+        if isinstance(value, CalCommand) or value is None:
+            self._cal_command = value
+        else:
+            raise DE1APITypeError(
+                f"Expected CalCommand, not {type(value)}"
+            )
+
+    @property
+    def CalTarget(self):
+        return self._cal_target
+
+    @CalTarget.setter
+    def CalTarget(self, value):
+        if isinstance(value, CalTargets) or value is None:
+            self._cal_target = value
+        else:
+            raise DE1APITypeError(
+                f"Expected CalTarget, not {type(value)}"
+            )
+
+    @property
+    def DE1ReportedVal(self):
+        return self._reported
+
+    @DE1ReportedVal.setter
+    def DE1ReportedVal(self, value):
+        self._reported = validate_s_p(value, 32, 16)
+
+    @property
+    def MeasuredVal(self):
+        return self._measured
+
+    @MeasuredVal.setter
+    def MeasuredVal(self, value):
+        self._measured = validate_s_p(value, 32, 16)
+
+    @property
+    def is_error_response(self):
+        return self.CalTarget == CalTargets.CalError
+
+    @property
+    def is_offset(self):
+        return self == CalTargets.CalTemp
+
+    @property
+    def is_ratio(self):
+        return not self.is_offset
+
+    def from_wire_bytes(self, wire_bytes: Union[bytes, bytearray],
+                        arrival_time=None):
+        super(Calibration, self).from_wire_bytes(wire_bytes, arrival_time)
+        (wk, cc, ct, rv, mv) = unpack('>IBBii', wire_bytes)
+        self.WriteKey = wk
+        self.CalCommand = CalCommand(cc)
+        self.CalTarget = CalTargets(ct)
+        self.DE1ReportedVal = rv / 2**16
+        self.MeasuredVal = mv / 2**16
+
+        return self
+
+    def as_wire_bytes(self) -> Union[bytes, bytearray]:
+        if self.CalTarget is None:
+            raise DE1APIValueError("No CalTarget supplied")
+        if self.CalCommand is None:
+            raise DE1APIValueError("No CalCommand supplied")
+        if self.CalCommand == CalCommand.Write and not self.WriteKey:
+            raise DE1APIValueError(
+                "WriteKey needed to write Calibration data")
+        return pack('>IBBii',
+                    int(self.WriteKey),
+                    self.CalCommand.value,
+                    self.CalTarget.value,
+                    p16(self.DE1ReportedVal),
+                    p16(self.MeasuredVal))
+
+    @staticmethod
+    def _val_str(val):
+        if int(val) == val:
+            return str(val)
+        else:
+            # 2^16 ~ 1.5e-5
+            return f"{val:.5f}"
+
+    def log_string(self):
+        if self.is_error_response:
+            erf = 'ERROR: '
+        else:
+            erf = ''
+        return "{}{} {} de1: {} meas: {}".format(
+            erf,
+            self.CalCommand.name,
+            self.CalTarget.name,
+            self._val_str(self.DE1ReportedVal),
+            self._val_str(self.MeasuredVal)
+        )
+
 
 # End of APIDataTypes.hpp
 

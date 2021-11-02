@@ -17,11 +17,12 @@ from pyDE1.de1.ble import CUUID
 from pyDE1.de1.c_api import (
     Versions, RequestedState, SetTime, ReadFromMMR, WriteToMMR,
     Temperatures, ShotSettings, ShotSample, StateInfo, HeaderWrite, FrameWrite,
-    WaterLevels, FWMapRequest, MMR0x80LowAddr, API_MachineStates, API_Substates
+    WaterLevels, FWMapRequest, MMR0x80LowAddr, API_MachineStates, API_Substates,
+    Calibration, CalTargets, CalCommand
 )
 from pyDE1.de1.events import StateUpdate, ShotSampleUpdate, WaterLevelUpdate
 from pyDE1.exceptions import DE1ErrorStateReported, MMRAddressOffsetError
-from pyDE1.utils import data_as_readable_or_hex
+from pyDE1.utils import data_as_readable_or_hex, data_as_hex
 
 # Logging is set to DEBUG by default. This effectively disables them
 # with independent control. (The evaluation of the f-string is still done)
@@ -397,11 +398,33 @@ def create_Calibration_callback(de1:de1):
     async def Calibration_callback(sender: int, data: Union[bytes, bytearray]):
         nonlocal de1
         arrival_time = time.time()
-        # obj = Calibration().from_wire_bytes(data, arrival_time)
-        # logger.debug(obj.log_string())
-        de1._cuuid_dict[CUUID.Calibration].mark_updated(data, arrival_time)
+        obj = Calibration().from_wire_bytes(data, arrival_time)
+        # TODO: This notifies multiple values from the same CUUID
+        de1._cuuid_dict[CUUID.Calibration].mark_updated(obj, arrival_time)
         logger = pyDE1.getLogger(f"DE1.{CUUID.Calibration.__str__()}.Notify")
-        logger.debug(f"{data_as_readable_or_hex(data)} ({len(data)})")
+        cal_set = None
+        setter = None
+
+        if obj.CalCommand in (CalCommand.Read, CalCommand.Write):
+            cal_set = '_cal_local'
+        else:
+            cal_set = '_cal_factory'
+
+        if obj.CalTarget == CalTargets.CalFlow:
+            setter = 'record_flow'
+        elif obj.CalTarget == CalTargets.CalPressure:
+            setter = 'record_pressure'
+        elif obj.CalTarget == CalTargets.CalTemp:
+            setter = 'record_temperature'
+        elif obj.CalTarget == CalTargets.CalError:
+            setter = None
+            logger.error("Calibration returned error result, not setting")
+
+        if setter is not None:
+            cal = de1.__getattribute__(cal_set)
+            method = cal.__getattribute__(setter)
+            method(de1_value=obj.DE1ReportedVal, measured=obj.MeasuredVal)
+        logger.info(obj.log_string())
     return Calibration_callback
 
 

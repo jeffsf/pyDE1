@@ -107,10 +107,11 @@ class CUUID (enum.Enum):
         "Unrecognized" commands written may not result in a response,
         so waiting on a response may "hang" as a result.
 
-        Does not take into account if the DE! is connected or not.
+        Does not take into account if the DE1 is connected or not.
         """
         return self in (
             CUUID.FWMapRequest,
+            CUUID.Calibration,
         )
 
     @property
