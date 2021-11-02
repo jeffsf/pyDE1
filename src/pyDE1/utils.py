@@ -116,7 +116,10 @@ def data_as_readable(data, replace_rnt=True, replace_space=False):
     :return:                str: converted to readable, or ''
     """
     if isinstance(data, (bytes, bytearray)):
-        data = data.decode('ascii')  # enforce one character per byte
+        try:
+            data = data.decode('ascii')  # enforce one character per byte
+        except UnicodeDecodeError:
+            return ''
     if not isinstance(data, str):
         raise TypeError("Expected str, bytes, or bytearray")
     out = ""
