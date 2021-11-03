@@ -1,5 +1,5 @@
 [Unit]
-Description=Auto-upload to Visualizer
+Description=Main controller processes for pyDE1
 Wants=mosquitto.service
 After=syslog.target mosquitto.service
 
@@ -8,18 +8,22 @@ After=syslog.target mosquitto.service
 User=pyde1
 Group=pyde1
 
+Environment="PYDE1_PATH=/home/pyde1/deploy/pyde1-devel/src/pyDE1"
+
+Environment="SEARCH_DIR=/var/lib/pyde1"
+Environment="SUFFIX=.btid"
+ExecStartPre=sh ${PYDE1_PATH}/services/runnable/disconnect-btid.sh
+ExecStopPost=sh ${PYDE1_PATH}/services/runnable/disconnect-btid.sh
+
 # PYTHONPATH is likely only needed for development
 Environment="PYTHONPATH=/home/pyde1/deploy/pyde1-devel/src"
 
-# If needed, change the path to that of the venv's Python
-Environment="PYTHON_PROGRAM=/home/pyde1/deploy/pyde1-devel/services/runnable/pyde1-visualizer.py"
-
 # Can be used as $PROGRAM_ARG_LIST at the end of ExecStart to specify an alternate
-# Environment="PROGRAM_ARG_LIST=-c /usr/local/etc/pyde1-visualizer.conf"
+# Environment="PROGRAM_ARG_LIST=-c /usr/local/etc/pyde1/pyde1.conf"
 
 # If needed, change the path to that of the venv's Python
 # The executable name can't be a variable
-ExecStart=/home/pyde1/venv/pyde1/bin/python3 $PYTHON_PROGRAM
+ExecStart=/home/pyde1/venv/pyde1/bin/python3 ${PYDE1_PATH}/run.py
 
 Restart=always
 StandardError=syslog
