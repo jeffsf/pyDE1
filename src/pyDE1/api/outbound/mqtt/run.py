@@ -217,6 +217,14 @@ def run_mqtt_outbound(config: pyDE1.config.Config,
                          properties=None
                          )
 
+    if config.mqtt.TLS:
+        mqtt_client.tls_set(ca_certs=config.mqtt.TLS_CA_CERTS,
+                            certfile=config.mqtt.TLS_CERTFILE,
+                            keyfile=config.mqtt.TLS_KEYFILE,
+                            cert_reqs=config.mqtt.TLS_CERT_REQS,
+                            tls_version=config.mqtt.TLS_VERSION,
+                            ciphers=config.mqtt.TLS_CIPHERS)
+
     mqtt_client.connect(host=config.mqtt.BROKER_HOSTNAME,
                         port=config.mqtt.BROKER_PORT,
                         keepalive=config.mqtt.KEEPALIVE,

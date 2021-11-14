@@ -65,11 +65,18 @@ class _MQTT (ConfigLoadable):
         self.BROKER_HOSTNAME = '::1'
         self.BROKER_PORT = 1883
         self.TRANSPORT = 'tcp'
-        self.TLS_CONTEXT = None
         self.KEEPALIVE = 60
         self.USERNAME = None
         self.PASSWORD = None
         self.DEBUG = False
+        self.TLS = False    # Set True, or rest of TLS is ignored
+        # See paho Client.tls_set() for details
+        self.TLS_CA_CERTS = None
+        self.TLS_CERTFILE = None
+        self.TLS_KEYFILE = None
+        self.TLS_CERT_REQS = None
+        self.TLS_VERSION = None
+        self.TLS_CIPHERS = None
 
 
 class _Visualizer (ConfigLoadable):
@@ -277,6 +284,21 @@ def configure_mqtt() -> mqtt.Client:
         protocol=MQTTv5,
         transport=config.mqtt.TRANSPORT,
     )
+
+    if config.mqtt.TLS:
+        mqtt_client.tls_set(ca_certs=config.mqtt.TLS_CA_CERTS,
+                            certfile=config.mqtt.TLS_CERTFILE,
+                            keyfile=config.mqtt.TLS_KEYFILE,
+                            cert_reqs=config.mqtt.TLS_CERT_REQS,
+                            tls_version=config.mqtt.TLS_VERSION,
+                            ciphers=config.mqtt.TLS_CIPHERS)
+
+    if config.mqtt.USERNAME is not None:
+        logger.info(f"Connecting with username '{config.mqtt.USERNAME}'")
+        mqtt_client.username_pw_set(
+            username=config.mqtt.USERNAME,
+            password=config.mqtt.PASSWORD
+        )
 
     if config.mqtt.DEBUG:
         paho_logger = pyDE1.getLogger('paho')

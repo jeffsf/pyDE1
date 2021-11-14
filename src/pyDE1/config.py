@@ -115,11 +115,18 @@ class _MQTT (ConfigLoadable):
         self.BROKER_HOSTNAME = '::1'
         self.BROKER_PORT = 1883
         self.TRANSPORT = 'tcp'
-        self.TLS_CONTEXT = None
         self.KEEPALIVE = 60
         self.USERNAME = None
         self.PASSWORD = None
         self.DEBUG = False
+        self.TLS = False    # Set True, or rest of TLS is ignored
+        # See paho Client.tls_set() for details
+        self.TLS_CA_CERTS = None
+        self.TLS_CERTFILE = None
+        self.TLS_KEYFILE = None
+        self.TLS_CERT_REQS = None
+        self.TLS_VERSION = None
+        self.TLS_CIPHERS = None
 
 
 class _HTTP (ConfigLoadable):
