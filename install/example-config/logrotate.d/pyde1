@@ -1,0 +1,9 @@
+/var/log/pyde1/pyde1.log {
+    daily
+    missingok
+    rotate 60
+    compress
+    delaycompress
+    notifempty
+    create
+}
