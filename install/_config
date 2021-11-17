@@ -1,0 +1,11 @@
+# Copyright © 2021 Jeff Kletsky. All Rights Reserved.
+#
+# License for this software, part of the pyDE1 package, is granted under
+# GNU General Public License v3.0 only
+# SPDX-License-Identifier: GPL-3.0-only
+
+# sourced by install scripts
+
+PYDE1_USER=pyde1
+PYDE1_GROUP="${PYDE1_USER}"
+VENV_PATH="/home/${PYDE1_USER}/venv/pyde1"
