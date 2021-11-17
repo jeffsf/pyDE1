@@ -29,7 +29,7 @@ from pyDE1.dispatcher.resource import (
     Resource, RESOURCE_VERSION, DE1ModeEnum, ConnectivityEnum
 )
 
-MAPPING_VERSION = "4.0.0"
+MAPPING_VERSION = "4.0.1"
 
 logger = pyDE1.getLogger('Inbound.Mapping')
 
@@ -148,10 +148,13 @@ def from_mmr(mmr: MMR0x80LowAddr, v_type: type):
 
 MODULES_FOR_VERSIONS = (
     'pyDE1',
-    'bleak',
     'aiosqlite',
+    'bleak',
+    'paho-mqtt',
+    'PyYAML',
+    'requests',
+    # Retained for backward compatibility - consider as deprecated in this list
     'asyncio-mqtt',
-    'paho-mqtt'
 )
 
 import importlib.metadata  # Used for module-version lookup only
