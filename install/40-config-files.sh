@@ -13,9 +13,13 @@
 PYDE1_ROOT=$(python -c \
   'import importlib.resources ; print(importlib.resources.files("pyDE1"))')
 
+mkdir -p /usr/local/bin/pyde1
 mkdir -p /usr/local/etc/pyde1
 
 CP_BACKUP="cp -v --backup --suffix=$(date +'.%Y%m%d_%H%M')"
+
+$CP_BACKUP ${PYDE1_ROOT}/services/runnable/disconnect-btid.sh /usr/local/bin/pyde1-disconnect-btid.sh
+chmod +x /usr/local/bin/pyde1-disconnect-btid.sh
 
 $CP_BACKUP ${PYDE1_ROOT}/services/config/* /usr/local/etc/pyde1/
 

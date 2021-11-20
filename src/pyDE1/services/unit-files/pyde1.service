@@ -12,8 +12,8 @@ Environment="PYDE1_PATH=/home/pyde1/deploy/pyde1-devel/src/pyDE1"
 
 Environment="SEARCH_DIR=/var/lib/pyde1"
 Environment="SUFFIX=.btid"
-ExecStartPre=sh ${PYDE1_PATH}/services/runnable/disconnect-btid.sh
-ExecStopPost=sh ${PYDE1_PATH}/services/runnable/disconnect-btid.sh
+ExecStartPre=/usr/local/bin/pyde1-disconnect-btid.sh
+ExecStopPost=/usr/local/bin/pyde1-disconnect-btid.sh
 
 # PYTHONPATH is likely only needed for development
 Environment="PYTHONPATH=/home/pyde1/deploy/pyde1-devel/src"
