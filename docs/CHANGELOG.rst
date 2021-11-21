@@ -8,6 +8,42 @@
 Changelog
 =========
 
+0.10.0 – 2021-11-21
+-------------------
+
+Overview
+~~~~~~~~
+
+Documentation, including installation, added. Installation scripts,
+tested with Raspberry Pi OS Lite (Release date: October 30th 2021,
+Kernel version: 5.10) available in the source repo.
+
+New
+~~~
+
+* Documentation viewable at https://pyde1.readthedocs.io/en/latest/
+* Install scripts in the source repo in the ``install`` directory
+* Provide config for TLS for MQTT clients ``427b3e0``
+
+
+Fixed
+~~~~~
+
+* utils: data_as_readable() now handles "undecodable" byte sequences ``08aef05``
+* packaging: Include schema and service files ``4caf736``
+
+
+Changed
+~~~~~~~
+
+* MAPPING 4.0.1: MODULES_FOR_VERSIONS consistent with requirements ``40c4ce0``
+* Documentation reorganized and consolidated into the ``docs`` directory
+* ``disconnect-btid.sh`` is now expected at
+  ``/usr/local/bin/pyde1-disconnect-btid.sh`` by ``pyde1.service``
+
+
+
+
 0.9.0 – 2021-10-31
 ------------------
 
