@@ -1,4 +1,4 @@
-´..
+..
     Copyright © 2021 Jeff Kletsky. All Rights Reserved.
 
     License for this software, part of the pyDE1 package, is granted under
