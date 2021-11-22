@@ -43,6 +43,13 @@ actions, such as "Here is a profile blob, please load it." The
 operations and choice of connectivity to the devices is "hidden" behind
 the APIs.
 
+Documentation and Source
+------------------------
+
+Documentation is available at https://pyde1.readthedocs.io/en/latest/
+
+Source code is available at https://github.com/jeffsf/pyDE1.git
+
 
 Requirements
 ------------
