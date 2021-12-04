@@ -10,7 +10,7 @@ Enum that defines the recognized resources that the Dispatcher can access
 
 import enum
 
-RESOURCE_VERSION = '3.4.0'
+RESOURCE_VERSION = '3.5.0'
 
 
 class Resource (enum.Enum):
@@ -165,6 +165,7 @@ class DE1ModeEnum (enum.Enum):
     SLEEP = 'Sleep'
     WAKE = 'Wake'
     STOP = 'Stop'
+    END_STEAM = 'EndSteam'
     # TODO: Determine conditions under which these can be activated
     #       For now, assume the machine needs to be in Idle
     CLEAN = 'Clean'

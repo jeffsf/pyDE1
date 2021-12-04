@@ -8,6 +8,7 @@ SPDX-License-Identifier: GPL-3.0-only
 import asyncio
 import hashlib
 import inspect
+import logging
 import time
 from copy import copy, deepcopy
 from typing import Union, Dict, Coroutine, Optional, List, Callable
@@ -28,7 +29,7 @@ from pyDE1.de1.c_api import (
     FWMapRequest, FWErrorMapRequest, FWErrorMapResponse,
     API_MachineStates, API_Substates, MAX_FRAMES, get_cuuid, MMR0x80LowAddr,
     packed_attr_from_cuuid, pack_one_mmr0x80_write, MMRGHCInfoBitMask,
-    CalCommand, CalTargets, Calibration
+    CalCommand, CalTargets, Calibration, ShotSettings
 )
 from pyDE1.de1.events import ShotSampleUpdate, ShotSampleWithVolumesUpdate
 from pyDE1.de1.firmware_file import FirmwareFile
@@ -1421,6 +1422,37 @@ class DE1 (Singleton):
             self._last_stop_requested = now
             await self._request_state(API_MachineStates.Idle)
 
+    async def end_steam(self):
+        """
+        If steaming active, put into "puff" mode
+        """
+        logger.info("end_steam() called")
+        log_level = None
+        cs = self.current_state
+        css = self.current_substate
+        if cs is API_MachineStates.Steam:
+                if css in (API_Substates.Pour,):
+                    current_shot_settings: ShotSettings = self._cuuid_dict[
+                        CUUID.ShotSettings].last_value
+                    temp_shot_settings: ShotSettings = deepcopy(
+                        current_shot_settings)
+                    temp_shot_settings.TargetSteamLength = 0
+                    await self.write_packed_attr(temp_shot_settings)
+                    logger.debug("Wrote zero-time to steam length")
+                    await self.write_packed_attr(current_shot_settings)
+                    tsl = current_shot_settings.TargetSteamLength
+                    logger.debug(f"Restored {tsl} to steam length")
+                else:
+                    log_level = logging.WARNING
+        else:
+            log_level = logging.ERROR
+
+        if log_level is not None:
+            logger.log(
+                log_level,
+                f"end_steam() called during {cs},{css}, no action taken")
+
+
     async def idle(self):
         """
         This is an explicit request for Idle.
@@ -1568,7 +1600,6 @@ class DE1 (Singleton):
                 await self.idle()
 
         elif mode is DE1ModeEnum.SKIP_TO_NEXT:
-
             if cs == API_MachineStates.Espresso \
                 and self.current_substate in (API_Substates.PreInfuse,
                                               API_Substates.Pour):
@@ -1576,6 +1607,16 @@ class DE1 (Singleton):
                 await self.skip_to_next()
             else:
                 raise DE1APIUnsupportedStateTransitionError(mode, cs, css)
+
+        elif mode is DE1ModeEnum.END_STEAM:
+            if cs == API_MachineStates.Steam:
+                if self.current_substate in (API_Substates.Pour,):
+                    logger.debug("API triggered end_steam() for END_STEAM")
+                    await self.end_steam()
+                else:
+                    logger.debug("API triggered stop_flow() for END_STEAM")
+                    await self.stop_flow()
+
 
         elif mode in (DE1ModeEnum.ESPRESSO,
                       DE1ModeEnum.HOT_WATER_RINSE,
@@ -1783,7 +1824,7 @@ class FeatureFlag:
 
         elif self.fw_version < 1283:
             retval = MMR0x80LowAddr.CAL_FLOW_EST
-            
+
         else:
             retval = MMR0x80LowAddr.LAST_KNOWN
 
