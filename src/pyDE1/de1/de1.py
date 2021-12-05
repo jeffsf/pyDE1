@@ -1465,7 +1465,8 @@ class DE1 (Singleton):
     async def sleep(self):
         logger.info("sleep() called")
         if self.current_state not in (API_MachineStates.Idle,
-                                      API_MachineStates.GoingToSleep):
+                                      API_MachineStates.GoingToSleep,
+                                      API_MachineStates.Refill):
             logger.warning(
                 "Sleep requested while in {}, {}. Calling idle() first.".format(
                     self.current_state.name, self.current_substate.name
@@ -1562,7 +1563,8 @@ class DE1 (Singleton):
 
         if mode is DE1ModeEnum.SLEEP:
             logger.debug(f"current state: {cs}, {type(cs)}")
-            if cs == API_MachineStates.Idle:
+            if cs in (API_MachineStates.Idle,
+                      API_MachineStates.Refill):
                 logger.debug("API triggered sleep()")
                 await self.sleep()
             elif self.current_state in (API_MachineStates.Sleep,
