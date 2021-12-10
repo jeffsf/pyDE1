@@ -1682,6 +1682,10 @@ class DE1 (Singleton):
             logger.debug(f"API triggered state change for {mode.name}")
             await self.write_packed_attr(RequestedState(State=next_state))
 
+        elif mode is DE1ModeEnum.NO_REQUEST:
+            logger.debug("API triggered NoRequest state change")
+            await self.write_packed_attr(
+                RequestedState(State=API_MachineStates.NoRequest))
 
         else:
             raise DE1APIUnsupportedStateTransitionError(mode, cs, css)

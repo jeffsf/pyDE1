@@ -10,7 +10,7 @@ Enum that defines the recognized resources that the Dispatcher can access
 
 import enum
 
-RESOURCE_VERSION = '3.5.0'
+RESOURCE_VERSION = '3.6.0'
 
 
 class Resource (enum.Enum):
@@ -171,6 +171,9 @@ class DE1ModeEnum (enum.Enum):
     CLEAN = 'Clean'
     DESCALE = 'Descale'
     TRANSPORT = 'Transport' # AirPurge
+
+    # Maybe sending NoRequest will trigger a report?
+    NO_REQUEST = 'NoRequest'
 
     # Only valid during espresso flow
     SKIP_TO_NEXT = 'SkipToNext'
