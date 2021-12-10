@@ -1582,11 +1582,15 @@ class DE1 (Singleton):
                 pass
 
         elif mode is DE1ModeEnum.STOP:
+            override_checks = False
             if cs in (API_MachineStates.Sleep,
                       API_MachineStates.GoingToSleep,
                       API_MachineStates.SchedIdle,
                       API_MachineStates.Idle):
-                pass
+                if config.de1.API_STOP_IGNORES_CHECKS:
+                    override_checks = True
+                else:
+                    pass
             elif cs in (API_MachineStates.ShortCal,
                         API_MachineStates.SelfTest,
                         API_MachineStates.LongCal,
@@ -1596,9 +1600,17 @@ class DE1 (Singleton):
                         API_MachineStates.SkipToNext,
                         API_MachineStates.Refill,
                         API_MachineStates.InBootLoader):
-                raise DE1APIUnsupportedStateTransitionError(mode, cs, css)
+                if config.de1.API_STOP_IGNORES_CHECKS:
+                    override_checks = True
+                else:
+                    raise DE1APIUnsupportedStateTransitionError(mode, cs, css)
             else:
                 logger.debug("API triggered idle()")
+                await self.idle()
+            if override_checks:
+                logger.warning(
+                    "API_STOP_IGNORES_CHECKS triggered idle() during "
+                    f"{cs},{css}")
                 await self.idle()
 
         elif mode is DE1ModeEnum.SKIP_TO_NEXT:

@@ -221,6 +221,7 @@ class _DE1 (ConfigLoadable):
         # or should they be separated from parameters?
         self.DEFAULT_AUTO_OFF_TIME = None   # Minutes
         self.STOP_AT_WEIGHT_ADJUST = -0.07  # Secs, larger increases weight
+        self.API_STOP_IGNORES_CHECKS = False  # Request Idle in all cases
 
 
 config = Config()
