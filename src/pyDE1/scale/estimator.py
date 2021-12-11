@@ -67,8 +67,6 @@ class Estimator:
     def estimate(self):
         if self._scale_processor._history_available >= self._needed:
             (val, tval) = self._estimate_inner()
-            tval -= (self._scale_processor.scale.sensor_lag
-                     + self._scale_processor.scale.nominal_period / 2)
         else:
             val = 0
             tval = 0
