@@ -8,6 +8,34 @@
 Changelog
 =========
 
+1.0.0 — 2021-12-11
+------------------
+
+Overview
+~~~~~~~~
+
+First release version.
+
+Changed
+~~~~~~~
+
+* RESOURCE 3.6.0
+
+  * Add ``NO_REQUEST`` mode to trigger a report from the DE1 ``a52cd6f``
+  * Add ``END_STEAM`` mode to support steam-to-temperature ``24d7b52``
+
+* Allow request of Idle from a refill state (apparently not acted on by the DE1)
+  ``55d81bb``
+* Allow "force" of DE1 Idle from any state, enabled through config ``05adc93``
+* Prereqs updated to current versions ``5d320cb``
+
+Fixed
+~~~~~
+
+* Double-counting of scale delay was removed, improving scale-to-DE1 time
+  alignment ``886016a``
+
+
 0.10.0 – 2021-11-21
 -------------------
 

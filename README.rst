@@ -5,8 +5,8 @@
     GNU General Public License v3.0 only
     SPDX-License-Identifier: GPL-3.0-only
 
-pyDE1
-=====
+pyDE1 Overview
+==============
 
 Description
 -----------
@@ -66,14 +66,14 @@ Current plans are to continue to support two versions prior to the
 latest Python version. `PEP
 664 <https://www.python.org/dev/peps/pep-0664/>`__ shows a schedule of
 October, 2022 for Python 3.11.0 release. Users should plan on moving to
-at least Python 3.9 prior to that release. Python 3.9 should be
-"standard" with the forthcoming, Raspberry Pi OS release based on Debian
-Bullseye. Upstream Debian Bullseye is already available.
+at least Python 3.9 prior to that release. Python 3.9 is
+"standard" with the Debian Bullseye distro, as well as the current,
+Raspberry Pi OS release.
 
-Available through ``pip``:
+Available through ``pip`` and installed as dependencies:
 
--  ``bleak``
 -  ``aiosqlite``
+-  ``bleak``
 -  ``paho-mqtt``
 -  ``PyYAML``
 -  ``requests``
@@ -85,8 +85,8 @@ operating as a reverse proxy, rather than directly exposing the Python
 web server.
 
 
-Status — Beta
--------------
+Status — Release
+----------------
 
 This code is used on a daily basis for operation of the author's DE1.
 
@@ -101,4 +101,3 @@ License for this software, part of the pyDE1 package, is granted under
 GNU General Public License v3.0 only
 
 SPDX-License-Identifier: GPL-3.0-only
-

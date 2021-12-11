@@ -17,7 +17,7 @@ Welcome to pyDE1's Documentation!
    :maxdepth: 2
    :caption: Contents:
 
-   overview
+   README
    security
    installing
    mosquitto
