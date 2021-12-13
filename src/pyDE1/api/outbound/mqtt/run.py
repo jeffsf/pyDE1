@@ -85,8 +85,9 @@ def run_mqtt_outbound(config: pyDE1.config.Config,
         logger.info("Watching for shutdown event")
         sm.shutdown_underway.wait()
         logger.info("Shutting down MQTT client")
+        if mqtt_client.is_connected():
+            mqtt_client.disconnect()
         mqtt_client.loop_stop()
-        mqtt_client.disconnect()
         logger.info("Setting cleanup_complete")
         sm.cleanup_complete.set()
 
