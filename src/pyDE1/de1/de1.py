@@ -1808,6 +1808,8 @@ class FeatureFlag:
     # 1260  2eae3cc 2021-05-06  Skip-to-next
     # 1265  224a312 2021-06-30
     # 1283  d8e169b 2021-09-30  Rinse (flush) control, Hot water flow (?)
+    #                               (Has start-up temperature issues)
+    # 1293  d014017 2021-12-22  "fixes problem with scheduler"
 
     @property
     def fw_version(self):
@@ -1892,4 +1894,11 @@ class FeatureFlag:
             return None
         else:
             return False    # Seemingly not supported in 1283
+
+    @property
+    def sched_idle(self):
+        if self.fw_version is None:
+            return None
+        else:
+            return self.fw_version >= 1293
 
