@@ -8,8 +8,6 @@
 
 . "$(dirname $0)"/_config
 
-# Create the pyde1 user if they do not yet exist.
-
 echo "Creating target directories"
 
 mkdir -p /var/log/pyde1
