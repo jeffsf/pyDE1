@@ -2764,8 +2764,17 @@ def decode_one_mmr(addr_high: int, addr_low: Union[MMR0x80LowAddr, int],
     elif addr_low in {
         MMR0x80LowAddr.PREF_GHC_MCI,
         MMR0x80LowAddr.MAX_SHOT_PRESS,
-    } or addr_low > MMR0x80LowAddr.LAST_KNOWN:
-        # These aren't implemented (fully)
+    }:
+        # These aren't fully implemented (returning 0x0 at FW 1283)
+        retval = unpack('<I', mmr_bytes)[0]
+        logger.info(
+            "Unexpected decode requested for "
+            f"{addr_low.name} {retval} 0x{retval:x} "
+            "(unimplemented MMR)"
+        )
+
+    elif addr_low > MMR0x80LowAddr.LAST_KNOWN:
+        # These shouldn't be being read
         retval = unpack('<I', mmr_bytes)[0]
         logger.warning(
             "Unexpected decode requested for "
