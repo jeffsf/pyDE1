@@ -1,5 +1,5 @@
 ..
-    Copyright © 2021 Jeff Kletsky. All Rights Reserved.
+    Copyright © 2021, 2022 Jeff Kletsky. All Rights Reserved.
 
     License for this software, part of the pyDE1 package, is granted under
     GNU General Public License v3.0 only
@@ -7,6 +7,34 @@
 
 Changelog
 =========
+
+1.1.0b1 – 2022-01-14
+
+Overview
+~~~~~~~~
+
+Resolves shutdown issue with MQTT unconnected, DE1 config-file values,
+clarifies some logging, updates FeatureFlag for FW 1293,
+fixes documentation-generation issue.
+
+Changed
+~~~~~~~
+
+* Link ``README.rst`` for documentation generation – ``bb640f3``
+* Reduce log severity for unimplemented MMRs 0x3820 and 0x3824 – ``0125b72``
+* ``FeatureFlag`` includes ``sched_idle`` flag, active for FW 1293 and later –
+``64ee7f7``
+* Removed stray comment from ``20-create-dirs.sh`` – ``6070984``
+
+Fixed
+~~~~~
+
+* Shutdown without an MQTT connection does not try (and fail) to close it –
+``adda65e``
+* DE1 is initialized with config-file values, rather than default –
+``f7d6393``
+
+
 
 1.0.0 — 2021-12-11
 ------------------
