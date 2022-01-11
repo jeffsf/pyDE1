@@ -26,7 +26,7 @@ Environment="PYTHONPATH=/home/pyde1/deploy/pyde1-devel/src"
 ExecStart=/home/pyde1/venv/pyde1/bin/python3 ${PYDE1_PATH}/run.py
 
 Restart=always
-StandardError=syslog
+StandardError=journal
 # Sets the process name to that of the service
 SyslogIdentifier=%N
 

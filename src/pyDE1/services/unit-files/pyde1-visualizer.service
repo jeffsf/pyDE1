@@ -22,7 +22,7 @@ ExecStart=/home/pyde1/venv/pyde1/bin/python3 \
     ${PYDE1_PATH}/services/runnable/pyde1-visualizer.py
 
 Restart=always
-StandardError=syslog
+StandardError=journal
 # Sets the process name to that of the service
 SyslogIdentifier=%N
 
