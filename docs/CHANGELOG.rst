@@ -5,215 +5,247 @@
     GNU General Public License v3.0 only
     SPDX-License-Identifier: GPL-3.0-only
 
+=========
 Changelog
 =========
 
-1.1.0b1 – 2022-01-14
+--------------------
+1.1.0b2 – 2022-01-22
+--------------------
 
 Overview
-~~~~~~~~
+========
+
+Updated, expanded, and reorganized installation documentation
+
+Changed
+=======
+
+Documentation (only)
+
+--------------------
+1.1.0b1 – 2022-01-14
+--------------------
+
+Overview
+========
 
 Resolves shutdown issue with MQTT unconnected, DE1 config-file values,
-clarifies some logging, updates FeatureFlag for FW 1293,
+improves some logging, updates FeatureFlag for FW 1293,
+improves compatability with Manjaro (OS),
 fixes documentation-generation issue.
 
 Changed
-~~~~~~~
+=======
 
-* Link ``README.rst`` for documentation generation – ``bb640f3``
 * Reduce log severity for unimplemented MMRs 0x3820 and 0x3824 – ``0125b72``
 * ``FeatureFlag`` includes ``sched_idle`` flag, active for FW 1293 and later –
-``64ee7f7``
+  ``64ee7f7``
+* Timeouts on CUUID request/notify log changed wording to state
+  that it could also be the write or the lack of a notify received that
+  caused the timeout – ``a675f50``
 * Removed stray comment from ``20-create-dirs.sh`` – ``6070984``
+* Link ``README.rst`` for documentation generation – ``bb640f3``
 
 Fixed
-~~~~~
+=====
 
 * Shutdown without an MQTT connection does not try (and fail) to close it –
-``adda65e``
+  ``adda65e``
 * DE1 is initialized with config-file values, rather than default –
-``f7d6393``
+  ``f7d6393``
+* HTTP API now returns a more descriptive error if the payload data type is
+  incorrect – ``43614df``
+* `disconnect-btid.sh` should no longer cause `sh` errors with Manjaro OS –
+  ``d3a3c65``
+* Service definitions updated to use ``StandardError=journal`` – ``ac0ead7``
 
 
-
+------------------
 1.0.0 — 2021-12-11
 ------------------
 
 Overview
-~~~~~~~~
+========
 
 First release version.
 
 Changed
-~~~~~~~
+=======
 
-* RESOURCE 3.6.0
+* Allow request of Idle from a refill state
+  (apparently not acted on by the DE1) - ``55d81bb``
+* Allow "force" of DE1 Idle from any state, enabled through config -
+  ``05adc93``
+* Prereqs updated to current versions  - ``5d320cb``
 
-  * Add ``NO_REQUEST`` mode to trigger a report from the DE1 ``a52cd6f``
-  * Add ``END_STEAM`` mode to support steam-to-temperature ``24d7b52``
+RESOURCE 3.6.0
+------------------
 
-* Allow request of Idle from a refill state (apparently not acted on by the DE1)
-  ``55d81bb``
-* Allow "force" of DE1 Idle from any state, enabled through config ``05adc93``
-* Prereqs updated to current versions ``5d320cb``
+* Add ``NO_REQUEST`` mode to trigger a report from the DE1 - ``a52cd6f``
+* Add ``END_STEAM`` mode to support steam-to-temperature - ``24d7b52``
+
 
 Fixed
-~~~~~
+=====
 
 * Double-counting of scale delay was removed, improving scale-to-DE1 time
-  alignment ``886016a``
+  alignment - ``886016a``
 
 
+-------------------
 0.10.0 – 2021-11-21
 -------------------
 
 Overview
-~~~~~~~~
+========
 
 Documentation, including installation, added. Installation scripts,
 tested with Raspberry Pi OS Lite (Release date: October 30th 2021,
 Kernel version: 5.10) available in the source repo.
 
 New
-~~~
+===
 
 * Documentation viewable at https://pyde1.readthedocs.io/en/latest/
 * Install scripts in the source repo in the ``install`` directory
-* Provide config for TLS for MQTT clients ``427b3e0``
-
-
-Fixed
-~~~~~
-
-* utils: data_as_readable() now handles "undecodable" byte sequences ``08aef05``
-* packaging: Include schema and service files ``4caf736``
-
+* Provide config for TLS for MQTT clients - ``427b3e0``
 
 Changed
-~~~~~~~
+=======
 
-* MAPPING 4.0.1: MODULES_FOR_VERSIONS consistent with requirements ``40c4ce0``
 * Documentation reorganized and consolidated into the ``docs`` directory
 * ``disconnect-btid.sh`` is now expected at
   ``/usr/local/bin/pyde1-disconnect-btid.sh`` by ``pyde1.service``
 
+MAPPING 4.0.1
+-----------------
+
+* MODULES_FOR_VERSIONS consistent with requirements - ``40c4ce0``
+
+Fixed
+=====
+
+* utils: data_as_readable() now handles "undecodable" byte sequences - ``08aef05``
+* packaging: Include schema and service files - ``4caf736``
 
 
-
+------------------
 0.9.0 – 2021-10-31
 ------------------
 
 Overview
-~~~~~~~~
+========
 
 Functionality for the beta release completed and tested.
 
 New
-~~~
+===
 
 -  The flush-control features of *experimental* Firmware 1283 were
    implemented and include control of target duration, temperature, and
-   flow. 46c0481
+   flow. - ``46c0481``
 
 -  Clean, Descale, and Transport functionality is now available through
-   the API. 65f2ac9
+   the API. - ``65f2ac9``
 
--  Provide asynchronous firmware upload through API. d6a2dbc, 32436a9
+-  Provide asynchronous firmware upload through API. - ``d6a2dbc``, ``32436a9``
 
--  GET of DE1\_STATE enabled. 2b4435e
+-  GET of DE1\_STATE enabled. - ``2b4435e``
 
 -  Rewrite of logging and logging configuration. "Early" logging is
    captured and routed to the log file, once it is opened. Log levels
    and formatters can be easily configured through the YAML config
-   files. b759168, 39c714d, 7df0397, d3e128c, cabab97
+   files. - ``b759168``, ``39c714d``, ``7df0397``, ``d3e128c``, ``cabab97``
 
 -  Provide logging over MQTT for client use (in addition to console and
-   log file). 019bed0
+   log file). - ``019bed0``
 
 -  Profile frame logging provides "not" names for unset FrameFlags to
    clarify log messages. For example, the absence of ``CtrlF`` is now
-   rendered as ``CtrlP``. c842565
+   rendered as ``CtrlP``. - ``c842565``
 
 -  MQTT "Will" implemented, reporting unexpected MQTT disconnects.
-   22d06b4
+   - ``22d06b4``
 
 -  Feature flags have been added to formalize access to DE1 and firmware
-   abilities. d7405b0
+   abilities. - ``d7405b0``
+
+Changed
+=======
+
+-  ``c_api`` was updated with new information. - ``46c0481``
+
+-  The firmware version is read early in the DE1 initialization to
+   determine the range of valid MMRs and how to efficiently read them.
+   - ``46c0481``
+
+-  The ``ModeControl`` class was refactored into ``flow_sequencer``.
+   - ``46c0481``
+
+-  MMRs that are not able to be decoded (such as not implemented), are
+   logged along with the value received. - ``2d0fa24``
+
+-  Return 400 Bad Request for PATCH/PUT with no content. - ``d00bd24``
+
+-  Change MQTT to not request retaining messages from pyDE1. - ``8a8ba5e``
+
+-  Logging level and wording changes. - ``99ec22f``, ``b31c850``
+
+-  Rework imports to remove order dependencies and simplify. - ``c895f7d``,
+   - ``b31c850``
+
+-  Improve reconnection algorithm for DE1 and Scale. - ``6be3e5a``
+
+-  Improve camelcase\_from\_underscore(). - ``0b40fe9``
+
+-  Do not try to reconnect DE1 or Scale while shutting down. - ``bd21a93``
+
+-  Inbound (HTTP) API: Check DE1 and scale is\_ready instead of
+   is\_connected. - ``5de28e7``
+
+MAPPING 4.0.0
+-----------------
+
+* Rewrites ``IsAt`` to use an enum, rather than the class to define
+  the target, simplifying package inclusion. - ``78cea85``
 
 Fixed
-~~~~~
+=====
 
 -  Loop-level, exception-initiated shutdowns now terminate more cleanly.
-   0b593d0
+   - ``0b593d0``
 
 -  An error condition when no scale was present during a "shot" has been
    resolved. ffae2f
 
 -  An error condition when a DE1 connected and the profile was not yet
-   known has been resolved 58bbfad
+   known has been resolved - ``58bbfad``
 
 -  AutoTareNotification and StopAtNotification now populate sender.
-   9f39d08
+   - ``9f39d08``
 
 -  A very early termination of the program (before processes are
-   defined) now terminates more cleanly. 4f95c34
+   defined) now terminates more cleanly. - ``4f95c34``
 
 -  ScaleProcessor: Reset the history if a gap in reports is too long,
-   such as from a disconnect-reconnect sequence. 48a35ca
+   such as from a disconnect-reconnect sequence. - ``48a35ca``
 
-Changed
-~~~~~~~
-
--  ``c_api`` was updated with new information. 46c0481
-
--  The firmware version is read early in the DE1 initialization to
-   determine the range of valid MMRs and how to efficiently read them.
-   46c0481
-
--  The ``ModeControl`` class was refactored into ``flow_sequencer``.
-   46c0481
-
--  MMRs that are not able to be decoded (such as not implemented), are
-   logged along with the value received. 2d0fa24
-
--  Return 400 Bad Request for PATCH/PUT with no content. d00bd24
-
--  Change MQTT to not request retaining messages from pyDE1. 8a8ba5e
-
--  Logging level and wording changes. 99ec22f, b31c850
-
--  **MAPPING 4.0.0** rewrites ``IsAt`` to use an enum, rather than the
-   class to define the target, simplifying package inclusion. 78cea85
-
--  Rework imports to remove order dependencies and simplify. c895f7d,
-   b31c850
-
--  Improve reconnection algorithm for DE1 and Scale. 6be3e5a
-
--  Improve camelcase\_from\_underscore(). 0b40fe9
-
--  Do not try to reconnect DE1 or Scale while shutting down. bd21a93
-
--  Inbound (HTTP) API: Check DE1 and scale is\_ready instead of
-   is\_connected. 5de28e7
-
-Deprecated
-~~~~~~~~~~
 
 Removed
-~~~~~~~
+=======
 
--  Remove unused Config.set\_logging(). 2b104e6
+-  Remove unused Config.set\_logging(). - ``2b104e6``
 
 -  Remove feature.py as previously incorporated into FeatureFlag.
-   469ee96
+   - ``469ee96``
 
+------------------
 0.8.0 – 2021-09-28
 ------------------
 
 Overview
-~~~~~~~~
-
+========
 This release focused on converting command-line executables to robust,
 self-starting, and supervised services. Both the core pyDE1 controller
 and the Visualizer uploader now can be started with ``systemd``
@@ -222,17 +254,17 @@ through YAML files (simple, human-friendly syntax), by default in
 ``/usr/local/pyde1/``. Command-line parameters, usable by the service
 unit files, can be used to override the config-file location.
 
-    Logging configuration may change prior to "beta". At this time it is
-    only configurable in the output format and level for the *stderr* and
-    *file* loggers.
+Logging configuration may change prior to "beta". At this time it is
+only configurable in the output format and level for the *stderr* and
+*file* loggers.
 
-    By default, the *stderr* logger is at the WARNING level abd without
-    timestamps, as it is managed through ``systemd`` when being run as a
-    service. A command-line parameter allows for timestamped output at the
-    DEBUG level for interactive use.
+By default, the *stderr* logger is at the WARNING level abd without
+timestamps, as it is managed through ``systemd`` when being run as a
+service. A command-line parameter allows for timestamped output at the
+DEBUG level for interactive use.
 
 New
-~~~
+===
 
 -  Services run under ``systemd``
 
@@ -256,27 +288,16 @@ New
 -  Replay: config file and command-line switches allow easier
    configuration, including sequence ID and MQTT topic root
 
-Fixed
-~~~~~
-
--  MQTT (outbound) API will now detect connection or authentication
-   failures with the broker and terminate pyDE1
--  FlowSequencer no longer raises exception when trying to report that
-   the steam time is not managed directly by the software. (It is
-   managed by the DE1 firmware.)
--  Mass-flow estimates had an off-by-one error that was corrected
--  Replay now properly reports sequence\_id on gate notifications
-
 Changed
-~~~~~~~
+=======
+
+.. warning::
+   SIGHUP is no longer used for log rotation. It is a
+   termination signal.
 
 -  Paths changed to ``/var/log/pyde1`` and
    ``/var/lib/pyde1/pyde1.sqlite`` by default (configurable)
 -  Refactored and unified shutdown processes
-
-   -  **NB: SIGHUP is no longer used for log rotation. It is a
-      termination signal.**
-
 -  Refactored supervised processes to handle uncaught exceptions and
    properly terminate for automated restart
 -  Visualizer: log to ``pyde1-visualizer.log`` by default
@@ -297,14 +318,25 @@ Changed
 -  The outbound API reports "disconnected" for the DE1 and scale when
    initialized
 
+Fixed
+=====
+
+-  MQTT (outbound) API will now detect connection or authentication
+   failures with the broker and terminate pyDE1
+-  FlowSequencer no longer raises exception when trying to report that
+   the steam time is not managed directly by the software. (It is
+   managed by the DE1 firmware.)
+-  Mass-flow estimates had an off-by-one error that was corrected
+-  Replay now properly reports sequence\_id on gate notifications
+
 Deprecated
-~~~~~~~~~~
+==========
 
 -  ``find_first_and_load.py`` (Use the APIs. It would have already been
    removed if previously deprecated)
 
 Removed
-~~~~~~~
+=======
 
 -  ``ugly_bits.py`` (previously deprecated)
 -  ``try_de1.py`` (previously deprecated)
@@ -314,13 +346,16 @@ Removed
 -  ``replay_vis_test.py`` -- Use ``replay.py`` with config or
    command-line options
 
+
+------------------
 0.7.0 – 2021-08-12
 ------------------
 
 Schema Upgrade Required
-~~~~~~~~~~~~~~~~~~~~~~~
+=======================
 
-    NB: Backup your database before updating the schema.
+.. warning::
+   Backup your database before updating the schema.
 
 See SQLite ``.backup`` for details if you are not familiar.
 
@@ -328,7 +363,7 @@ This adds columns for the ``id`` and ``name`` fields that are now being
 sent with ``ConnectivityUpdate``
 
 New
-~~~
+===
 
 -  Stand-alone app automatically uploads to Visualizer on shot
    completion
@@ -340,24 +375,8 @@ New
    complete
 -  Variants of the EB6 profile at different temperatures
 
-Fixed
-~~~~~
-
--  Legacy "shot" files handle zero flow in "resistance" calculation
--  Properly end recording of a sequence if it is interrupted
--  FlowSequencer last-drops gate set during sequence
--  Correct logic error in stopping recorder at end of sequence
--  Correct reporting of not-connected conditions to HTTP API
--  Correct scale-presence checking for PUT and PATCH requests
--  Handle missing Content-Length header
--  Incorrect error message around API request for Sleep removed
--  ``pyDE1.scanner`` should now import properly into other code
--  Steam-temperature setter now can set 140-160 deg. C
--  Type errors in validation of API inputs properly report the expected
-   type
-
 Changed
-~~~~~~~
+=======
 
 -  Better logging when waiting for a sequence to complete times out
 -  Capture pre-sequence history at all times so "sync" is possible on
@@ -375,8 +394,8 @@ Changed
    the error
 -  Set the default first-drops threshold to 0.0 for fast-flowing shots
 
-Resource Version 3.0.0
-^^^^^^^^^^^^^^^^^^^^^^
+RESOURCE 3.0.0
+------------------
 
 -  Changes previously unimplemented UPLOAD_TO_ID
 
@@ -386,7 +405,7 @@ Resource Version 3.0.0
        DE1_FIRMWARE_ID
 
 Database Schema 2
-^^^^^^^^^^^^^^^^^
+-----------------
 
 See ``upgrade.001.002.sql``
 
@@ -401,6 +420,25 @@ See ``upgrade.001.002.sql``
 
     END TRANSACTION;
 
+Fixed
+=====
+
+-  Legacy "shot" files handle zero flow in "resistance" calculation
+-  Properly end recording of a sequence if it is interrupted
+-  FlowSequencer last-drops gate set during sequence
+-  Correct logic error in stopping recorder at end of sequence
+-  Correct reporting of not-connected conditions to HTTP API
+-  Correct scale-presence checking for PUT and PATCH requests
+-  Handle missing Content-Length header
+-  Incorrect error message around API request for Sleep removed
+-  ``pyDE1.scanner`` should now import properly into other code
+-  Steam-temperature setter now can set 140-160 deg. C
+-  Type errors in validation of API inputs properly report the expected
+   type
+
+
+
+------------------
 0.6.0 – 2021-07-25
 ------------------
 
@@ -412,7 +450,7 @@ See ``upgrade.001.002.sql``
 *So do I. Wonder no longer.*
 
 New
-~~~
+===
 
 A SQLite3 database now saves all profiles uploaded to the DE1, as well
 as capturing virtually all real-time data during all flow sequences,
@@ -447,7 +485,8 @@ flow sequence beings prior to uploading a profile, it is used as the
 "most likely" profile and identified in the database with the
 ``profile_assumed`` flag.
 
-**NB: The database needs to be manually initialized prior to use.**
+.. note::
+   The database needs to be manually initialized prior to use.
 
 One approach is
 
@@ -456,13 +495,8 @@ One approach is
     sudo -u <user> sqlite3 /var/lib/pyDE1/pyDE1.sqlite3 \
     < path/to/pyDE1/src/pyDE1/database/schema/schema.001.sql
 
-Fixed
-~~~~~
-
-In ``find_first_and_load.py``, ``set_saw()`` now uses the passed mass
-
 Changed
-~~~~~~~
+=======
 
 Upload limit changed to 16 kB to accommodate larger profiles.
 
@@ -488,8 +522,13 @@ Internal ``Profile`` class extended to capture "raw source", metadata,
 and UUIDs for both the raw source and the resulting "program" sent to
 the DE1.
 
+Fixed
+=====
+
+In ``find_first_and_load.py``, ``set_saw()`` now uses the passed mass
+
 Deprecated
-~~~~~~~~~~
+==========
 
 ``Profile.from_json_file()`` as it is no longer needed with the API able
 to upload profiles. If needed within the code base, read the file, and
@@ -500,7 +539,7 @@ signatures are properly updated.
 superseded by database logging.
 
 Known Issues
-~~~~~~~~~~~~
+============
 
 The database name is hard-coded at this time.
 
@@ -511,11 +550,13 @@ passed ``None`` and an exception is raised. This may be due to shut
 down, or may be due to failure to retrieve an earlier exception from the
 task.
 
+
+------------------
 0.5.0 – 2021-07-14
 ------------------
 
 New
-~~~
+===
 
 Bluetooth scanning with API. See ``README.bluetooth.md`` for details
 
@@ -527,8 +568,9 @@ A list of logs and individual logs can be obtained with GET
 ``ConnectivityEnum.READY`` added, allowing clients to clearly know if
 the DE1 or scale is available for use.
 
-    NB: Previous code that assumed that ``.CONNECTED`` was the terminal
-    state should be modified to recognize ``.READY``.
+.. warning::
+   Previous code that assumed that ``.CONNECTED`` was the
+   terminal state should be modified to recognize ``.READY``.
 
 ``examples/find_first_and_load.py`` demonstrates stand-alone connection
 to a DE1 and scale, loading of a profile, setting of shot parameters,
@@ -556,11 +598,9 @@ Add ``timestamp_to_str_with_ms()`` to ``pyDE1.utils``
 On an error return to the inbound API, an exception trace is provided,
 when available. This is intended to assist in error reporting.
 
-Fixed
-~~~~~
 
 Changed
-~~~~~~~
+=======
 
 HTTP API PUT/PATCH requests now return a list, which may be empty.
 Results, if any, from individual setters are returned as dict/obj
@@ -585,8 +625,8 @@ with its name, and retried (without waiting).
 An additional example profile was added. EB6 has 30-s ramp vs EB5 at
 25-s. Annoying rounding errors from Insight removed.
 
-Mapping Version 3.1.0
-^^^^^^^^^^^^^^^^^^^^^
+MAPPING 3.1.0
+-----------------
 
 Add Resource.SCAN and Resource.SCAN\_RESULTS
 
@@ -597,12 +637,13 @@ Add ``first_if_found`` key to mapping for ``Resource.DE1_ID`` and
 without initiating a scan. When using this feature, no other keys may be
 provided.
 
-Resource Version 2.0.0
-^^^^^^^^^^^^^^^^^^^^^^
+RESOURCE 2.0.0
+------------------
 
-    NB: Breaking change: ``ConnectivityEnum.READY`` added. See Commit
-    b53a8eb Previous code that assumed that ``.CONNECTED`` was the
-    terminal state should be modified to recognize ``.READY``.
+.. note:
+   Breaking change: ``ConnectivityEnum.READY`` added. See Commit
+   ``b53a8eb`` Previous code that assumed that ``.CONNECTED`` was the
+   terminal state should be modified to recognize ``.READY``.
 
 Add
 
@@ -617,7 +658,7 @@ Add
         LOGS = 'logs'
 
 Deprecated
-~~~~~~~~~~
+==========
 
 ``stop_scanner_if_running()`` in favor of just calling
 ``scanner.stop()``
@@ -626,7 +667,7 @@ Deprecated
 handled through the API. See ``examples/find_first_and_load.py``
 
 Removed
-~~~~~~~
+=======
 
 ``READ_BACK_ON_PATCH`` removed as PATCH operations now can return
 results themselves.
@@ -638,7 +679,7 @@ Removed ``examples/test_first_find_and_load.py``, use
 ``find_first_and_load.py``
 
 Known Issues
-~~~~~~~~~~~~
+============
 
 At least with BlueZ, it appears that a connection request while scanning
 will be deferred.
@@ -647,11 +688,13 @@ Implicit scan-for-address in the creation of a ``BleakClient`` does not
 cache or report any devices it discovers. This does not have any
 negative impacts, but could be improved for the future.
 
+
+------------------
 0.4.1 – 2021-07-04
 ------------------
 
 Fixed
-~~~~~
+=====
 
 Import problems with ``manual_setup`` resolved with an explicit
 reference to the ``pyDE1.ugly_bits`` version. Local overrides that may
@@ -662,11 +705,13 @@ Non-espresso flow (hot water flush, steam, hot water) now have their
 accumulated volume associated with Frame 0, rather than the last frame
 number of the previous espresso shot.
 
+
+------------------
 0.4.0 – 2021-07-03
 ------------------
 
 New
-~~~
+===
 
 Support for non-GHC machines to be able to start flow through the API
 
@@ -676,7 +721,8 @@ Logging to a single file, ``/tmp/log/pyDE1/combined.log`` by default. If
 changed to, for example, ``/var/log/pyDE1/``, the process needs write
 permission for the directory.
 
-    NB: Keeping the logs in a dedicated directory is suggested, as the
+.. note::
+    Keeping the logs in a dedicated directory is suggested, as the
     plan is to provide an API where a directory list will be used to
     generate the ``logs`` collection. ``/tmp/`` is used for ease of
     development and is not guaranteed to survive a reboot.
@@ -687,21 +733,8 @@ Long-running processes, tasks, and futures are supervised, with
 automatic restart should they unexpectedly terminate. A limit of two
 restarts is in place to prevent "thrashing" on non-transient errors.
 
-Fixed
-~~~~~
-
-Resolved pickling errors related to a custom exception. It now is
-properly reported to and by the HTTP server.
-
-Changed BleakClient initialization to avoid
-``AttributeError: 'BleakClientBlueZDBus' object has no attribute 'lower'``
-and similar for ``'BleakClientCoreBluetooth'``
-
-Exiting prior to device connection no longer results in
-``AttributeError: 'NoneType' object has no attribute 'disconnect'``
-
 Changed
-~~~~~~~
+=======
 
 Exceptions moved into ``pyDE1.exceptions`` for cleaner imports into
 child processes.
@@ -737,14 +770,14 @@ Significant refactoring to move setup and run code out of ``try_de1.py``
 and into more appropriate locations. The remaining "manual" setup steps
 are now in ``ugly_bits.py``. See also ``run.py``
 
-Mapping Version 2.1.1
-^^^^^^^^^^^^^^^^^^^^^
+MAPPING 2.1.1
+-----------------
 
 -  Handle missing modules in "version" request by returning ``None``
    (``null``)
 
-Resource Version 1.2.0
-^^^^^^^^^^^^^^^^^^^^^^
+RESOURCE 1.2.0
+------------------
 
 -  Adds to ``DE1ModeEnum`` Espresso, HotWaterRinse, Steam, HotWater for
    use by non-GHC machines
@@ -753,7 +786,7 @@ Resource Version 1.2.0
    supported
 
 Response Codes
-^^^^^^^^^^^^^^
+--------------
 
 -  409 — When the current state of the device does not permit the action
 -  ``DE1APIUnsupportedStateTransitionError``
@@ -762,21 +795,34 @@ Response Codes
    action
 -  ``DE1APIUnsupportedFeatureError``
 
+Fixed
+=====
+
+Resolved pickling errors related to a custom exception. It now is
+properly reported to and by the HTTP server.
+
+Changed BleakClient initialization to avoid
+``AttributeError: 'BleakClientBlueZDBus' object has no attribute 'lower'``
+and similar for ``'BleakClientCoreBluetooth'``
+
+Exiting prior to device connection no longer results in
+``AttributeError: 'NoneType' object has no attribute 'disconnect'``
+
 Deprecated
-~~~~~~~~~~
+==========
 
 ``try_de1.py`` is deprecated in favor of ``run.py`` or similar
 three-liners.
 
 Removed
-~~~~~~~
+=======
 
 "null" outbound API implementation — Removed as not refactored for new
 IPC. If there is a need, the MQTT implementation can be modified to only
 consume from the pipe and not create or use an MQTT client.
 
 Known Issues
-~~~~~~~~~~~~
+============
 
 Exceptions on a non-supervised task or callback are "swallowed" by the
 default handler. They are reported in the log, but do not terminate the
@@ -792,11 +838,13 @@ appeared to be due to a shutdown signal, rather than an exception.
 
 The hard limit of two restarts should be changed to a time-based limit.
 
+
+------------------
 0.3.0 — 2021-06-26
 ------------------
 
 New
-~~~
+===
 
 Upload of profile (JSON "v2" format) available with PUT at de1/profile
 
@@ -811,8 +859,9 @@ The HTTP API now checks to see if the request can be serviced with the
 current DE1 and Scale connectivity. This should help enable people that
 don't have a Skale II connected.
 
-    **NB: Although the DE1 and Scale can be reconnected, they are not
-    reinitialized at this time.**
+.. note:
+    Although the DE1 and Scale can be reconnected, they are not
+    reinitialized at this time.
 
 ``BleakClientWrapped.willful_disconnect`` property can be used to
 determine if the on-disconnect callback was called as a result of an
@@ -821,25 +870,11 @@ intentional (locally initiated) or unintentional disconnect.
 ``BleakClientWrapped.name`` provides the advertised device name under
 BlueZ and should not fail under macOS (or Windows).
 
-Fixed
-~~~~~
-
-Better error reporting if the JSON value can not be converted to the
-internal enum.
-
-Python 3.8 compatibility: Changed "subscripted" type hints for ``dict``,
-``list``, and ``set`` to their capitalized versions from ``typing``,
-added replacement for ``str.removeprefix()``
-
-Running on macOS with ``bleak`` 0.12.0 no longer raises device-name
-lookup errors. This was not a ``bleak`` issue, but due to hopeful access
-to its private internals.
-
 Changed
-~~~~~~~
+=======
 
-Mapping Version 2.1.0
-^^^^^^^^^^^^^^^^^^^^^
+MAPPING 2.1.0
+-----------------
 
 -  Adds ``IsAt.internal_type`` to help validate the string values for
    ``DE1ModeEnum`` and ``ConnectivityEnum``. JSON producers and
@@ -847,8 +882,8 @@ Mapping Version 2.1.0
 
 -  Enables ``de1/profile`` for PUT
 
-Resource Version 1.1.0
-^^^^^^^^^^^^^^^^^^^^^^
+RESOURCE 1.1.0
+------------------
 
 -  Adds
    ``DE1_CALIBRATION_LINE_FREQUENCY = 'de1/calibration/line_frequency'``
@@ -861,20 +896,33 @@ Use the ``.address`` property.
 
 ``BleakClientWrapped`` unifies ``atexit`` to close connected devices.
 
-Deprecated
-~~~~~~~~~~
+Fixed
+=====
+
+Better error reporting if the JSON value can not be converted to the
+internal enum.
+
+Python 3.8 compatibility: Changed "subscripted" type hints for ``dict``,
+``list``, and ``set`` to their capitalized versions from ``typing``,
+added replacement for ``str.removeprefix()``
+
+Running on macOS with ``bleak`` 0.12.0 no longer raises device-name
+lookup errors. This was not a ``bleak`` issue, but due to hopeful access
+to its private internals.
 
 Removed
-~~~~~~~
+=======
 
 ``DE1()`` and ``Scale()`` no longer accept an address as an argument.
 Use the ``.address`` property.
 
+
+------------------
 0.2.0 — 2021-06-22
 ------------------
 
 Inbound Control and Query API
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+=============================
 
 An inbound API has been provided using a REST-like interface over HTTP.
 The API should be reasonably complete in its payload and method
@@ -932,7 +980,7 @@ authentication, and authorization, as well as a more "production-ready"
 exposure.
 
 Other Significant Changes
-~~~~~~~~~~~~~~~~~~~~~~~~~
+=========================
 
 -  ``ShotSampleWithVolumeUpdates`` (v1.1.0) adds ``de1_time``.
    ``de1_time`` and ``scale_time`` are preferred over ``arrival_time``
@@ -956,11 +1004,13 @@ Other Significant Changes
 
 -  Scaling on ``MMR0x80LowAddr.TANK_WATER_THRESHOLD`` was corrected.
 
+
+------------------
 0.1.0 — 2021-06-11
 ------------------
 
 Outbound API
-~~~~~~~~~~~~
+============
 
 An outbound API (notifications) is provided in a separate process. The
 present implementation uses MQTT and provides timestamped,
@@ -1018,7 +1068,7 @@ a live view on your phone, live view on your desktop, log to file, log
 to database, all at once.
 
 Scan For And Use First DE1 And Skale Found
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+==========================================
 
 Though "WET" and needing to be "DRY", the first-found DE1 and Skale will
 be used. The Scale class has already been designed to be able to have
