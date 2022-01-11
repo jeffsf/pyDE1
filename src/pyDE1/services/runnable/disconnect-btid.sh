@@ -15,7 +15,7 @@
 files=$(ls ${SEARCH_DIR}/*${SUFFIX} 2>/dev/null)
 
 if [ -z "$files" ] ; then
-  return
+  exit 0
 fi
 
 for file in $files
