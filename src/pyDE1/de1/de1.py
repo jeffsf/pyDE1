@@ -762,7 +762,7 @@ class DE1 (Singleton):
                 timeout=config.de1.CUUID_LOCK_WAIT_TIMEOUT)
         except asyncio.TimeoutError as e:
             cuuid_logger.critical(
-                "Timeout waiting for lock. Aborting process.")
+                "Timeout waiting for lock or request/notify. Aborting process.")
             raise e
 
         return retval
