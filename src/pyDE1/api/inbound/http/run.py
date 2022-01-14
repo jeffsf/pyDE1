@@ -23,9 +23,14 @@ from pyDE1.exceptions import *
 # might be a way to provide a timeout and prevent permanent blocking.
 
 
-def run_api_inbound(config: pyDE1.config.Config,
+def run_api_inbound(master_config: pyDE1.config.Config,
                     log_queue: multiprocessing.Queue,
                     api_pipe: mpc.Connection):
+
+    # Not clear why this one needs to be different
+    import pyDE1.config
+    pyDE1.config.config = master_config
+    from pyDE1.config import config
 
     import asyncio
     import http.server
@@ -48,12 +53,12 @@ def run_api_inbound(config: pyDE1.config.Config,
     from pyDE1.dispatcher.payloads import APIRequest, APIResponse, HTTPMethod
     from pyDE1.dispatcher.validate import validate_patch_return_targets
     # These two needed as they have specific fields that need to be unpickled
+    # from pyDE1.exceptions import *  # Only allowed at module level
     from pyDE1.exceptions import (
         DE1APIUnsupportedStateTransitionError, DE1APIUnsupportedFeatureError
     )
     from pyDE1.supervise import SupervisedTask, SupervisedExecutor
     from pyDE1.utils import timestamp_to_str_with_ms
-
 
     logger = pyDE1.getLogger('Inbound')
 

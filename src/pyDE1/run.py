@@ -130,7 +130,7 @@ def run():
     supervised_outbound_log_process = SupervisedProcess(
         target=run_mqtt_outbound,
         kwargs={
-            'config': config,
+            'master_config': config,
             'log_queue': log_queue,
             'outbound_pipe': log_mqtt_pipe_read,
             'mode': OutboundMode.LogRecord,
@@ -144,7 +144,7 @@ def run():
     supervised_outbound_api_process = SupervisedProcess(
         target=run_mqtt_outbound,
         kwargs={
-            'config': config,
+            'master_config': config,
             'log_queue': log_queue,
             'outbound_pipe': outbound_pipe_read,
             'mode': OutboundMode.EventPayload,
@@ -158,7 +158,7 @@ def run():
     supervised_inbound_api_process = SupervisedProcess(
         target=run_api_inbound,
         kwargs={
-            'config': config,
+            'master_config': config,
             'log_queue': log_queue,
             'api_pipe': inbound_pipe_server,
         },
@@ -174,7 +174,7 @@ def run():
     supervised_database_logger_process = SupervisedProcess(
         target=run_database_logger,
         kwargs={
-            'config': config,
+            'master_config': config,
             'log_queue': log_queue,
             'notification_queue': database_queue,
         },
@@ -190,7 +190,7 @@ def run():
     supervised_controller_process = SupervisedProcess(
         target=run_controller,
         kwargs={
-            'config': config,
+            'master_config': config,
             'log_queue': log_queue,
             'inbound_pipe': inbound_pipe_controller,
             'outbound_pipe': outbound_pipe_write,

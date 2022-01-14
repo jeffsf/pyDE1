@@ -14,11 +14,14 @@ import multiprocessing.connection as mpc
 import pyDE1.config
 
 
-def run_controller(config: pyDE1.config.Config,
+def run_controller(master_config: pyDE1.config.Config,
                    log_queue: multiprocessing.Queue,
                    inbound_pipe: mpc.Connection,
                    outbound_pipe: mpc.Connection,
                    database_queue: multiprocessing.Queue):
+
+    pyDE1.config.config = master_config
+    from pyDE1.config import config
 
     import asyncio
     import time

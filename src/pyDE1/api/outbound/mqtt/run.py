@@ -34,10 +34,13 @@ class MQTTStatusText (enum.Enum):
     on_will = 'Died'
 
 
-def run_mqtt_outbound(config: pyDE1.config.Config,
+def run_mqtt_outbound(master_config: pyDE1.config.Config,
                       log_queue: multiprocessing.Queue,
                       outbound_pipe: mpc.Connection,
                       mode: OutboundMode):
+
+    pyDE1.config.config = master_config
+    from pyDE1.config import config
 
     import asyncio
     import json

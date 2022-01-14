@@ -15,9 +15,12 @@ import multiprocessing
 import pyDE1.config
 
 
-def run_database_logger(config: pyDE1.config.Config,
+def run_database_logger(master_config: pyDE1.config.Config,
                         log_queue: multiprocessing.Queue,
                         notification_queue: multiprocessing.Queue):
+
+    pyDE1.config.config = master_config
+    from pyDE1.config import config
 
     import asyncio
     import threading
@@ -29,7 +32,6 @@ def run_database_logger(config: pyDE1.config.Config,
     from pyDE1.database.write_notifications import record_data
 
     from pyDE1.supervise import SupervisedTask
-
 
     logger = pyDE1.getLogger('Database.Logger')
 
