@@ -1,6 +1,6 @@
 #!/bin/sh
 
-# Copyright © 2021 Jeff Kletsky. All Rights Reserved.
+# Copyright © 2021, 2022 Jeff Kletsky. All Rights Reserved.
 #
 # License for this software, part of the pyDE1 package, is granted under
 # GNU General Public License v3.0 only
