@@ -1,5 +1,5 @@
 ..
-    Copyright © 2021 Jeff Kletsky. All Rights Reserved.
+    Copyright © 2021, 2022 Jeff Kletsky. All Rights Reserved.
 
     License for this software, part of the pyDE1 package, is granted under
     GNU General Public License v3.0 only
@@ -72,7 +72,15 @@ The (mis-)behavior seen at
 https://www.eclipse.org/lists/mosquitto-dev/msg00799.html
 still appears to be the current behavior at least as of 2.0.11
 
-Without TLS, the configuration of ``conf.d/listeners.conf`` is straightforward
+Listeners Without TLS
+=====================
+
+Without TLS, the configuration of listeners is straightforward.
+
+The ports here are not not "set in stone" the way that HTTP
+and HTTP-S are specified.
+
+``conf.d/listeners.conf``
 
 .. code-block:: sh
 
@@ -81,12 +89,48 @@ Without TLS, the configuration of ``conf.d/listeners.conf`` is straightforward
   listener 1884
   protocol websockets
 
+
+Listeners Adding TLS
+====================
+
+Here, port 8883 was selected for MQTT over TLS. The WebSocket listener is
+reverse-proxied by ``nginx``, so it is not enabled here.
+
+``conf.d/listeners.conf``
+
+.. code-block:: sh
+
+  listener 1883 localhost
+
+  listener 8883
+  cafile /etc/ssl/certs/ca-certificates.crt
+  certfile /etc/mosquitto/certs/fullchain.pem
+  keyfile /etc/mosquitto/certs/privkey.pem
+  tls_version tlsv1.3
+
+  listener 1884
+  protocol websockets
+
+As perviously noted, ``mosquitto`` needs to be able to read the private key
+as the ``mosquitto`` user, not ``root``. This is somewhat ugly, as reading
+as ``root`` then dropping privelege helps protect the key from compromise.
+For now, we note and live with the risks. At least until I can find a better
+approach, ``privkey.pem`` needs to be (only) ``mosquitto``-readable.
+
+::
+
+  $ sudo chown mosquitto:root /etc/mosquitto/certs/privkey.pem
+  $ sudo chmod 600 /etc/mosquitto/certs/privkey.pem
+  $ ls -l /etc/mosquitto/certs/privkey.pem
+  -r-------- 1 mosquitto root 3272 Jan  4 15:19 /etc/mosquitto/certs/privkey.pem
+
 Current versions of ``pyDE1`` allow configuration of TLS for MQTT
 through the config files. For details of the parameters,
 see paho's ``Client.set_tls()``.  With a verifiable certificate,
 setting ``mqtt.TLS: true`` should be sufficient. With self-signed certificates,
 ``mqtt.TLS_CA_CERTS`` likely would also need to be set to the path to
 the corresponding CA or public certificate in use.
+
 
 Blocking Off-Host Access to WebSockets
 ======================================

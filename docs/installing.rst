@@ -1,5 +1,5 @@
 ..
-    Copyright © 2021 Jeff Kletsky. All Rights Reserved.
+    Copyright © 2021, 2022 Jeff Kletsky. All Rights Reserved.
 
     License for this software, part of the pyDE1 package, is granted under
     GNU General Public License v3.0 only
@@ -31,6 +31,10 @@ running them blindly.
 Unless specifically noted, all scripts are to be run with *root*
 privilege using ``sudo``.
 
+.. [1] One way to access the database is with
+   ``sudo -u pyde1 sqlite3 /var/lib/pyde1/pyde1.sqlite3``
+
+
 ------------
 Walk-Through
 ------------
@@ -44,13 +48,20 @@ The repo can be cloned, or individual files downloaded. Make sure that
 the ``_config`` file is in the same directory as the shell scripts.
 Generally no changes need to be made to the ``_config`` file.
 
+.. literalinclude:: ../install/_config
+
 .. _`pyDE1 git repo`: https://github.com/jeffsf/pyDE1
+
 
 10-create-user.sh
 =================
 
 This script will create the *pyde1* user if it does not exist
 and give it access to the *bluetooth* group.
+
+.. literalinclude:: ../install/10-create-user.sh
+   :language: sh
+
 
 20-create-dirs.sh
 =================
@@ -60,6 +71,10 @@ and permissions:
 
 * ``/var/log/pyde1``
 * ``/var/lib/pyde1``
+
+.. literalinclude:: ../install/20-create-dirs.sh
+   :language: sh
+
 
 30-populate-venv
 ================
@@ -79,11 +94,15 @@ and its dependencies to the venv.
    should not need modification, as that sets ``python`` to refer to the one
    in the venv.
 
+.. literalinclude:: ../install/30-populate-venv.sh
+   :language: sh
+
+
 40-config-files.sh
 ==================
 
 This copies the config files from the location where ``pip`` installed them
-in the venv and into ```/usr/local/etc/pyde1``. It will make a timestamped
+in the venv and into ``/usr/local/etc/pyde1``. It will make a timestamped
 backup of any file that would be overwritten.
 
 .. note::
@@ -101,6 +120,10 @@ Rather than run ``disconnect-btid.sh`` directly from the install, it is
 copied to ``/usr/local/bin/pyde1-disconnect-btid.sh``. This script is run
 by ``pyde1.service`` to help clean up any "stale" Bluetooth connections
 related to a prior run that may have terminated ungracefully.
+
+.. literalinclude:: ../install/40-config-files.sh
+   :language: sh
+
 
 Adjust Config Files to Suit
 ===========================
@@ -150,6 +173,7 @@ If needed, the ownership and permissions can be corrected with
   sudo chown root:pyde1 *.conf
   sudo chmod 640 *.conf
 
+
 50-enable-services.sh
 =====================
 
@@ -166,16 +190,19 @@ Further information on service management can be found with
   man systemctl
   man journalctl
 
-.. [1] One way to access the database is with ``sudo -u pyde1 sqlite3 /var/lib/pyde1/pyde1.sqlite3``
+.. literalinclude:: ../install/50-enable-services.sh
+   :language: sh
+
 
 ------------
 Log Rotation
 ------------
 
-The standard log-rotation utility on Debian is ``logrotate`` with configuration in
-``/etc/logrotate.d/``
+The standard log-rotation utility on Debian is ``logrotate`` with
+configuration in ``/etc/logrotate.d/``
 
-One configuration that rotates daily, compresses, and retains 60 days' of logs is
+One configuration that rotates daily, compresses,
+and retains 60 days' of logs is
 
 .. code-block::
 
@@ -198,3 +225,6 @@ One configuration that rotates daily, compresses, and retains 60 days' of logs i
         notifempty
         create
     }
+
+Both the ``mosquitto`` and ``nginx`` packages install self-named config into
+``/etc/logrotate.d/``

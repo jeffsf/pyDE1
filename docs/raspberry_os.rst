@@ -1,5 +1,5 @@
 ..
-    Copyright © 2021 Jeff Kletsky. All Rights Reserved.
+    Copyright © 2021, 2022 Jeff Kletsky. All Rights Reserved.
 
     License for this software, part of the pyDE1 package, is granted under
     GNU General Public License v3.0 only
@@ -215,7 +215,95 @@ that is helpful for *"Where are the .service files again?"* and the like.
 
 ``htop`` is already installed with the Raspberry OS image and is a more
 fully featured monitoring tool than ``top`` without getting into huge
-number of packages and that something like ``glances`` brings in.
+number of packages that something like ``glances`` brings in.
+
+
+-----------
+Timekeeping
+-----------
+
+.. admonition:: TL;DR
+
+  Unless you're concerned about tens of milliseconds, skip installing ``ntp``,
+  stick with the default, but disable ``dhcpcd`` from restarting it on every
+  DHCP renewal.
+
+The default DHCP client, ``dhcpcd`` is configured to restart the timekeeping
+utility on every lease renewal. Depending on how your router or DHCP server
+is set up, this might be every few minutes. This can limit the ability to get
+a good estimate of time, as well as causing log spam.
+
+For most people that aren't moving their computer from network to network
+without rebooting it, there is little reason to restart timekeeping with
+each DHCP renewal. The "hooks" that do this can be disabled by adding
+to the end of ``/etc/dhcpcd.conf``
+
+::
+
+  # Additions start here
+
+  nohook hostname ntp-common.conf chrony.conf timesyncd.conf ntp.conf openntpd.conf
+
+The above list comes from examining the hooks in ``/lib/dhcpcd/dhcpcd-hooks``.
+Setting of hostname was also disabled, as it is often "permanently" configured
+in ``/etc/hostname`` and reflected in ``/etc/hosts``.
+
+``ntp`` installs a more sophisticated time-keeping package than the default.
+I believe it is more accurate than the default ``systemd-timesyncd``.
+``systemd-timesyncd`` apparently has the advantage of persisting
+the last-known time to disk and restoring it at boot. This is helpful
+for machines that do not have a real-time clock (RTC) that survives
+without power, such as on the Raspberry Pi boards. It has a disadvantage
+of only using a single time server, without the set of algorithms of NTP
+to estimate and stabilize the clock from multiple sources.
+The accuracy you get with ``systemd-timesyncd`` will depend on which
+server gets randomly selected and "Internet weather".
+
+
+-------------
+WiFi Dropouts
+-------------
+
+My Pi Zero 2 seems to randomly drop off WiFi, even with an ssh session open.
+There are suggestions that WMM or Fast Roaming are problematic, as well as
+power control. WMM is primarily related to QoS, but there is a *Power Save
+Certification* as well. Reflecting on it, the 3B+ may also have some issues.
+
+*Guessing* that power control in the Pi is at the core of the problem,
+especially as it is within a couple meters of the AP and it doesn't seem
+to impact other devices on the network
+
+::
+
+  $ iwlist wlan0 power
+  wlan0     Current mode:on
+
+  $ sudo iwconfig wlan0 power off
+
+  $ iwlist wlan0 power
+  wlan0     Current mode:off
+
+seems to have resolved it. One way to make the change permanent is
+to create ``/etc/systemd/system/wlan0_power_mgmt_off.service`` containing
+
+::
+
+  [Unit]
+  Description=Disable power-save on wlan0
+  After=sys-subsystem-net-devices-wlan0.device
+
+  [Service]
+  Type=oneshot
+  RemainAfterExit=yes
+  ExecStart=/sbin/iwconfig wlan0 power off
+
+  [Install]
+  WantedBy=sys-subsystem-net-devices-wlan0.device
+
+and enable it with ``sudo systemctl enable wlan0_power_mgmt_off.service``
+
+Unit file after https://raspberrypi.stackexchange.com/questions/96606/make-iw-wlan0-set-power-save-off-permanent
+
 
 ---------------------------------------
 Developers' Sidebar – Using pip and VCS
@@ -225,7 +313,7 @@ To be able to test out the sufficiency of the package and the installation
 instructions, I didn't want to "publish" a package to PyPi that was either
 incomplete or broken.
 
-There is `VCS Support`_ for pip that alows an install to be done "on the fly"
+There is `VCS Support`_ for pip that allows an install to be done "on the fly"
 from various VCS systems, or a file system.
 
 .. _`VCS Support`: https://pip.pypa.io/en/latest/topics/vcs-support/

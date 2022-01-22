@@ -20,7 +20,7 @@ import sphinx_rtd_theme
 # -- Project information -----------------------------------------------------
 
 project = 'pyDE1'
-copyright = '2021, Jeff Kletsky'
+copyright = '2021, 2022 Jeff Kletsky'
 author = 'Jeff Kletsky'
 
 

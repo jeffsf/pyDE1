@@ -1,5 +1,5 @@
 ..
-    Copyright © 2021 Jeff Kletsky. All Rights Reserved.
+    Copyright © 2021, 2022 Jeff Kletsky. All Rights Reserved.
 
     License for this software, part of the pyDE1 package, is granted under
     GNU General Public License v3.0 only
@@ -51,6 +51,8 @@ with a revocation list is the preferred way to obtain certificates.
 Let's Encrypt is one service that can provide host-specific certificates
 at no cost. These certificates can both be used to set up TLS connections,
 as well as verify the identity of the host to which you're connecting.
+
+.. _security_self-signed_certificates:
 
 Self-Signed Certificates
 ========================
@@ -130,9 +132,9 @@ Firewalls and Networking
 ------------------------
 
 If you're reading this to determine how to access pyDE1 from the open Internet,
-you'll have to find other resources on that. To be very clear, even with nginx
-reverse proxying the Python HTTP server and running ``mosquitto``, it is not
-secure. This is one of those "If you have to ask ..." things.
+you'll have to find other resources on that. To be very clear, even with
+``nginx`` reverse proxying the Python HTTP server and running ``mosquitto``,
+it is not secure. This is one of those "If you have to ask ..." things.
 
 One piece of firewall worth noting is that ``mosquitto`` apparently can't
 restrict the *websockets* listener to the localhost interface.
