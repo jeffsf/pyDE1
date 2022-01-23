@@ -224,8 +224,8 @@ http://nginx.org/en/docs/http/ngx_http_core_module.html#tcp_nodelay
 Redirect HTTP to HTTP-S
 -----------------------
 
-As ``conf.d/tls.conf``, below, enables HSTS for all sites, the redirect
-should be for all sites as well.
+As ``conf.d/tls.conf``, described later, enables HSTS for all sites,
+the redirect should be for all sites as well.
 
 ``conf.d/redirect_tls.conf``
 
@@ -344,7 +344,9 @@ or other sources directly.
 
   Configuration for TLSv1.2 requires Diffie-Hellman parameters
 
-  ``curl https://ssl-config.mozilla.org/ffdhe2048.txt > /etc/nginx/ffdhe2048.txt``
+  ::
+
+    curl https://ssl-config.mozilla.org/ffdhe2048.txt > /etc/nginx/ffdhe2048.txt
 
 ``tls.conf``
 

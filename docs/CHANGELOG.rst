@@ -9,6 +9,18 @@
 Changelog
 =========
 
+------------------
+1.1.0 – 2022-01-24
+------------------
+
+Fixed: Long profiles should no longer time out when selecting by ID -
+``f1f383a``
+
+Other functional changes described at :ref:`changelog_v1.1.0b1`
+
+* Trivial documentation changes from 1.1.0b2
+* Updated documentation from 1.1.0b1
+
 --------------------
 1.1.0b2 – 2022-01-22
 --------------------
@@ -22,6 +34,8 @@ Changed
 =======
 
 Documentation (only)
+
+.. _changelog_v1.1.0b1:
 
 --------------------
 1.1.0b1 – 2022-01-14
