@@ -67,7 +67,7 @@ def get_timeout(prop, value):
         timeout = config.bluetooth.SCAN_TIME \
                   + config.bluetooth.CONNECT_TIMEOUT \
                   + config.http.ASYNC_TIMEOUT + 0.100
-    elif name == 'upload_json_v2_profile':
+    elif name in ('set_profile_by_id', 'upload_json_v2_profile'):
         timeout = config.http.PROFILE_TIMEOUT
     elif name == 'stop_at_time_set_async':
         timeout = config.http.ASYNC_TIMEOUT * 2
@@ -78,6 +78,7 @@ def get_timeout(prop, value):
     if DE1().uploading_firmware:
         timeout += config.de1.CUUID_LOCK_WAIT_TIMEOUT
 
+    # logger.debug(f"{name} timeout: {timeout} sec")
     return timeout
 
 
