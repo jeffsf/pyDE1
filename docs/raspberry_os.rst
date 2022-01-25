@@ -26,8 +26,9 @@ for a GB keyboard and you then changed it to your own.
 On macOS, you can run it directly from the mounted DMG file, without dragging
 it to your Applications folder.
 
-Open the hidden advanced-settings screen with cmd+shift+x for macOS or
-ctrl+shift+x other OSes. You can now preconfigure networking with relative ease.
+Before you write the image, open the hidden advanced-settings screen
+with cmd+shift+x for macOS or ctrl+shift+x other OSes.
+You can now preconfigure networking with relative ease.
 
 Make sure you set the WiFi country, or it may not be able to connect.
 
