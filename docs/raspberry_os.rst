@@ -63,6 +63,10 @@ permissions to write to removable media or similar.
 Update OS
 ---------
 
+.. note::
+
+  See `Raspberry Pi 4 and BLE`_, below, before updating if you have a Pi 4
+
 Do this periodically
 
 ::
@@ -113,6 +117,7 @@ Change pi to Something Better
 
 I can make a security argument here for changing the "main" user name,
 but I'll admit that convenience for me is a bigger driver.
+(This is an optional, though recommended step.)
 
 There are four files that map user and group names to numbers and then the
 name of the "home" directory in one of those. It's definitely possible to botch
@@ -305,6 +310,46 @@ and enable it with ``sudo systemctl enable wlan0_power_mgmt_off.service``
 
 Unit file after https://raspberrypi.stackexchange.com/questions/96606/make-iw-wlan0-set-power-save-off-permanent
 
+.. _`Raspberry Pi 4 and BLE`:
+
+----------------------
+Raspberry Pi 4 and BLE
+----------------------
+
+.. important::
+
+	This applies to the Raspberry Pi 4B only
+
+It appears that the current (January 2022) Raspberry Pi OS updates break
+the Bluetooth LE functionality on a Raspberry Pi 4B. So far, it has not
+been seen on a 3B+ or Zero 2, only the 4B. The symptoms are that a device
+connects, then immediately disconnects. This can be seen using `bluetoothctl`
+so is at the OS level, long before bleak or pyDE1 come into play.
+
+Though not confirmed or resolved by the OS maintainers, it seems to be
+a conflict between the Broadcom WiFi and Bluetooth firmware.
+
+If you have already updated, downgrading the WiFi firmware seems to resolve
+the issue. Generally available should be the same version presently being used
+in Debian
+
+::
+
+  sudo apt install firmware-brcm80211=20210315-3
+
+This version can be "held" so that ``apt upgrade`` will not automatically
+replace it with
+
+::
+
+  sudo apt-mark hold firmware-brcm80211
+
+It is possible that the version presently being installed by the image flasher
+is operational as well. Version ``1:20210315-3+rpt2`` does not appear to be
+readily available from the Raspberry Pi repos, but could be held
+after installation as indicated above. It has not been investigated if there
+are any differences in the ``+rpt4`` version that apply to the specific chips
+used for the 4B.
 
 ---------------------------------------
 Developers' Sidebar – Using pip and VCS

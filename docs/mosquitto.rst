@@ -104,14 +104,18 @@ reverse-proxied by ``nginx``, so it is not enabled here.
 
   listener 8883
   cafile /etc/ssl/certs/ca-certificates.crt
-  certfile /etc/mosquitto/certs/fullchain.pem
+  # For verifiable certs (e.g, Let's Encrypt)
+  # certfile /etc/mosquitto/certs/fullchain.pem
+  # For stand-alone, self-signed certs
+  certfile /etc/mosquitto/certs/cert.pem
+  # For all types of certs
   keyfile /etc/mosquitto/certs/privkey.pem
   tls_version tlsv1.3
 
   listener 1884
   protocol websockets
 
-As perviously noted, ``mosquitto`` needs to be able to read the private key
+As previously noted, ``mosquitto`` needs to be able to read the private key
 as the ``mosquitto`` user, not ``root``. This is somewhat ugly, as reading
 as ``root`` then dropping privelege helps protect the key from compromise.
 For now, we note and live with the risks. At least until I can find a better
@@ -173,6 +177,12 @@ like the following:
       }
   }
 
+You may need to enable and start ``nftables.service`` if it is not yet running.
+``systemctl status nftables.service`` will show if it is enabled and/or running.
+The ``enable``, ``start``, ... actions require root privilege (``sudo``).
+The default configuration file is ``/etc/nftables.conf``.
+
+
 Access Control and Authorization
 ================================
 
@@ -197,6 +207,13 @@ MQTT server.
   password_file /etc/mosquitto/conf.d/passwords
   acl_file /etc/mosquitto/conf.d/acls
 
+.. note::
+
+  The user names and passwords you pick here will need to be
+  edited into ``pyde1.conf`` and ``pyde1-visualizer.conf``,
+  which will be installed later.
+
+
 ``/etc/mosquitto/conf.d/acls``
 
 .. code-block::
@@ -220,6 +237,12 @@ MQTT server.
 
 Create the passwords with ``mosquitto_passwd``. The first time you probably
 need to add the ``-c`` (create new password file) option.
+
+.. warning::
+
+  Do *not* use the login password here.
+
+  You do not need an OS-level user for these.
 
 .. code-block:: sh
 

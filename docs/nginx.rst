@@ -464,7 +464,17 @@ This block does the following:
 * ``location /de1-plot/db`` – Proxy to the uWSGI server socket
   (location specific to external web-app config)
 
-``sites-available/pyde1.conf``
+
+.. note::
+
+  The location of the UI relative to the server root can usually be
+  a personal choice.
+
+  The location of resources relative to that location will be determined by
+  the UI and where it expects to find them. This configuration is for the
+  KEpyDE1 test UI installed at ``/de1-plot/``
+
+``sites-available/pyde1``
 
 .. code-block::
 

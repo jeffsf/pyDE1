@@ -25,6 +25,7 @@ Welcome to pyDE1's Documentation!
    nginx
    mosquitto
    installing
+   updating
    CHANGELOG
 
 
