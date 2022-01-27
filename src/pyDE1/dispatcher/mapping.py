@@ -29,7 +29,7 @@ from pyDE1.dispatcher.resource import (
     Resource, RESOURCE_VERSION, DE1ModeEnum, ConnectivityEnum
 )
 
-MAPPING_VERSION = "4.0.1"
+MAPPING_VERSION = "4.1.0"
 
 logger = pyDE1.getLogger('Inbound.Mapping')
 
@@ -191,6 +191,10 @@ MAPPING[Resource.VERSION] = {
 
 MAPPING[Resource.DE1_PROFILE] = IsAt(target=TO.DE1, attr_path=None,
                                      setter_path='upload_json_v2_profile',
+                                     v_type=Union[bytes, bytearray])
+
+MAPPING[Resource.DE1_PROFILE_STORE] = IsAt(target=TO.DE1, attr_path=None,
+                                     setter_path='store_json_v2_profile',
                                      v_type=Union[bytes, bytearray])
 
 MAPPING[Resource.DE1_FIRMWARE] = IsAt(target=TO.DE1, attr_path=None,

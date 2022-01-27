@@ -398,7 +398,7 @@ async def patch_resource_from_dict(resource: Resource, values_dict: dict):
         values_dict = { None: values_dict }
     else:
         raise DE1APITypeError(
-            "Mapping and patch inconsistent, "
+            "Implementation: Mapping and patch inconsistent, "
             "dict with dict, IsAt with raw value "
             f"not {type(mapping)} with {type(values_dict)}"
         )

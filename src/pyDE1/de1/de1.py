@@ -892,7 +892,6 @@ class DE1 (Singleton):
         return event_list, addr_low_list
 
 
-
     #
     # Upload a shot profile
     #
@@ -901,11 +900,31 @@ class DE1 (Singleton):
 
     async def upload_json_v2_profile(self, profile: Union[bytes,
                                                           bytearray,
-                                                          str]):
+                                                          str]) -> dict:
+        pbf = await self._process_json_v2_profile_inner(profile,
+                                                        upload_to_de1=True)
+        return {'id': pbf.id, 'fingerprint': pbf.fingerprint}
+
+    async def store_json_v2_profile(self, profile: Union[bytes,
+                                                         bytearray,
+                                                         str]) -> dict:
+        pbf = await self._process_json_v2_profile_inner(profile,
+                                                        upload_to_de1=False)
+        return {'id': pbf.id, 'fingerprint': pbf.fingerprint}
+
+    async def _process_json_v2_profile_inner(
+            self, profile: Union[bytes,
+                           bytearray,
+                           str], upload_to_de1=True) -> ProfileByFrames:
+
         pbf = ProfileByFrames().from_json(profile)
-        await self.upload_profile(pbf)
+        if upload_to_de1:
+            await self.upload_profile(pbf)
+        else:
+            self._fingerprint_profile_by_frames(pbf)
         async with aiosqlite.connect(config.database.FILENAME) as db:
             await db_insert.profile(pbf, db, time.time())
+        return pbf
 
     # "Internal" version
 
@@ -966,6 +985,9 @@ class DE1 (Singleton):
                         done = await self.start_notifying(cuuid)
                         # await done.wait()
 
+                # NB: Fingerprint code is replicated in
+                #     _fingerprint_profile_by_frames()
+
                 self._latest_profile = None
                 bytes_for_fingerprint = bytearray()
 
@@ -1025,6 +1047,30 @@ class DE1 (Singleton):
             pass
         finally:
             profile_upload_stopped.set()
+
+    def _fingerprint_profile_by_frames(self, profile: ProfileByFrames):
+
+        # NB: Fingerprint code is replicated from
+        #     _upload_profile()
+
+        bytes_for_fingerprint = bytearray()
+
+        # await self.write_packed_attr(profile.header_write())
+        bytes_for_fingerprint += profile.header_write().as_wire_bytes()
+        for frame in profile.shot_frame_writes():
+            # await self.write_packed_attr(frame)
+            bytes_for_fingerprint += frame.as_wire_bytes()
+        for frame in profile.ext_shot_frame_writes():
+            # await self.write_packed_attr(frame)
+            bytes_for_fingerprint += frame.as_wire_bytes()
+        # await self.write_packed_attr(profile.shot_tail_write())
+        bytes_for_fingerprint \
+            += profile.shot_tail_write().as_wire_bytes()
+
+        profile._fingerprint = hashlib.sha1(
+            bytes_for_fingerprint).hexdigest()
+
+
 
     async def write_and_read_back_mmr0x80(self, addr_low: MMR0x80LowAddr,
                                           value: float):

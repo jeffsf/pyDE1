@@ -477,6 +477,7 @@ def run_api_inbound(master_config: pyDE1.config.Config,
 
             if resource not in (Resource.DE1_PROFILE,
                                 Resource.DE1_PROFILE_ID,
+                                Resource.DE1_PROFILE_STORE,
                                 Resource.DE1_FIRMWARE,
                                 Resource.DE1_FIRMWARE_CANCEL):
                 self.send_error_response(
@@ -495,6 +496,7 @@ def run_api_inbound(master_config: pyDE1.config.Config,
 
             try:
                 if resource in (Resource.DE1_PROFILE,
+                                Resource.DE1_PROFILE_STORE,
                                 Resource.DE1_FIRMWARE,
                                 Resource.DE1_FIRMWARE_CANCEL,
                                 ):
@@ -511,7 +513,7 @@ def run_api_inbound(master_config: pyDE1.config.Config,
                 return
 
             req = APIRequest(timestamp=timestamp,
-                             method=HTTPMethod.PATCH,
+                             method=HTTPMethod.PUT,
                              resource=resource,
                              connectivity_required=targets,
                              payload=patch)

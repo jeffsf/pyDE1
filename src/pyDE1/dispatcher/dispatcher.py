@@ -112,7 +112,7 @@ async def _request_queue_processor(request_queue: asyncio.Queue,
         exception = None
         tbe = None
 
-
+        logger.debug(f"got: {got.method} {got.resource}")
 
         if got.method is HTTPMethod.GET:
 
@@ -199,13 +199,21 @@ async def _request_queue_processor(request_queue: asyncio.Queue,
             results_list = None
             try:
                 if got.resource not in (Resource.DE1_PROFILE,
+                                        Resource.DE1_PROFILE_ID,
+                                        Resource.DE1_PROFILE_STORE,
                                         Resource.DE1_FIRMWARE):
                     raise NotImplementedError(
                         "Only profile and firmware PUT supported at this time")
                     # As there's no validation that a different PUT target
                     # is a complete replacement.
 
-                _check_connectivity(got)
+                # Profile store to database needs no device connectivity
+                if got.resource == Resource.DE1_PROFILE_STORE:
+                    check_de1 = False
+                else:
+                    check_de1 = True
+                _check_connectivity(got, check_de1=check_de1)
+
                 results_list = await patch_resource_from_dict(got.resource,
                                                               got.payload)
             except Exception as e:
@@ -214,7 +222,7 @@ async def _request_queue_processor(request_queue: asyncio.Queue,
                 logger.error(
                     f"Exception in processing {got.method} {got.resource}"
                     f" {repr(exception)}")
-                traceback.print_tb(tbe)
+                logger.error(''.join(tbe.format()))
 
             response = APIResponse(original_timestamp=got.timestamp,
                                    timestamp=time.time(),

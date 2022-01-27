@@ -10,7 +10,7 @@ Enum that defines the recognized resources that the Dispatcher can access
 
 import enum
 
-RESOURCE_VERSION = '3.6.0'
+RESOURCE_VERSION = '3.7.0'
 
 
 class Resource (enum.Enum):
@@ -32,6 +32,7 @@ class Resource (enum.Enum):
 
     DE1_PROFILE = 'de1/profile'
     DE1_PROFILE_ID = 'de1/profile/id'
+    DE1_PROFILE_STORE = 'de1/profile/store'  # PUT to database, but not DE1
     DE1_PROFILES = 'de1/profiles'
 
     DE1_FIRMWARE = 'de1/firmware'
@@ -96,6 +97,7 @@ class Resource (enum.Enum):
                 self.SCALE_DISPLAY,
                 # unimplemented
                 self.DE1_PROFILE,
+                self.DE1_PROFILE_STORE,
                 self.DE1_PROFILES,
                 self.DE1_FIRMWARE,
                 self.DE1_FIRMWARES,
@@ -137,6 +139,7 @@ class Resource (enum.Enum):
                 self.DE1_FIRMWARE_ID,
                 self.DE1_PROFILE,
                 self.DE1_PROFILE_ID,
+                self.DE1_PROFILE_STORE,
         ):
             retval = False
 
@@ -150,7 +153,9 @@ class Resource (enum.Enum):
 
     @property
     def can_delete(self):
-        return self.can_post
+        retval = False
+        # No DELETE implemented
+        return retval
 
 
 class ConnectivityEnum (enum.Enum):
