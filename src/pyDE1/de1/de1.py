@@ -906,7 +906,6 @@ class DE1 (Singleton):
         await self.upload_profile(pbf)
         async with aiosqlite.connect(config.database.FILENAME) as db:
             await db_insert.profile(pbf, db, time.time())
-            logger.info("Returned from db insert")
 
     # "Internal" version
 
@@ -985,12 +984,18 @@ class DE1 (Singleton):
                 profile._fingerprint = hashlib.sha1(
                     bytes_for_fingerprint).hexdigest()
 
+                async with aiosqlite.connect(config.database.FILENAME) as db:
+                    await db_insert.persist_last_profile(profile, db)
+                logger.info(f"Selected profile ID: {profile.id}")
+
                 if profile.number_of_preinfuse_frames is not None:
                     self._number_of_preinfuse_frames = \
                         profile.number_of_preinfuse_frames
 
                 if profile.tank_temperature is not None \
                     and override_tank_temperature:
+                    logger.info(
+                        f"Setting tank temp to {profile.tank_temperature}")
                     await self.write_and_read_back_mmr0x80(
                         addr_low=MMR0x80LowAddr.TANK_TEMP,
                         value=profile.tank_temperature

@@ -8,6 +8,7 @@ SPDX-License-Identifier: GPL-3.0-only
 
 import json
 import time
+from typing import Optional
 
 import aiosqlite
 
@@ -37,6 +38,14 @@ async def profile(profile: Profile, db: aiosqlite.Connection, when: float):
         vals['date_added'] = when
         vals['source_format'] = vals['source_format'].value
         cur: aiosqlite.Cursor = await db.execute(sql, vals)
+        await db.commit()
+        logger.info(f"Profile {profile.id} added to profile table.")
+
+
+async def persist_last_profile(profile: Profile, db: aiosqlite.Connection,
+                               when: Optional[float] = None):
+    if not when:
+        when = time.time()
     # Update the last_profile information for persistence
     sql = "UPDATE persist_hkv " \
           "SET value=? " \
@@ -45,7 +54,7 @@ async def profile(profile: Profile, db: aiosqlite.Connection, when: float):
     sql = "UPDATE persist_hkv " \
           "SET value=? " \
           "WHERE header='last_profile' AND key='datetime'"
-    await db.execute(sql, (time.time(),))
+    await db.execute(sql, (when,))
     await db.commit()
 
 
