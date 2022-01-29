@@ -1,5 +1,5 @@
 """
-Copyright © 2021 Jeff Kletsky. All Rights Reserved.
+Copyright © 2021-2022 Jeff Kletsky. All Rights Reserved.
 
 License for this software, part of the pyDE1 package, is granted under
 GNU General Public License v3.0 only
@@ -81,12 +81,14 @@ class Scale:
         self._last_tare_request_sent = 0
 
         # See Scale.decommission()
-        self._to_decommission = (
+        # button event is always present so easy to subscribe to a scale
+        # Acaia scales add '_heartbeat' as well
+        self._to_decommission = [
             '_event_connectivity',
             '_event_weight_update',
             '_event_button_press',
             '_event_tare_seen',
-        )
+        ]
 
         # TODO: Think about how to manage a "tare seen" event
         #       and what the use cases for it would be.

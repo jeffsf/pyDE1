@@ -1,5 +1,5 @@
 """
-Copyright © 2021 Jeff Kletsky. All Rights Reserved.
+Copyright © 2021-2022 Jeff Kletsky. All Rights Reserved.
 
 License for this software, part of the pyDE1 package, is granted under
 GNU General Public License v3.0 only
@@ -102,6 +102,7 @@ class Config (ConfigYAML):
         self.http = _HTTP(self)    # Calculating timeout needs bluetooth
         self.logging = _Logging()
         self.mqtt = _MQTT()
+        self.acaia = _Acaia()   # For development, will be deprecated
 
 
 # This craziness is so pyCharm autocompletes
@@ -222,6 +223,15 @@ class _DE1 (ConfigLoadable):
         self.DEFAULT_AUTO_OFF_TIME = None   # Minutes
         self.STOP_AT_WEIGHT_ADJUST = -0.07  # Secs, larger increases weight
         self.API_STOP_IGNORES_CHECKS = False  # Request Idle in all cases
+
+
+class _Acaia (ConfigLoadable):
+    def __init__(self):
+        # For development, allow in-field overrides if not None
+        # Will be deprecated once models are working solidly
+        self.INTERACTION_STYLE = None   # 'classic' or 'lunar'
+        self.REQUIRES_HEARTBEAT = None  # True or False
+        self.HEARTBEAT_PERIOD = None    # Float seconds
 
 
 config = Config()

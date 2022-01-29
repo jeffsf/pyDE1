@@ -10,3 +10,4 @@ from .scale import (
     Scale, scale_factory, recognized_scale_prefixes
 )
 from .atomax_skale_ii import AtomaxSkaleII
+from .acaia import AcaiaLunar
