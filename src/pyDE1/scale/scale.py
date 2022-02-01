@@ -607,7 +607,7 @@ def scale_factory(ble_device: BLEDevice)-> Scale:
     try:
         constructor = _prefix_to_constructor[ble_device.name]
     except KeyError:
-        for prefix in _prefix_to_constructor.values():
+        for prefix in _prefix_to_constructor.keys():
             if ble_device.name.startswith(prefix):
                 constructor = _prefix_to_constructor[prefix]
     if constructor is None:
