@@ -147,6 +147,13 @@ async def send_to_outbound_pipes(payload: EventPayload):
     # multiprocessing.queue() can block at least on "full"
     # macOS doesn't support qsize()
 
+    # Testing hack
+    if SubscribedEvent.outbound_pipe is None:
+        logger.error(
+            "SubscribedEvent.outbound_pipe is None, can't notify "
+            f"{payload.as_json()}")
+        return
+
     if payload._event_time is None:
         payload._event_time = time.time()
     q_payload = payload.as_json()
