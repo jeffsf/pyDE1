@@ -297,10 +297,18 @@ def _setup_logging_internal(config_logging: ConfigLogging,
         # Does not use "mode" on intermediates
         os.makedirs(config_logging.LOG_DIRECTORY)
 
-    fq_logfile = os.path.join(config_logging.LOG_DIRECTORY,
-                              config_logging.LOG_FILENAME)
+    if config_logging.LOG_DIRECTORY is None \
+            or config_logging.LOG_FILENAME is None:
+        logfile_handler = logging.NullHandler()
+        root_logger.warning(
+            "File logging disabled as either "
+            "LOG_DIRECTORY or LOG_FILENAME is None "
+            f"'{config_logging.LOG_DIRECTORY}' '{config_logging.LOG_FILENAME}'")
+    else:
+        fq_logfile = os.path.join(config_logging.LOG_DIRECTORY,
+                                  config_logging.LOG_FILENAME)
+        logfile_handler = logging.handlers.WatchedFileHandler(fq_logfile)
 
-    logfile_handler = logging.handlers.WatchedFileHandler(fq_logfile)
     logfile_formatter = Formatter(fmt=config_logging.formatters.LOGFILE)
     logfile_handler.setFormatter(logfile_formatter)
     logfile_handler.setLevel(config_logging.handlers.LOGFILE)
