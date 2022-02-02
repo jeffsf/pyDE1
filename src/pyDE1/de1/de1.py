@@ -419,7 +419,8 @@ class DE1 (Singleton):
         if timeout is None:
             timeout = config.bluetooth.CONNECT_TIMEOUT
 
-        logger.info(f"Connecting to DE1 at {self.address}")
+        if self._log_reconnect_attempts:
+            logger.info(f"Connecting to DE1 at {self.address}")
 
         assert self._bleak_client is not None
 
@@ -449,7 +450,8 @@ class DE1 (Singleton):
                 asyncio.create_task(self.initialize_after_connection())
 
             else:
-                logger.error(f"Connection failed to DE1 at {self.address}")
+                if self._log_reconnect_attempts:
+                    logger.error(f"Connection failed to DE1 at {self.address}")
                 await self._notify_not_ready()
                 await self._event_connectivity.publish(
                     self._connectivity_change(

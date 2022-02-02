@@ -136,7 +136,8 @@ class Scale:
             timeout = config.bluetooth.CONNECT_TIMEOUT
 
         class_name = type(self).__name__
-        logger.info(f"Connecting to {class_name} at {self.address}")
+        if self._log_reconnect_attempts:
+            logger.info(f"Connecting to {class_name} at {self.address}")
 
         assert self._bleak_client is not None
 
@@ -168,8 +169,9 @@ class Scale:
                 asyncio.create_task(self.standard_initialization())
 
             else:
-                logger.error(
-                    f"Connection failed to {class_name} at {self.address}")
+                if self._log_reconnect_attempts:
+                    logger.error(
+                        f"Connection failed to {class_name} at {self.address}")
                 await self._notify_not_ready()
                 await self._event_connectivity.publish(
                     self._connectivity_change(
