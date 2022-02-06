@@ -1,5 +1,5 @@
 """
-Copyright © 2021 Jeff Kletsky. All Rights Reserved.
+Copyright © 2021-2022 Jeff Kletsky. All Rights Reserved.
 
 License for this software, part of the pyDE1 package, is granted under
 GNU General Public License v3.0 only
@@ -169,7 +169,11 @@ class ScaleProcessor (Singleton):
     # Self-contained call for API
     #
 
-    async def first_if_found(self, doit: bool):
+    async def first_if_found(self, doit: bool, warn_deprecated=True):
+        if warn_deprecated:
+            logger.warning(
+                "Use of 'first_if_found' is deprecated in favor of "
+                "setting {'id': 'scan'}")
         if self.scale and self.scale.is_connected:
             logger.warning(
                 "first_if_found requested, but already connected. "
@@ -190,6 +194,10 @@ class ScaleProcessor (Singleton):
         As a result, will trigger the timeout on API calls
         """
         logger.info(f"Request to replace scale with {ble_device_id}")
+
+        if ble_device_id == 'scan':
+            await self.first_if_found(doit=True, warn_deprecated=False)
+            return
 
         # TODO: Need to make distasteful assumption that the id is the address
         try:

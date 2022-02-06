@@ -1,5 +1,5 @@
 """
-Copyright © 2021, 2022 Jeff Kletsky. All Rights Reserved.
+Copyright © 2021-2022 Jeff Kletsky. All Rights Reserved.
 
 License for this software, part of the pyDE1 package, is granted under
 GNU General Public License v3.0 only
@@ -332,7 +332,11 @@ class DE1 (Singleton):
     # Self-contained calls for API
     #
 
-    async def first_if_found(self, doit: bool):
+    async def first_if_found(self, doit: bool, warn_deprecated=True):
+        if warn_deprecated:
+            logger.warning(
+                "Use of 'first_if_found' is deprecated in favor of "
+                "setting {'id': 'scan'}")
         if self.is_connected:
             logger.warning(
                 "first_if_found requested, but already connected. "
@@ -340,6 +344,7 @@ class DE1 (Singleton):
         elif not doit:
             logger.warning(
                 "first_if_found requested, but not True. No action taken.")
+
         else:
             device = await find_first_matching(('DE1',))
             if device:
@@ -355,6 +360,10 @@ class DE1 (Singleton):
                     f"to {ble_device_id}")
 
         de1 = DE1()
+
+        if ble_device_id == 'scan':
+            await self.first_if_found(doit=True, warn_deprecated=False)
+            return
 
         # TODO: Need to make distasteful assumption that the id is the address
         try:

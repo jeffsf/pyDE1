@@ -1,5 +1,5 @@
 """
-Copyright © 2021 Jeff Kletsky. All Rights Reserved.
+Copyright © 2021-2022 Jeff Kletsky. All Rights Reserved.
 
 License for this software, part of the pyDE1 package, is granted under
 GNU General Public License v3.0 only
@@ -9,7 +9,7 @@ Provide a mapping from internal objects and properties, sufficient for both
 creation of outgoing dict, as well as validation of incoming requests
 (Resource, key, target object, property name, value type, min, max, post_execute)
 
-As of MAPPING_VERSION 4.0.0 direct use of the class or a stub has been replaed
+As of MAPPING_VERSION 4.0.0 direct use of the class or a stub has been replaced
 by use of an enum. Consumers will need to map the enum to the class.
 This is due to challenges in determining if the class or the stub is needed.
 """
@@ -29,7 +29,7 @@ from pyDE1.dispatcher.resource import (
     Resource, RESOURCE_VERSION, DE1ModeEnum, ConnectivityEnum
 )
 
-MAPPING_VERSION = "4.1.0"
+MAPPING_VERSION = "4.1.1"
 
 logger = pyDE1.getLogger('Inbound.Mapping')
 
@@ -206,11 +206,13 @@ MAPPING[Resource.DE1_FIRMWARE_CANCEL] = IsAt(target=TO.DE1, attr_path=None,
                                              v_type=Union[bytes, bytearray])
 
 # TODO: How to reference a module-level subroutine? Use module as target?
-# TODO: How to get the scan ID back to the caller
 
 MAPPING[Resource.SCAN] = {
+    # Passing a number sets the timeout. Passing null takes the default.
+    # Use of bool DEPRECATED -- 2022-02-05
     'begin': IsAt(target=None, attr_path=None,
-                  setter_path='scan_from_api', v_type=bool)
+                  setter_path='scan_from_api',
+                  v_type=Optional[Union[int, float, bool]])
 }
 
 # Note: This is an async getter because of the lock
@@ -227,11 +229,11 @@ MAPPING[Resource.DE1_ID] = {
     'name': IsAt(target=TO.DE1, attr_path='name', v_type=Optional[str],
                  read_only=True,
                  if_not_ready=True),
+    # The ID value 'scan' will perform a scan and capture the first found
     'id': IsAt(target=TO.DE1, attr_path='address', v_type=Optional[str],
                setter_path='change_de1_to_id',
                if_not_ready=True),
-    # first_if_found, if true, will replace only if one is found
-    # It is an error to be true if 'id' is present at this time
+    # DEPRECATED -- 2022-02-05
     'first_if_found': IsAt(target=TO.DE1, attr_path=None,
                            setter_path='first_if_found', v_type=bool,
                            if_not_ready=True),
@@ -464,6 +466,7 @@ MAPPING[Resource.SCALE_ID] = {
                  v_type=Optional[str],
                  read_only=True,
                  if_not_ready=True),
+    # The ID value 'scan' will perform a scan and capture the first found
     'id': IsAt(target=TO.ScaleProcessor, attr_path='scale_address',
                v_type=Optional[str],
                setter_path='change_scale_to_id',
@@ -472,8 +475,7 @@ MAPPING[Resource.SCALE_ID] = {
                  v_type=Optional[str],
                  read_only=True,
                  if_not_ready=True),
-    # first_if_found, if true, will replace only if one is found
-    # It is an error to be true if 'id' is present at this time
+    # DEPRECATED -- 2022-02-05
     'first_if_found': IsAt(target=TO.ScaleProcessor, attr_path=None,
                            setter_path='first_if_found', v_type=bool,
                            if_not_ready=True),

@@ -1,5 +1,5 @@
 """
-Copyright © 2021 Jeff Kletsky. All Rights Reserved.
+Copyright © 2021-2022 Jeff Kletsky. All Rights Reserved.
 
 License for this software, part of the pyDE1 package, is granted under
 GNU General Public License v3.0 only
@@ -306,13 +306,22 @@ async def scan_until_timeout(timeout=None) -> Tuple[BleakScannerWrapped,
     return scanner, timeout, event
 
 
-async def scan_from_api(doit: bool):
-    if doit:
-        (scanner, timeout, event) = await scan_until_timeout()
-        return {
-            'run_id': scanner.run_id,
-            'timeout': timeout
-        }
-
-    else:
+async def scan_from_api(timeout: Optional[Union[int, float, bool]]=None):
+    if timeout is True:
+        logger.warning(
+            "Passing true for 'begin' is deprecated. "
+            "Pass a timeout in seconds or null to accept the default")
+    elif timeout is False:
+        logger.warning(
+            "Passing false for 'begin' is deprecated. "
+            "Pass a timeout in seconds or null to accept the default.")
         return None
+    elif timeout <= 0:
+        raise DE1ValueError(
+            f"Timeout must be greater than zero {timeout}")
+
+    (scanner, timeout, event) = await scan_until_timeout(timeout=timeout)
+    return {
+        'run_id': scanner.run_id,
+        'timeout': timeout
+    }
