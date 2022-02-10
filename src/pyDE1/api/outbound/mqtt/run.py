@@ -48,7 +48,7 @@ def run_mqtt_outbound(master_config: pyDE1.config.Config,
     import os
     import time
 
-    from collections import Callable
+    from typing import Callable
     from socket import gethostname
 
     import paho.mqtt.client as mqtt
