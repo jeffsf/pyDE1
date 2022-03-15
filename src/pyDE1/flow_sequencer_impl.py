@@ -13,6 +13,7 @@ Responsible for coordinating the actions around any of the flow modes
 import asyncio
 import multiprocessing
 import time
+from asyncio import Task
 from typing import Optional, Callable, Coroutine, List
 
 import pyDE1
@@ -144,6 +145,8 @@ class FlowSequencerImpl (Singleton, FlowSequencer):
         self._stop_at_volume_active = False
         self._stop_at_time_active = False
 
+        self._sequence_watchdog_task: Optional[Task] = None
+
         asyncio.create_task(self.set_up_subscribers())
 
     @property
@@ -210,6 +213,16 @@ class FlowSequencerImpl (Singleton, FlowSequencer):
     def sequence_start_time(self):
         return self._sequence_start_time
 
+    @property
+    def sequence_is_running(self):
+        return (not self._gate_sequence_complete.is_set()
+                and self._sequence_start_time != 0)
+
+    @property
+    def sequence_is_running_and_flow_not_started(self):
+        return (self.sequence_is_running
+                and not self._gate_flow_begin.is_set())
+
     def _close_all_gates(self):
         for gate in self._all_gates:
             gate.clear()
@@ -231,6 +244,11 @@ class FlowSequencerImpl (Singleton, FlowSequencer):
         flow_sequencer = self
 
         async def flow_sequencer_su_cb(su: StateUpdate):
+            """
+            There is the possibility that the transitions never go through flow
+            such as hitting "start" and deciding to stop before flow begins.
+            If this is not accounted for, the sequence might "never end".
+            """
             nonlocal flow_sequencer
 
             if su.state.is_flow_state:
@@ -263,6 +281,13 @@ class FlowSequencerImpl (Singleton, FlowSequencer):
                     logger.info("Gate: Flow end")
                 flow_sequencer._gate_flow_state_exit.set()
                 logger.info("Gate: Flow state exit")
+                if flow_sequencer.sequence_is_running_and_flow_not_started:
+                    # Catch leaving before flow starts
+                    logger.info(
+                        "Non-flow state detected during sequence: "
+                        f"{su.state.name},{su.substate.name}"
+                        'calling _end_sequence().')
+                    await flow_sequencer._end_sequence()
 
         return flow_sequencer_su_cb
 
@@ -298,8 +323,7 @@ class FlowSequencerImpl (Singleton, FlowSequencer):
         self._sequence_start_time = time.time()
         # TODO: Is there a more robust way to transition from an "aborted"
         #       shot to another one?
-        if not self._gate_sequence_complete.is_set() \
-                and self._sequence_start_time != 0:
+        if self.sequence_is_running:
             self._abort_sequence()
 
         self._active_state = state
@@ -340,6 +364,10 @@ class FlowSequencerImpl (Singleton, FlowSequencer):
         asyncio.create_task(self._sequence_recorder(),
                             name=self._sequence_task_name)
 
+        self._sequence_watchdog_task = asyncio.create_task(
+            self._sequence_watchdog(),
+            name=f"SequenceWatchdog_{config.de1.SEQUENCE_WATCHDOG_TIMEOUT}")
+
         self._gate_sequence_start.set()
         logger.info("Gate: Sequence start")
 
@@ -367,6 +395,8 @@ class FlowSequencerImpl (Singleton, FlowSequencer):
         Set the completion Event and give a second for tasks to complete
         Clean up any stragglers
         """
+        if self._sequence_watchdog_task is not None:
+            self._sequence_watchdog_task.cancel("by _end_sequence()")
         self._gate_sequence_complete.set()
         logger.info("Gate: Sequence complete")
         await asyncio.sleep(0.100)
@@ -382,6 +412,8 @@ class FlowSequencerImpl (Singleton, FlowSequencer):
         Set the completion Event
         Clean up any stragglers
         """
+        if self._sequence_watchdog_task is not None:
+            self._sequence_watchdog_task.cancel("by _abort_sequence()")
         self._gate_sequence_complete.set()
         logger.info("Gate: Sequence complete: _abort_sequence()")
         self._cleanup_stragglers()
@@ -646,6 +678,29 @@ class FlowSequencerImpl (Singleton, FlowSequencer):
                     sequence_id=SequencerGateNotification.sequence_id))
             logger.info("Recorder: disable - on cancel")
             raise
+
+    async def _sequence_watchdog(self):
+        """
+        Apparently there are situations where a sequence doesn't "complete"
+        resulting in the recorder running until the next sequence starts.
+        This can result in a bloated database.
+
+        Changes in the state-update handler should now catch if the sequence
+        is stopped before flow begins. Hopefully, there aren't other causes,
+        but if there are, or if something strange happens, this timeout
+        will help keep the database from recording all day.
+        """
+        try:
+            await asyncio.sleep(wt := config.de1.SEQUENCE_WATCHDOG_TIMEOUT)
+            logger.warning(
+                f"Sequence watchdog timeout {wt} sec, calling _end_sequence()")
+            # Don't cancel self if already running in _end_sequence()
+            self._sequence_watchdog_task = None
+            await self._end_sequence()
+        except asyncio.CancelledError:
+            pass
+        finally:
+            self._sequence_watchdog_task = None
 
     def _create_stop_at_volume_subscriber(self) -> Coroutine:
         """

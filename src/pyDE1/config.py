@@ -217,6 +217,7 @@ class _DE1 (ConfigLoadable):
         self.LINE_FREQUENCY = 60
         self.MAX_WAIT_FOR_READY_EVENTS = 3.5 # Seconds (25 at 0.1 each)
         self.CUUID_LOCK_WAIT_TIMEOUT = 2 # Seconds
+        self.SEQUENCE_WATCHDOG_TIMEOUT = 270 # seconds
         # Do these "settings" belong here,
         # or should they be separated from parameters?
         self.DEFAULT_AUTO_OFF_TIME = None   # Minutes
