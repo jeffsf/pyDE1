@@ -9,6 +9,80 @@
 Changelog
 =========
 
+--------------------
+1.2.0b1 - 2022-03-19
+--------------------
+
+Overview
+========
+
+RESOURCE and MAPPING changes to enable uploading profiles
+without requiring DE1 connectivity. Use case suggested by EBengoechea, thanks!
+
+Scale-management reworked in preparation of further changes to support
+Acaia and other scales that are typically not connected 24x7.
+
+Ending a sequence before flow starts should no longer bloat the database.
+
+Changed
+=======
+
+scale: Change logger name to Scale.AtomaxSkaleII - ``fd48ec3``
+
+File logging can be disabled and SubscribedEvent can notify
+without a pipe present (for testing) - ``6b5e6cf``, ``d78cfa0``
+
+Add config.de1.SEQUENCE_WATCHDOG_TIMEOUT (default, 270 seconds)- ``a4a2dda``
+
+Fixed
+=====
+
+de1: scale: Quiet all connection attempt/fail logging when "not logging"
+- ``6936f24``
+
+scale: Factory now properly checks keys of name-to-class mapping - ``323bbca``
+
+Python 3.10: Change import for Callable from collections to typing - ``39f7a57``
+
+Sequences that are terminated before flow starts should no longer continue
+writing to the database. Watchdog timer also added - ``a4a2dda``
+
+Deprecated
+==========
+
+"first_if_found", "id", "scan" deprecated - ``207a492``
+
+To start a scan, the parameter has been changed to prefer a positive number
+for the timeout, or null (to accept the default). Use of a bool here
+has been DEPRECATED. The preferred forms include:
+
+.. code-block::
+
+  {'begin': null}
+  {'begin': 5}
+  {'begin': 5.0}
+
+To start a scan and select the first-found device of the desired type,
+set the id to 'scan'. Use of the 'first_if_found' key has been DEPRECATED:
+The preferred forms include:
+
+.. code-block::
+
+  {'id': 'scan'}
+  {'id': 'aa:bb:cc:dd:ee:ff'}
+  {'id': null}
+
+
+DEPRECATED forms include:
+
+.. code-block::
+
+  {'begin': true}
+  {'begin': false}
+  {'first_if_found': true}
+  {'first_if_found': false}
+
+
 ------------------
 1.1.0 – 2022-01-24
 ------------------
