@@ -703,6 +703,8 @@ class API_Substates (enum.IntEnum):
     CleanGroup          = 0x10
     PausedRefill        = 0x11
     PausedSteam         = 0x12
+    UserNotPresent      = 0x13  # FW 1315/1316
+    SteamPuff           = 0x14  # FW 1315/1316
 
     Error_NaN           = 200
     Error_Inf           = 201
