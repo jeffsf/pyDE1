@@ -2595,6 +2595,8 @@ class MMRV13ModelCode (enum.IntEnum):
     DE1PRO      =  3
     DE1XL       =  4
     DE1CAFE     =  5
+    DE1XXL      =  6
+    UNRECOGNIZED = -1
 
 
 class MMRGHCInfoBitMask (enum.IntFlag):
@@ -2754,7 +2756,13 @@ def decode_one_mmr(addr_high: int, addr_low: Union[MMR0x80LowAddr, int],
         retval = mmr_bytes.decode('utf-8')
 
     elif addr_low == MMR0x80LowAddr.V13_MODEL:
-        retval = MMRV13ModelCode(unpack('<I', mmr_bytes)[0])
+        # New model codes shouldn't cause failure
+        try:
+            retval = MMRV13ModelCode(unpack('<I', mmr_bytes)[0])
+        except ValueError as e:
+            logger.warning(f"Unrecognized model: {e}")
+            retval = MMRV13ModelCode.UNRECOGNIZED
+
 
     elif addr_low == MMR0x80LowAddr.GHC_INFO:
         val = unpack('<I', mmr_bytes)[0]
