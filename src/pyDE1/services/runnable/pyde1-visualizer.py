@@ -249,8 +249,8 @@ def configure_mqtt() -> mqtt.Client:
                     t_pi = userdata['pour_start'] - userdata['flow_start']
                     t_pour = userdata['flow_end'] - userdata['pour_start']
                     t_total = userdata['flow_end'] - userdata['flow_start']
-                    logger.debug(
-                        f"Timing: {t_pi:.0f} + {t_pour:.0f} for "
+                    logger.info(
+                        f"Queued: Timing: {t_pi:.0f} + {t_pour:.0f} for "
                         f"{t_total:.0f} seconds"
                     )
 
@@ -349,6 +349,7 @@ async def loop_on_queue(client: mqtt.Client):
             logger.info("Ready and waiting")
             got: ShotCompleteItem = await async_queue_get(
                 from_queue=shot_complete_queue)
+            logger.info(f"Queue got: {got}")
             # None gets returned on termination of async_queue_get()
             if got is None:
                 if not sm.shutdown_underway.is_set():
@@ -389,6 +390,7 @@ async def loop_on_queue(client: mqtt.Client):
                 'filename': f"{sid}.shot"
             }
 
+            logger.info("About to upload")
             r = await asyncio.get_running_loop().run_in_executor(
                 None,
                 functools.partial(
