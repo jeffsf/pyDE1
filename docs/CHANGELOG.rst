@@ -9,6 +9,20 @@
 Changelog
 =========
 
+------------------
+1.2.0 - 2022-06-20
+------------------
+
+Overview
+========
+
+Changed
+=======
+
+* DE1XXL is properly recognized from MMR0x80LowAddr.V13_MODEL -- ''eca93bb''
+
+* The API_Substates added by FW v1315/1316 were added -- ''2d38e42''
+
 --------------------
 1.2.0b1 - 2022-03-19
 --------------------
