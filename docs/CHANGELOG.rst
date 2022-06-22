@@ -10,11 +10,17 @@ Changelog
 =========
 
 ------------------
-1.2.0 - 2022-06-20
+1.3.0 - 2022-06-22
 ------------------
 
-Overview
-========
+Fixed
+=====
+
+* Gracefully handle "shots" without weight for Visualizer upload -- ``XXXXXXX``
+
+------------------
+1.2.0 - 2022-06-20
+------------------
 
 Changed
 =======
