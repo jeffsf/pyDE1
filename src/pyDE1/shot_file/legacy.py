@@ -264,7 +264,7 @@ async def legacy_shot_file(sequence_id: str,
     flow_rows: List[FlowRow] = await cur.fetchall()
 
     #
-    # Legacy is to take the value just before the DE1 sample
+    # Legacy de1app behavior is to take the value just before the DE1 sample
     #
 
     # timeit on some variants here
@@ -295,22 +295,25 @@ async def legacy_shot_file(sequence_id: str,
 
         for sr in shot:
 
-            while weight[idx_weight].current_weight_time < sr.de1_time \
-                    and idx_weight < last_w:
-                idx_weight += 1
-            retval_weight.append(
-                '{:.2f}'.format(weight[idx_weight-1].current_weight))
+            if last_w >= 1:
+                while weight[idx_weight].current_weight_time < sr.de1_time \
+                        and idx_weight < last_w:
+                    idx_weight += 1
+                retval_weight.append(
+                    '{:.2f}'.format(weight[idx_weight-1].current_weight))
 
-            while flow[idx_flow].average_flow_time < sr.de1_time \
-                    and idx_flow < last_f:
-                idx_flow += 1
-            retval_flow.append(
-                '{:.2f}'.format(flow[idx_flow-1].average_flow))
+            if last_f >= 1:
+                while flow[idx_flow].average_flow_time < sr.de1_time \
+                        and idx_flow < last_f:
+                    idx_flow += 1
+                retval_flow.append(
+                    '{:.2f}'.format(flow[idx_flow-1].average_flow))
 
         return retval_weight, retval_flow
 
     (espresso_weight, espresso_flow_weight) = emulate_ds(
         shot=shot_rows, weight=weight_rows, flow=flow_rows)
+
 
     contents.append("espresso_weight "
                     f"{braced_list(espresso_weight)}")
