@@ -10,13 +10,14 @@ Changelog
 =========
 
 ------------------
-1.3.0 - 2022-06-22
+1.3.0 - Pending
 ------------------
 
 Fixed
 =====
 
-* Gracefully handle "shots" without weight for Visualizer upload -- ``XXXXXXX``
+* Gracefully handle "shots" without weight for Visualizer upload -- ''XXXXXXX''
+* Fix last_mmr0x80() for pre-1250 firmware version reported -- ''YYYYYYY''
 
 ------------------
 1.2.0 - 2022-06-20
