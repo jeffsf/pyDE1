@@ -1902,7 +1902,7 @@ class FeatureFlag:
             # CAL_FLOW_EST was probably in 1246, but be conservative
             logger.warning(
                 f"Firmware {self.fw_version} is 'ancient', update suggested.")
-            retval = MMR0x80LowAddr.HEATER_UP2_FLOW
+            retval = MMR0x80LowAddr.HEATER_UP2_TIMEOUT
 
         elif self.fw_version < 1283:
             retval = MMR0x80LowAddr.CAL_FLOW_EST
