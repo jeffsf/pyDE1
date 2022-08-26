@@ -9,6 +9,7 @@ SPDX-License-Identifier: GPL-3.0-only
 import asyncio
 import json
 import multiprocessing
+import pprint
 import queue
 import threading
 import time
@@ -120,12 +121,20 @@ async def dump_rolling_buffers_to_database(rolling_buffers: Dict[str, Deque],
                         and notification['sequence_id'] != sequence_id:
                     pass
                 else:
-                    await db_insert.dict_notification_cursor_only(
-                        notification=notification,
-                        sequence_id=sequence_id,
-                        cur=cur
-                    )
-                    count += 1
+                    try:
+                        await db_insert.dict_notification_cursor_only(
+                            notification=notification,
+                            sequence_id=sequence_id,
+                            cur=cur
+                        )
+                        count += 1
+                    except AttributeError as e:
+                        # There were some strange "no state" errors during dev
+                        # that have not been seen since
+                        logger.exception(e)
+                        logger.info(
+                            f"notification:\n{pprint.pformat(notification)}")
+                        stop_here = notification
         await db.commit()
     t1 = time.time()
     logger.info(f"Dump of {count} notifications in {(t1-t0)*1000:.3f} ms")
