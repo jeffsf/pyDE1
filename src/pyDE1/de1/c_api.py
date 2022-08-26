@@ -42,7 +42,7 @@ def validate_f8_1_7(value):
     with an exponent of either 0.1 or 1
     """
     if value < 0 or value > 127.5:
-        raise DE1APIValueError("Out of range for F8_1_7 data type")
+        raise DE1APIValueError(f"Out of range for F8_1_7 data type: {value}")
     return value
 
 
@@ -63,13 +63,13 @@ def f8_1_7_decode(value):
 
 def f8_1_7(value):
     if value < 0:
-        raise DE1APIValueError("Out of range for F8_1_7 data type")
+        raise DE1APIValueError(f"Out of range for F8_1_7 data type: {value}")
     elif value < 12.75:
         retval = int(round(value * 10))
     elif value < 127.5:
         retval = int(round(value)) + 0x80
     else:
-        raise DE1APIValueError("Out of range for F8_1_7 data type")
+        raise DE1APIValueError(f"Out of range for F8_1_7 data type: {value}")
     return retval
 
 
@@ -77,7 +77,7 @@ def validate_s_p(value, s, p):
     scaled = round(value / 2**p)
     maxabs = 2**(s - 1)
     if scaled < -maxabs or scaled > (maxabs - 1):
-        raise DE1APIValueError(f"Out of range for S{s}P{p} data type")
+        raise DE1APIValueError(f"Out of range for S{s}P{p} data type: {value}")
     return value
 
 def validate_s_p_noneok(value, s, p):
@@ -89,7 +89,7 @@ def validate_s_p_noneok(value, s, p):
 def validate_u_p(value, u, p):
     scaled = round(value / 2**p)
     if scaled < 0 or scaled > (2**u - 1):
-        raise DE1APIValueError(f"Out of range for U{u}P{p} data type")
+        raise DE1APIValueError(f"Out of range for U{u}P{p} data type: {value}")
     return value
 
 
