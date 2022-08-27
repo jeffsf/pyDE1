@@ -673,6 +673,8 @@ class API_MachineStates (enum.IntEnum):
     AirPurge        = 0x14
     SchedIdle       = 0x15
 
+    UNKNOWN         = -1
+
     @property
     def is_flow_state(self):
         return self in (
@@ -706,6 +708,8 @@ class API_Substates (enum.IntEnum):
     UserNotPresent      = 0x13  # FW 1315/1316
     SteamPuff           = 0x14  # FW 1315/1316
 
+    UNKNOWN             = 199
+
     Error_NaN           = 200
     Error_Inf           = 201
     Error_Generic       = 202
@@ -723,6 +727,8 @@ class API_Substates (enum.IntEnum):
     Error_HiCurrent     = 214
     Error_LoCurrent     = 215
     Error_BootFill      = 216
+
+    ERROR_UNKNOWN       = 299
 
     @property
     def is_error(self):
@@ -771,8 +777,20 @@ class StateInfo (PackedAttr):
         super(StateInfo, self).from_wire_bytes(wire_bytes, arrival_time)
         # Even though "trivial", use of unpack checks against format
         ( state, substate ) = unpack('>BB', wire_bytes)
-        self._State = API_MachineStates(state)
-        self._SubState = API_Substates(substate)
+        try:
+            self._State = API_MachineStates(state)
+        except ValueError:
+            logger.warning(f"Unrecognized API_MachineStates {state}")
+            self._State = API_MachineStates.UNKNOWN
+        try:
+            self._SubState = API_Substates(substate)
+        except ValueError:
+            logger.warning(f"Unrecognized API_MachineSubstates {substate}")
+            if substate < 200:
+                self._SubState = API_Substates.UNKNOWN
+            else:
+                self._SubState = API_Substates.ERROR_UNKNOWN
+
 
         return self
 
@@ -2607,6 +2625,10 @@ class MMRGHCInfoBitMask (enum.IntFlag):
     FACTORY_MODE          = 0x80000000
 
 
+class AppFeatureFlag (enum.IntFlag):
+    USER_PRESENT                = 0x1 << 0      # 1320 and later
+
+
 class MMR0x80LowAddr (enum.IntEnum):
     HW_CONFIG               = 0x0000
     MODEL                   = 0x0004
@@ -2634,8 +2656,13 @@ class MMR0x80LowAddr (enum.IntEnum):
     FLUSH_TEMP              = 0x3844    # 850 default
     FLUSH_TIMEOUT           = 0x3848    # 200 default
     HOT_WATER_FLOW_RATE     = 0x384c
+    STEAM_PURGE_MODE        = 0x3850
+    ALLOW_USB_CHARGING      = 0x3854
+    APP_FEATURE_FLAGS       = 0x3858
+    REFILL_KIT_PRESENT      = 0x385c
+    USER_PRESENT            = 0x3860
 
-    LAST_KNOWN              = 0x384c        # See also FeatureFlag
+    LAST_KNOWN              = 0x3860        # See also FeatureFlag
 
     #
     # Surprisingly, properties can be added with member data
@@ -2655,6 +2682,7 @@ class MMR0x80LowAddr (enum.IntEnum):
 
     @property
     def can_read(self):
+        # NB: This is a NOT in exception list
         return self not in {
             MMR0x80LowAddr.PREF_GHC_MCI,
             MMR0x80LowAddr.MAX_SHOT_PRESS,
@@ -2662,7 +2690,7 @@ class MMR0x80LowAddr (enum.IntEnum):
 
     @property
     def can_write(self):
-        return self in {
+        return self <= MMR0x80LowAddr.LAST_KNOWN and self in {
             MMR0x80LowAddr.FAN_THRESHOLD,
             MMR0x80LowAddr.TANK_TEMP,
             MMR0x80LowAddr.HEATER_UP1_FLOW,
@@ -2677,6 +2705,11 @@ class MMR0x80LowAddr (enum.IntEnum):
             MMR0x80LowAddr.FLUSH_TEMP,
             MMR0x80LowAddr.FLUSH_TIMEOUT,
             MMR0x80LowAddr.HOT_WATER_FLOW_RATE,
+            MMR0x80LowAddr.STEAM_PURGE_MODE,
+            MMR0x80LowAddr.ALLOW_USB_CHARGING,
+            MMR0x80LowAddr.APP_FEATURE_FLAGS,
+            MMR0x80LowAddr.REFILL_KIT_PRESENT,
+            MMR0x80LowAddr.USER_PRESENT,
         }
 
     @classmethod
@@ -2688,6 +2721,14 @@ class MMR0x80LowAddr (enum.IntEnum):
         return self.can_read and not self.can_write \
             and not MMR0x80LowAddr.in_debug_buffer(self.value) \
             and self != MMR0x80LowAddr.CPU_FIRMWARE_BUILD
+
+    @property
+    def read_always(self) -> bool:
+        return self in (
+            MMR0x80LowAddr.ALLOW_USB_CHARGING,
+            MMR0x80LowAddr.DEBUG_LEN,
+            MMR0x80LowAddr.USER_PRESENT,
+        ) or self.in_debug_buffer(self.value)
 
     @classmethod
     def for_logging(cls, addr_low):
@@ -2769,7 +2810,27 @@ def decode_one_mmr(addr_high: int, addr_low: Union[MMR0x80LowAddr, int],
         # retval = {}
         # for bit in MMRGHCInfoBitMask:
         #     retval[bit] = val & bit > 0
-        retval = MMRGHCInfoBitMask(val)
+        try:
+            retval = MMRGHCInfoBitMask(val)
+        except ValueError:
+            logger.error(f"Unable to decode 0b{val:b} as MMRGHCInfoBitMask")
+            retval = val
+
+    elif addr_low == MMR0x80LowAddr.APP_FEATURE_FLAGS:
+        val = unpack('<I', mmr_bytes)[0]
+        try:
+            retval = AppFeatureFlag(val)
+        except ValueError:
+            logger.error(f"Unable to decode 0b{val:b} as AppFeatureFlag")
+            retval = val
+
+    elif addr_low in {
+        MMR0x80LowAddr.STEAM_PURGE_MODE,
+        MMR0x80LowAddr.ALLOW_USB_CHARGING,
+        MMR0x80LowAddr.REFILL_KIT_PRESENT,
+        MMR0x80LowAddr.USER_PRESENT,
+    }:
+        retval = bool(unpack('<I', mmr_bytes)[0])
 
     elif addr_low in {
         MMR0x80LowAddr.PREF_GHC_MCI,
@@ -2799,7 +2860,7 @@ def decode_one_mmr(addr_high: int, addr_low: Union[MMR0x80LowAddr, int],
 
 
 def pack_one_mmr0x80_write(addr_low: MMR0x80LowAddr,
-                             value: Union[float, int]) -> WriteToMMR:
+                             value: Union[float, int, bool]) -> WriteToMMR:
 
     if not addr_low.can_write:
         raise DE1APIValueError(
@@ -2830,7 +2891,20 @@ def pack_one_mmr0x80_write(addr_low: MMR0x80LowAddr,
     elif addr_low in (
             MMR0x80LowAddr.TANK_TEMP,  # 0-60°C ?
             MMR0x80LowAddr.FAN_THRESHOLD,
+            MMR0x80LowAddr.APP_FEATURE_FLAGS,
     ):
+        binval = pack('<I', int(round(value)))
+
+    elif addr_low in {
+        MMR0x80LowAddr.STEAM_PURGE_MODE,
+        MMR0x80LowAddr.ALLOW_USB_CHARGING,
+        MMR0x80LowAddr.REFILL_KIT_PRESENT,
+        MMR0x80LowAddr.USER_PRESENT,
+    }:
+        if value is True:
+            value = 1
+        elif value is False:
+            value = 0
         binval = pack('<I', int(round(value)))
 
     else:

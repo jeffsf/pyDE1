@@ -29,7 +29,7 @@ from pyDE1.dispatcher.resource import (
     Resource, RESOURCE_VERSION, DE1ModeEnum, ConnectivityEnum
 )
 
-MAPPING_VERSION = "4.1.1"
+MAPPING_VERSION = "4.2.0"
 
 logger = pyDE1.getLogger('Inbound.Mapping')
 
@@ -399,12 +399,23 @@ MAPPING[Resource.DE1_SETTING_STEAM] = {
     'temperature': IsAt(target=ShotSettings, attr_path='TargetSteamTemp', v_type=int),
     'flow': IsAt(target=MMR0x80LowAddr.TARGET_STEAM_FLOW, attr_path='', v_type=float),
     'high_flow_time': IsAt(target=MMR0x80LowAddr.STEAM_START_SECS, attr_path='', v_type=float),
+    'purge_deferred': IsAt(target=MMR0x80LowAddr.STEAM_PURGE_MODE, attr_path='', v_type=bool),
 }
 
 # TODO: What is ShotSettings.TargetGroupTemp in the current DE1 firmware
 #       and where does it really belong?
 MAPPING[Resource.DE1_SETTING_TARGET_GROUP_TEMP] = {
     'temperature': IsAt(target=ShotSettings, attr_path='TargetGroupTemp', v_type=int),
+}
+
+MAPPING[Resource.DE1_SETTING_USB_OUTLET] = {
+    'enabled':  IsAt(target=MMR0x80LowAddr.ALLOW_USB_CHARGING,
+                     attr_path='', v_type=bool),
+}
+
+MAPPING[Resource.DE1_SETTING_REFILL_KIT] = {
+    'present':  IsAt(target=MMR0x80LowAddr.REFILL_KIT_PRESENT,
+                     attr_path='', v_type=bool),
 }
 
 # NB: Not exposed at this time
@@ -461,6 +472,11 @@ MAPPING[Resource.DE1_CALIBRATION_LINE_FREQUENCY] = {
     'hz': IsAt(target=TO.DE1, attr_path='line_frequency', v_type=int)
 }
 
+MAPPING[Resource.DE1_PRESENCE] = {
+    'user': IsAt(target=MMR0x80LowAddr.USER_PRESENT, attr_path='', v_type=bool)
+
+}
+
 MAPPING[Resource.SCALE_ID] = {
     'name': IsAt(target=TO.ScaleProcessor, attr_path='scale_name',
                  v_type=Optional[str],
@@ -514,6 +530,8 @@ MAPPING[Resource.DE1_SETTING] = {
     'target_group_temp': MAPPING[Resource.DE1_SETTING_TARGET_GROUP_TEMP],
     'steam': MAPPING[Resource.DE1_SETTING_STEAM],
     'time': MAPPING[Resource.DE1_SETTING_TIME],
+    'usb_outlet': MAPPING[Resource.DE1_SETTING_USB_OUTLET],
+    'refill_kit': MAPPING[Resource.DE1_SETTING_REFILL_KIT],
 }
 
 MAPPING[Resource.DE1_CALIBRATION] = {

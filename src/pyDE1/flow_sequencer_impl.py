@@ -1031,10 +1031,8 @@ class HotWaterRinseControl (StopAtTime, ByModeControl):
             send_val = value
             if send_val is None:
                 send_val = 0
-            # TODO: Can this be simplified/clarified?
-            await de1.write_one_mmr0x80(MMR0x80LowAddr.FLUSH_TIMEOUT, send_val)
-            ready_event = await de1.read_one_mmr0x80(MMR0x80LowAddr.FLUSH_TIMEOUT)
-            await ready_event.wait()
+            await de1.write_and_read_back_mmr0x80(
+                MMR0x80LowAddr.FLUSH_TIMEOUT, send_val)
             new_val = de1._mmr_dict[
                 MMR0x80LowAddr.FLUSH_TIMEOUT].data_decoded
             if new_val != send_val:

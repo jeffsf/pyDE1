@@ -153,6 +153,7 @@ async def _get_isat_value(isat: IsAt):
     elif isinstance(target, MMR0x80LowAddr):
         # NB: This assumes that the MMR and CUUID are kept up to date
         #     and that those that are read don't change on their own
+        # 2022-08: .read_always attribute added to handle self-changing MMRs
 
         if not de1.is_ready:
             raise DE1NotConnectedError(
@@ -177,7 +178,7 @@ async def _get_isat_value(isat: IsAt):
                 retval = de1._mmr_dict[target].data_decoded
             except KeyError:
                 retval = None
-            if retval is None:
+            if retval is None or target.read_always:
                 t0 = time.time()
                 # TODO: Can this be simplified/clarified?
                 ready = await de1.read_one_mmr0x80(target)

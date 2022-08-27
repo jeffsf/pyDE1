@@ -10,7 +10,7 @@ Enum that defines the recognized resources that the Dispatcher can access
 
 import enum
 
-RESOURCE_VERSION = '3.7.0'
+RESOURCE_VERSION = '3.8.0'
 
 
 class Resource (enum.Enum):
@@ -55,6 +55,8 @@ class Resource (enum.Enum):
     DE1_SETTING_START_FILL_LEVEL = 'de1/setting/start_fill_level'
     DE1_SETTING_BEFORE_FLOW = 'de1/setting/before_flow'
     DE1_SETTING_TARGET_GROUP_TEMP = 'de1/setting/target_group_temp'
+    DE1_SETTING_USB_OUTLET = 'de1/setting/usb_outlet'
+    DE1_SETTING_REFILL_KIT = 'de1/setting/refill_kit'
 
     DE1_SETTING_STEAM = 'de1/setting/steam'
 
@@ -69,6 +71,8 @@ class Resource (enum.Enum):
     DE1_PARAMETER_SET = 'de1/parameters'
 
     DE1_READ_ONCE = 'de1/read_once_values'
+
+    DE1_PRESENCE = 'de1/presence'
 
     SCALE = 'scale'
 

@@ -215,7 +215,7 @@ class _Database (ConfigLoadable):
 class _DE1 (ConfigLoadable):
     def __init__(self):
         self.LINE_FREQUENCY = 60
-        self.MAX_WAIT_FOR_READY_EVENTS = 3.5 # Seconds (25 at 0.1 each)
+        self.MAX_WAIT_FOR_READY_EVENTS = 4.0 # Seconds (28 at 0.1 each)
         self.CUUID_LOCK_WAIT_TIMEOUT = 2 # Seconds
         self.SEQUENCE_WATCHDOG_TIMEOUT = 270 # seconds
         # Do these "settings" belong here,

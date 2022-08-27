@@ -6,6 +6,7 @@ GNU General Public License v3.0 only
 SPDX-License-Identifier: GPL-3.0-only
 """
 import asyncio
+import enum
 import hashlib
 import inspect
 import logging
@@ -29,7 +30,7 @@ from pyDE1.de1.c_api import (
     FWMapRequest, FWErrorMapRequest, FWErrorMapResponse,
     API_MachineStates, API_Substates, MAX_FRAMES, get_cuuid, MMR0x80LowAddr,
     packed_attr_from_cuuid, pack_one_mmr0x80_write, MMRGHCInfoBitMask,
-    CalCommand, CalTargets, Calibration, ShotSettings
+    CalCommand, CalTargets, Calibration, ShotSettings, AppFeatureFlag
 )
 from pyDE1.de1.events import ShotSampleUpdate, ShotSampleWithVolumesUpdate
 from pyDE1.de1.firmware_file import FirmwareFile
@@ -235,6 +236,12 @@ class DE1 (Singleton):
                         await self.read_cuuid(CUUID.StateInfo)
                 idx += 1
             logger.error("Stupidly continuing anyway after re-requesting")
+
+        # "By definition" this version understands UserNotPresent substate
+        # it is de1app that is broken and the reason the toggle exists
+        if self.feature_flag.app_feature_flag_user_present:
+            await self.write_and_read_back_mmr0x80(
+                MMR0x80LowAddr.APP_FEATURE_FLAGS, AppFeatureFlag.USER_PRESENT)
 
         await FlowSequencer().on_de1_nearly_ready()
 
@@ -826,11 +833,6 @@ class DE1 (Singleton):
         ready_event = await self.read_one_mmr0x80(mmr0x80)
         await ready_event.wait()
 
-    async def write_one_mmr0x80(self, mmr0x80: MMR0x80LowAddr,
-                                value: Union[int, float]):
-        await self.write_packed_attr(pack_one_mmr0x80_write(
-            MMR0x80LowAddr.FLUSH_TIMEOUT, value))
-
 #
 # MMR-based properties
 #
@@ -1084,7 +1086,7 @@ class DE1 (Singleton):
 
 
     async def write_and_read_back_mmr0x80(self, addr_low: MMR0x80LowAddr,
-                                          value: float):
+                                          value: Union[int, float, bool]):
         if not addr_low.can_write:
             raise DE1APIValueError(
                 f"MMR target address not writable: {addr_low.__repr__()}")
@@ -1866,12 +1868,29 @@ class FeatureFlag:
     # 1246  b80dc98 2021-03-25
     # 1250  3bf4bc9 2021-03-30
     # 1255  a03eeec 2021-04-08
-    #       48cc5e1 2021-05-04
+    #       48cc5e1 2021-05-04  reverts to the old hot-water start behaviour
     # 1260  2eae3cc 2021-05-06  Skip-to-next
     # 1265  224a312 2021-06-30
     # 1283  d8e169b 2021-09-30  Rinse (flush) control, Hot water flow (?)
+    #                               Reverted in commit 1b92cc41
     #                               (Has start-up temperature issues)
     # 1293  d014017 2021-12-22  "fixes problem with scheduler"
+
+    # These are taken as a sequence and not "recognized" until 1320 or later
+    # 1315  978d0efc 2022-05-31
+    # 1316  5365f3e1 2022-06-01
+    # 1317  36ad337f 2022-06-14
+    # 1318  67b7de1b 2022-06-15 new way to indicate "user is present" to the DE1
+    # 1320  f84a1b59 2022-07-10
+    #   the steam problem caused by very low "limiter" values
+    #       (such as "Filter 2.1") should now be fixed
+    #   fast switching to Steam, if you press the GHC STEAM button
+    #       as espresso is ending. The "ending" is cut off and steam starts faster.
+    #   Auto-detection of the refill kit should be more reliable,
+    #       so that you shouldn't need to set "refill-kit: on" in settings,
+    #       ie, leave this on "auto-detect:
+    # 1324  ac30fc78 2022-08-27 USB power restores 10 min after turning it off
+    # 1325  1ae30ed7 2022-08-29 non-debug version of 1324
 
     @property
     def fw_version(self):
@@ -1933,8 +1952,11 @@ class FeatureFlag:
     # Untested, but assumed to fail on 1260
     # Readable on 1265, though returns 0 decoded as '<I'
     @property
-    def max_shot_press(self):
-        return self.mmr_pref_ghc_mci
+    def mmr_max_shot_press(self):
+        if self.fw_version is None:
+            return None
+        else:
+            return False
 
     @property
     def skip_to_next(self):
@@ -1964,3 +1986,37 @@ class FeatureFlag:
         else:
             return self.fw_version >= 1293
 
+    @property
+    def steam_purge_mode(self):
+        if self.fw_version is None:
+            return None
+        else:
+            return self.fw_version >= 1320
+
+    @property
+    def allow_usb_charging(self):
+        if self.fw_version is None:
+            return None
+        else:
+            return self.fw_version >= 1320
+
+    @property
+    def app_feature_flag_user_present(self):
+        if self.fw_version is None:
+            return None
+        else:
+            return self.fw_version >= 1320
+
+    @property
+    def refill_kit_present(self):
+        if self.fw_version is None:
+            return None
+        else:
+            return self.fw_version >= 1320
+
+    @property
+    def user_present(self):
+        if self.fw_version is None:
+            return None
+        else:
+            return self.fw_version >= 1320
