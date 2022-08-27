@@ -2803,7 +2803,7 @@ def pack_one_mmr0x80_write(addr_low: MMR0x80LowAddr,
 
     if not addr_low.can_write:
         raise DE1APIValueError(
-            f"Not encoding a non-writable MMR target address: {addr_low}")
+            f"Not encoding a non-writable MMR target address: 0x{addr_low:04x}")
 
     if addr_low == MMR0x80LowAddr.CAL_FLOW_EST:
         binval = pack('<I', int(round(value * 1000)))
@@ -2835,7 +2835,7 @@ def pack_one_mmr0x80_write(addr_low: MMR0x80LowAddr,
 
     else:
         raise DE1APIValueError(
-            f"Not encoding an unrecognized MMR target address: {addr_low}")
+            f"Not encoding an unrecognized MMR target address: 0x{addr_low:04x}")
 
     if addr_low == MMR0x80LowAddr.FAN_THRESHOLD:
         if not (0 <= value <= 60):
