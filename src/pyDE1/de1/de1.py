@@ -15,6 +15,7 @@ from copy import copy, deepcopy
 from typing import Union, Dict, Coroutine, Optional, List, Callable
 
 import aiosqlite
+import requests
 from bleak.backends.device import BLEDevice
 from bleak.backends.scanner import AdvertisementData
 from bleak.backends.service import BleakGATTServiceCollection
@@ -248,7 +249,13 @@ class DE1 (Singleton):
         # NB: This gets sent if all there or not
         await self._notify_ready()
 
-        # Don't need to wait on this one
+        # TODO: How can this be handled to defer "ready"?
+        #       Probably can't "await" as it needs this thread to execute
+        #       Also needs "ready" to make the call theough the API
+        asyncio.get_running_loop().run_in_executor(None,
+                                                   self._patch_on_connect)
+
+        # Don't need to wait on these
         asyncio.create_task(self.fetch_calibration())
 
         return
@@ -265,6 +272,33 @@ class DE1 (Singleton):
         await self._event_connectivity.publish(
             self._connectivity_change(arrival_time=time.time(),
                                       state=ConnectivityState.NOT_READY))
+
+    def _patch_on_connect(self):
+        poc = config.de1.PATCH_ON_CONNECT
+        if isinstance(poc, dict) and len(poc.keys()):
+            logger.info(f"Requesting PATCH_ON_CONNECT {poc}")
+            host = config.http.SERVER_HOST
+            if len(host) == 0:
+                host = 'localhost'
+            de1_url = "http://{}:{}{}de1".format(
+                host,
+                config.http.SERVER_PORT,
+                config.http.SERVER_ROOT
+            )
+            logger.info(f"Making request to {de1_url}")
+            # This ends up blocking as it doesn't release the thread
+            req = requests.patch(
+                url=de1_url,
+                json=poc
+            )
+            if req.ok:
+                level = logging.INFO
+            else:
+                level = logging.ERROR
+            logger.log(level, "Response from PATCH_ON_CONNECT: "
+                              f"{req.status_code} {req.reason} {req.content}")
+        else:
+            logger.info(f"PATCH_ON_CONNECT not a populated dict {poc}")
 
     @property
     def is_ready(self):
