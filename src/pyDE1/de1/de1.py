@@ -584,24 +584,23 @@ class DE1 (Singleton):
         else:
             return self._bleak_client.is_connected
 
-    async def start_notifying(self, cuuid: CUUID):
+    async def start_notifying(self, cuuid: CUUID) -> asyncio.Event:
         try:
-            done = self._cuuid_dict[cuuid].mark_requested()
+            notified_event = self._cuuid_dict[cuuid].mark_requested()
             await self._bleak_client.start_notify(cuuid.uuid,
                                                   self._handlers[cuuid])
             pyDE1.getLogger(f"DE1.{cuuid.__str__()}").debug("Start notify")
         except KeyError:
             raise DE1NoHandlerError(f"No handler found for {cuuid}")
-        return done
+        return notified_event
 
     async def stop_notifying(self, cuuid: CUUID):
         try:
-            done = self._cuuid_dict[cuuid].mark_ended()
+            self._cuuid_dict[cuuid].mark_ended()
             await self._bleak_client.stop_notify(cuuid.uuid)
             pyDE1.getLogger(f"DE1.{cuuid.__str__()}").debug("Stop notify")
         except KeyError:
             raise DE1NoHandlerError(f"No handler found for {cuuid}")
-        return done
 
     async def start_standard_read_write_notifiers(self):
         await asyncio.gather(
