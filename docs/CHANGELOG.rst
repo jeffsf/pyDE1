@@ -9,15 +9,58 @@
 Changelog
 =========
 
-------------------
-1.3.0 - Pending
-------------------
+---------------
+1.4.0 – Pending
+---------------
+
+Overview
+========
+
+Adds ability to patch DE1 from config file on connect.
+
+Support for features in firmware through 1352. Of these, perhaps the
+steam-purge mode control is the most interesting.
+
+* RESOURCE v3.8.0
+* MAPPING v4.2.1
+
+(Includes changes previously pending for 1.3.0)
+
+New
+===
+
+* Patch DE1 from config file when it first connects -- ``0c22418``
+* Support for firmware through version 1352 -- ``94034a5``
+
+Changed
+=======
+
+* Logging
+  * Value that triggered ``DE1APIValueError`` now in message -- ``df5d20d``
+  * ``MMR0x80LowAddr`` shown in hex when unknown -- ``004e287``
+  * Added debug logging for "state-less" writes to database -- ``78cfa38``
+
+
+* Clarified return value of ``DE1().start_notifying()`` as an event
+that triggers when the notification is received. Removed return value
+of ``stop_notifying()`` which was always ``None``. -- ``c425703``
+
+* Add ``last_updated`` to DE1 "state" API to resolve ambiguity between API calls
+and MQTT notifications -- ``4594ad8``
 
 Fixed
 =====
 
-* Gracefully handle "shots" without weight for Visualizer upload -- ''XXXXXXX''
-* Fix last_mmr0x80() for pre-1250 firmware version reported -- ''YYYYYYY''
+* Gracefully handle "shots" without weight for Visualizer upload -- ``a9d9f01``
+* Fix ``last_mmr0x80()`` for pre-1250 firmware version reported -- ``5249e65``
+
+Removed
+=======
+
+* Internal ``DE1().write_one_mmr0x80()`` was only used in one place and then
+  in a context that replicated other calls. ``write_and_read_back_mmr0x80()``
+  is a preferred replacement.
+
 
 ------------------
 1.2.0 - 2022-06-20
