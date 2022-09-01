@@ -29,7 +29,7 @@ from pyDE1.dispatcher.resource import (
     Resource, RESOURCE_VERSION, DE1ModeEnum, ConnectivityEnum
 )
 
-MAPPING_VERSION = "4.2.0"
+MAPPING_VERSION = "4.2.1"
 
 logger = pyDE1.getLogger('Inbound.Mapping')
 

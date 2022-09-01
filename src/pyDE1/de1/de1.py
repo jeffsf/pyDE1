@@ -1638,6 +1638,7 @@ class DE1 (Singleton):
         return {
             'state': self.current_state.name,
             'substate': self.current_substate.name,
+            'last_updated': self.state_last_updated,
         }
 
     async def mode_setter(self, mode: DE1ModeEnum):
