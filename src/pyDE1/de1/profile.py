@@ -226,7 +226,10 @@ class ProfileByFrames (Profile):
 
 
         try:
-            if (v := int(json_dict['version'])) != 2:
+            # Permit simple semantic versioning
+            v = str(json_dict['version'])
+            vs = v.split('.')
+            if vs[0] != "2":
                 raise DE1ProfileValidationErrorJSON(
                     f"Only version 2 profiles are recognized, not '{v}'")
         except KeyError:
