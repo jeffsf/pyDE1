@@ -29,7 +29,7 @@ from pyDE1.dispatcher.resource import (
     Resource, RESOURCE_VERSION, DE1ModeEnum, ConnectivityEnum
 )
 
-MAPPING_VERSION = "4.2.1"
+MAPPING_VERSION = "4.3.0"
 
 logger = pyDE1.getLogger('Inbound.Mapping')
 
@@ -294,6 +294,9 @@ MAPPING[Resource.DE1_CONTROL_ESPRESSO] = {
     'stop_at_weight': IsAt(target=TO.FlowSequencer,
                            attr_path='espresso_control.stop_at_weight',
                            v_type=Optional[float]),
+    'move_on_weight': IsAt(target=TO.FlowSequencer,
+                           attr_path='espresso_control.mow_all_frames',
+                           v_type=list[Optional[Union[int, float]]]),
     'disable_auto_tare': IsAt(target=TO.FlowSequencer,
                               attr_path='espresso_control.disable_auto_tare',
                               v_type=bool),
