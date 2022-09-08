@@ -1366,6 +1366,14 @@ class DE1 (Singleton):
     def current_substate(self) -> API_Substates:
         return self._cuuid_dict[CUUID.StateInfo].last_value.SubState
 
+    @property
+    def current_frame(self) -> API_Substates:
+        return self._cuuid_dict[CUUID.ShotSample].last_value.FrameNumber
+
+    @property
+    def frame_last_updated(self) -> API_Substates:
+        return self._cuuid_dict[CUUID.ShotSample].last_updated
+
     # Perhaps one day line frequency will be reported by the firmware
     # Needed for volume estimation
 
