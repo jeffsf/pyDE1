@@ -14,7 +14,7 @@ import asyncio
 import multiprocessing
 import time
 from asyncio import Task
-from typing import Optional, Callable, Coroutine, List
+from typing import Optional, Callable, Coroutine, List, Union
 
 import pyDE1
 from pyDE1.config import config
@@ -40,7 +40,11 @@ from pyDE1.flow_sequencer import (
     FlowSequencer, LAST_DROPS_MINIMUM_TIME_DEFAULT,
     FIRST_DROPS_THRESHOLD_DEFAULT, StopAtNotificationAction, StopAtType,
     StopAtNotification, AutoTareNotificationAction, AutoTareNotification,
-    ByModeControl, StopAtTime, StopAtVolume, StopAtWeight,
+    ModeControl, BaseModeControl, validate_stop_at,
+    StopAtTimeControl, StopAtVolumeControl, StopAtWeightControl,
+    MoveOnWeightControl,
+    I_EspressoControl, I_HotWaterControl,
+    I_HotWaterRinseControl, I_SteamControl,
 )
 from pyDE1.scale.events import WeightAndFlowUpdate
 from pyDE1.scale.processor import ScaleProcessor
@@ -70,6 +74,12 @@ class FlowSequencerImpl (Singleton, FlowSequencer):
         # self._event_scale_processor_present = asyncio.Event()
 
         self._active_state: Optional[API_MachineStates] = None
+
+        # Detect frame changes for move-on by weight
+        self._last_profile_frame = None
+        self._last_profile_frame_weight = None
+        self._last_frame_advanced_from = None
+
         self._sequence_start_time: float = 0
         # For later cancellation. Should this be static or dynamic?
         self._sequence_task_name: str = "SequencerSubtask"
@@ -121,6 +131,10 @@ class FlowSequencerImpl (Singleton, FlowSequencer):
             API_MachineStates.HotWater,
         ]
 
+        self.move_on_weight_states: List[API_MachineStates] = [
+            API_MachineStates.Espresso,
+        ]
+
         self.stop_at_volume_states: List[API_MachineStates] = [
             API_MachineStates.Espresso,
             API_MachineStates.HotWater,
@@ -142,6 +156,7 @@ class FlowSequencerImpl (Singleton, FlowSequencer):
         # Internal flag, use None or value for
         # de1.stop_at_weight and/or de1.stop_at_volume
         self._stop_at_weight_active = False
+        self._move_on_weight_active = False
         self._stop_at_volume_active = False
         self._stop_at_time_active = False
 
@@ -179,21 +194,30 @@ class FlowSequencerImpl (Singleton, FlowSequencer):
                 self._create_stop_at_volume_subscriber()),
 
             self.scale_processor.event_weight_and_flow_update.subscribe(
-                self._create_stop_at_weight_subscriber()),
+                self._create_act_on_weight_subscriber()),
         )
         logger.info("FlowSequencer subscriptions done")
         return self
 
     @property
-    def scale_processor(self):
+    def scale_processor(self) -> ScaleProcessor:
         return self._scale_processor
 
     @property
-    def active_state(self):
+    def active_state(self) -> API_MachineStates:
         return self._active_state
 
-    def active_control_for_state(self, state: API_MachineStates) \
-            -> 'ByModeControl':
+    @property
+    def current_frame(self) -> Optional[int]:
+        # Tighten up a bit from DE1
+        if (self.active_state is API_MachineStates.Espresso
+                and self.de1.current_substate.flow_phase == 'during'):
+            retval = self.de1.current_frame
+        else:
+            retval = None
+        return retval
+
+    def active_control_for_state(self, state: API_MachineStates) -> ModeControl:
         retval = None
         if state is API_MachineStates.Espresso:
             retval = self.espresso_control
@@ -206,8 +230,32 @@ class FlowSequencerImpl (Singleton, FlowSequencer):
         return retval
 
     @property
-    def active_control(self) -> 'ByModeControl':
+    def active_control(self) -> ModeControl:
         return self.active_control_for_state(self.active_state)
+
+    @property
+    def active_control_stop_at_time(self):
+        try:
+            retval = self.active_control.stop_at_time
+        except AttributeError:
+            retval = None
+        return retval
+
+    @property
+    def active_control_stop_at_volume(self):
+        try:
+            retval = self.active_control.stop_at_volume
+        except AttributeError:
+            retval = None
+        return retval
+
+    @property
+    def active_control_stop_at_weight(self):
+        try:
+            retval = self.active_control.stop_at_weight
+        except AttributeError:
+            retval = None
+        return retval
 
     @property
     def sequence_start_time(self):
@@ -236,7 +284,7 @@ class FlowSequencerImpl (Singleton, FlowSequencer):
 
         async def flow_sequencer_wafu_cb(wafu: WeightAndFlowUpdate):
             nonlocal flow_sequencer
-            pass  # at least now, all the SAW is in ScaleProcessor
+            pass  # SAW is _create_act_on_weight_subscriber
 
         return flow_sequencer_wafu_cb
 
@@ -285,7 +333,7 @@ class FlowSequencerImpl (Singleton, FlowSequencer):
                     # Catch leaving before flow starts
                     logger.info(
                         "Non-flow state detected during sequence: "
-                        f"{su.state.name},{su.substate.name}"
+                        f"{su.state.name},{su.substate.name} "
                         'calling _end_sequence().')
                     await flow_sequencer._end_sequence()
 
@@ -297,16 +345,22 @@ class FlowSequencerImpl (Singleton, FlowSequencer):
         async def flow_sequencer_ssu_cb(ssu: ShotSampleUpdate):
             nonlocal flow_sequencer
 
-            # Yet another place having to use current [sub]state off DE1
-            de1 = flow_sequencer.de1
+            if ssu.frame_number != self._last_profile_frame:
+                logger.info(
+                    "Frame change "
+                    f"{self._last_profile_frame} => {ssu.frame_number} at "
+                    f"{self.scale_processor.current_weight} g")
+                self._last_profile_frame = ssu.frame_number
+                self._last_profile_frame_weight = self.scale_processor.current_weight
+
             try:
                 threshold = flow_sequencer.active_control.first_drops_threshold
             except AttributeError:
                 threshold = None
-            if de1.current_state.is_flow_state \
+            if self.de1.current_state.is_flow_state \
                     and threshold is not None \
                     and not flow_sequencer._gate_expect_drops.is_set() \
-                    and de1.current_substate.flow_phase == 'during' \
+                    and self.de1.current_substate.flow_phase == 'during' \
                     and ssu.group_pressure \
                         > flow_sequencer.active_control.first_drops_threshold:
                 flow_sequencer._gate_expect_drops.set()
@@ -358,6 +412,9 @@ class FlowSequencerImpl (Singleton, FlowSequencer):
         asyncio.create_task(self._sequence_stop_at_weight(),
                             name=self._sequence_task_name)
 
+        asyncio.create_task(self._sequence_move_on_weight(),
+                            name=self._sequence_task_name)
+
         asyncio.create_task(self._sequence_stop_at_time(),
                             name=self._sequence_task_name)
 
@@ -368,9 +425,11 @@ class FlowSequencerImpl (Singleton, FlowSequencer):
             self._sequence_watchdog(),
             name=f"SequenceWatchdog_{config.de1.SEQUENCE_WATCHDOG_TIMEOUT}")
 
+        self._last_profile_frame_weight = None
+        self._last_frame_advanced_from = None
+
         self._gate_sequence_start.set()
         logger.info("Gate: Sequence start")
-
 
     async def _sequence_end_sequence(self):
         """
@@ -378,7 +437,10 @@ class FlowSequencerImpl (Singleton, FlowSequencer):
         in one place.
         """
         await self._gate_flow_end.wait()
-        ldmt = self.active_control.last_drops_minimum_time
+        try:
+            ldmt = self.active_control.last_drops_minimum_time
+        except AttributeError:
+            ldmt = None
         if ldmt:
             try:
                 await asyncio.wait_for(self._gate_last_drops.wait(),
@@ -491,37 +553,57 @@ class FlowSequencerImpl (Singleton, FlowSequencer):
             self._stop_at_volume_active = False
             logger.debug(f"StopAtVolume: disable - {self.active_state.name}")
             await self.stop_at_notify(
-                stop_at=StopAtType.VOLUME,
-                action=StopAtNotificationAction.DISABLED)
+                    stop_at=StopAtType.VOLUME,
+                    action=StopAtNotificationAction.DISABLED,
+                    target_value=self.active_control_stop_at_volume,
+                    current_value=None,
+                    active_state=self.active_state,
+                    current_frame=self.current_frame)
             return
         try:
             await self._gate_sequence_start.wait()
             self._stop_at_volume_active = False
             logger.debug("StopAtVolume: disable")
             await self.stop_at_notify(
-                stop_at=StopAtType.VOLUME,
-                action=StopAtNotificationAction.DISABLED)
+                    stop_at=StopAtType.VOLUME,
+                    action=StopAtNotificationAction.DISABLED,
+                    target_value=None,
+                    current_value=self.de1.volume_dispensed_pour,
+                    active_state=self.active_state,
+                    current_frame=self.current_frame)
 
             await self._gate_exit_preinfuse.wait()
             self._stop_at_volume_active = True
             logger.debug("StopAtVolume: enable")
             await self.stop_at_notify(
                 stop_at=StopAtType.VOLUME,
-                action=StopAtNotificationAction.ENABLED)
+                action=StopAtNotificationAction.ENABLED,
+                target_value=self.active_control_stop_at_volume,
+                current_value=self.de1.volume_dispensed_pour,
+                active_state=self.active_state,
+                current_frame=self.current_frame)
 
             await self._gate_flow_end.wait()
             self._stop_at_volume_active = False
             logger.debug("StopAtVolume: disable")
             await self.stop_at_notify(
                 stop_at=StopAtType.VOLUME,
-                action=StopAtNotificationAction.DISABLED)
+                action=StopAtNotificationAction.DISABLED,
+                target_value=self.active_control_stop_at_volume,
+                current_value=self.de1.volume_dispensed_pour,
+                active_state=self.active_state,
+                current_frame=self.current_frame)
 
         except asyncio.CancelledError:
             self._stop_at_volume_active = False
             logger.info("StopAtVolume: disable - on cancel")
             await self.stop_at_notify(
                 stop_at=StopAtType.VOLUME,
-                action=StopAtNotificationAction.DISABLED)
+                action=StopAtNotificationAction.DISABLED,
+                target_value=self.active_control_stop_at_volume,
+                current_value=self.de1.volume_dispensed_pour,
+                active_state=self.active_state,
+                current_frame=self.current_frame)
             raise
 
     async def _sequence_stop_at_weight(self):
@@ -530,7 +612,11 @@ class FlowSequencerImpl (Singleton, FlowSequencer):
             logger.info(f"StopAtWeight: disable - {self.active_state.name}")
             await self.stop_at_notify(
                 stop_at=StopAtType.WEIGHT,
-                action=StopAtNotificationAction.DISABLED)
+                action=StopAtNotificationAction.DISABLED,
+                target_value=self.active_control_stop_at_weight,
+                current_value=self.scale_processor.current_weight,
+                active_state=self.active_state,
+                current_frame=self.current_frame)
             return
         try:
             await self._gate_sequence_start.wait()
@@ -538,31 +624,110 @@ class FlowSequencerImpl (Singleton, FlowSequencer):
             logger.debug("StopAtWeight: disable")
             await self.stop_at_notify(
                 stop_at=StopAtType.WEIGHT,
-                action=StopAtNotificationAction.DISABLED)
+                action=StopAtNotificationAction.DISABLED,
+                target_value=self.active_control_stop_at_weight,
+                current_value=self.scale_processor.current_weight,
+                active_state=self.active_state,
+                current_frame=self.current_frame)
 
             await self._gate_expect_drops.wait()
             self._stop_at_weight_active = True
             logger.debug("StopAtWeight: enable")
             await self.stop_at_notify(
                 stop_at=StopAtType.WEIGHT,
-                action=StopAtNotificationAction.ENABLED)
+                action=StopAtNotificationAction.ENABLED,
+                target_value=self.active_control_stop_at_weight,
+                current_value=self.scale_processor.current_weight,
+                active_state=self.active_state,
+                current_frame=self.current_frame)
 
             await self._gate_flow_end.wait()
             self._stop_at_weight_active = False
             logger.debug("StopAtWeight: disable")
             await self.stop_at_notify(
                 stop_at=StopAtType.WEIGHT,
-                action=StopAtNotificationAction.DISABLED)
+                action=StopAtNotificationAction.DISABLED,
+                target_value=self.active_control_stop_at_weight,
+                current_value=self.scale_processor.current_weight,
+                active_state=self.active_state,
+                current_frame=self.current_frame)
 
         except asyncio.CancelledError:
             self._stop_at_weight_active = False
             logger.info("StopAtWeight: disable - on cancel")
             await self.stop_at_notify(
                 stop_at=StopAtType.WEIGHT,
-                action=StopAtNotificationAction.DISABLED)
+                action=StopAtNotificationAction.DISABLED,
+                target_value=self.active_control_stop_at_weight,
+                current_value=self.scale_processor.current_weight,
+                active_state=self.active_state,
+                current_frame=self.current_frame)
+            raise
+
+    async def _sequence_move_on_weight(self):
+        """
+        At this level, there really isn't a meaningful "target value"
+        as it is a list of values, potentially for each frame
+        """
+        if self.active_state not in self.move_on_weight_states:
+            self._move_on_weight_active = False
+            logger.info(f"StopAtWeight: disable - {self.active_state.name}")
+            await self.stop_at_notify(
+                stop_at=StopAtType.MOW,
+                action=StopAtNotificationAction.DISABLED,
+                target_value=None,
+                current_value=self.scale_processor.current_weight,
+                active_state=self.active_state,
+                current_frame=self.current_frame)
+            return
+        try:
+            await self._gate_sequence_start.wait()
+            self._move_on_weight_active = False
+            logger.debug("StopAtWeight: disable")
+            await self.stop_at_notify(
+                stop_at=StopAtType.MOW,
+                action=StopAtNotificationAction.DISABLED,
+                target_value=None,
+                current_value=self.scale_processor.current_weight,
+                active_state=self.active_state,
+                current_frame=self.current_frame)
+
+            await self._gate_expect_drops.wait()
+            self._move_on_weight_active = True
+            logger.debug("StopAtWeight: enable")
+            await self.stop_at_notify(
+                stop_at=StopAtType.MOW,
+                action=StopAtNotificationAction.ENABLED,
+                target_value=None,
+                current_value=self.scale_processor.current_weight,
+                active_state=self.active_state,
+                current_frame=self.current_frame)
+
+            await self._gate_flow_end.wait()
+            self._move_on_weight_active = False
+            logger.debug("StopAtWeight: disable")
+            await self.stop_at_notify(
+                stop_at=StopAtType.MOW,
+                action=StopAtNotificationAction.DISABLED,
+                target_value=None,
+                current_value=self.scale_processor.current_weight,
+                active_state=self.active_state,
+                current_frame=self.current_frame)
+
+        except asyncio.CancelledError:
+            self._move_on_weight_active = False
+            logger.info("StopAtWeight: disable - on cancel")
+            await self.stop_at_notify(
+                stop_at=StopAtType.MOW,
+                action=StopAtNotificationAction.DISABLED,
+                target_value=None,
+                current_value=self.scale_processor.current_weight,
+                active_state=self.active_state,
+                current_frame=self.current_frame)
             raise
 
     async def _sequence_stop_at_time(self):
+        t0 = 0   # Make sure always set so task cancellation doesn't error
         if ((self.active_state == API_MachineStates.Steam)
                 or (self.active_state == API_MachineStates.HotWaterRinse
                     and self.de1.feature_flag.rinse_control)):
@@ -573,7 +738,11 @@ class FlowSequencerImpl (Singleton, FlowSequencer):
                 f"({self.active_control.stop_at_time:.1f} seconds)")
             await self.stop_at_notify(
                 stop_at=StopAtType.TIME,
-                action=StopAtNotificationAction.DE1CONTROLLED)
+                action=StopAtNotificationAction.DE1CONTROLLED,
+                target_value=self.active_control_stop_at_time,
+                current_value=None,
+                active_state=self.active_state,
+                current_frame=self.current_frame)
             return
 
         if self.active_state not in self.stop_at_time_states:
@@ -581,7 +750,11 @@ class FlowSequencerImpl (Singleton, FlowSequencer):
             logger.info(f"StopAtTime: disable - {self.active_state.name}")
             await self.stop_at_notify(
                 stop_at=StopAtType.TIME,
-                action=StopAtNotificationAction.DISABLED)
+                action=StopAtNotificationAction.DISABLED,
+                target_value=self.active_control_stop_at_time,
+                current_value=None,
+                active_state=self.active_state,
+                current_frame=self.current_frame)
             return
 
         try:
@@ -590,7 +763,11 @@ class FlowSequencerImpl (Singleton, FlowSequencer):
             logger.debug("StopAtTime: disable")
             await self.stop_at_notify(
                 stop_at=StopAtType.TIME,
-                action=StopAtNotificationAction.DISABLED)
+                action=StopAtNotificationAction.DISABLED,
+                target_value=self.active_control_stop_at_time,
+                current_value=None,
+                active_state=self.active_state,
+                current_frame=self.current_frame)
 
             # NB: Changing the time after starting won't alter the duration
             #     at least as presently implemented
@@ -614,7 +791,11 @@ class FlowSequencerImpl (Singleton, FlowSequencer):
             logger.debug(f"StopAtTime: enable ({wait} seconds)")
             await self.stop_at_notify(
                 stop_at=StopAtType.TIME,
-                action=StopAtNotificationAction.ENABLED)
+                action=StopAtNotificationAction.ENABLED,
+                target_value=self.active_control_stop_at_time,
+                current_value=0,
+                active_state=self.active_state,
+                current_frame=self.current_frame)
 
             await asyncio.sleep(wait)
             logger.debug(f"StopAtTime: triggered, requesting stop_flow")
@@ -623,21 +804,32 @@ class FlowSequencerImpl (Singleton, FlowSequencer):
             await self.stop_at_notify(
                 stop_at=StopAtType.TIME,
                 action=StopAtNotificationAction.TRIGGERED,
-                current=(time.time() - t0))
+                target_value=self.active_control_stop_at_time,
+                current_value=(time.time() - t0),
+                active_state=self.active_state,
+                current_frame=self.current_frame)
 
             await self._gate_flow_end.wait()
             self._stop_at_time_active = False
             logger.debug("StopAtTime: disable")
             await self.stop_at_notify(
                 stop_at=StopAtType.TIME,
-                action=StopAtNotificationAction.DISABLED)
+                action=StopAtNotificationAction.DISABLED,
+                target_value=self.active_control_stop_at_time,
+                current_value=(time.time() - t0),
+                active_state=self.active_state,
+                current_frame=self.current_frame)
 
         except asyncio.CancelledError:
             self._stop_at_time_active = False
             logger.info("StopAtTime: disable - on cancel")
             await self.stop_at_notify(
                 stop_at=StopAtType.TIME,
-                action=StopAtNotificationAction.DISABLED)
+                action=StopAtNotificationAction.DISABLED,
+                target_value=self.active_control_stop_at_time,
+                current_value=((time.time() - t0) if t0 else None),
+                active_state=self.active_state,
+                current_frame=self.current_frame)
             raise
 
     async def _sequence_recorder(self):
@@ -709,7 +901,7 @@ class FlowSequencerImpl (Singleton, FlowSequencer):
         flow_sequencer = self
         sav_logger = pyDE1.getLogger('FlowSequencer.StopAtVolume')
 
-        async def stop_at_volume(sswvu: ShotSampleWithVolumesUpdate):
+        async def stop_at_volume_subscriber(sswvu: ShotSampleWithVolumesUpdate):
             nonlocal flow_sequencer, sav_logger
 
             if (flow_sequencer._stop_at_volume_active
@@ -723,24 +915,29 @@ class FlowSequencerImpl (Singleton, FlowSequencer):
                     await flow_sequencer.stop_at_notify(
                         stop_at=StopAtType.VOLUME,
                         action=StopAtNotificationAction.TRIGGERED,
-                        current=sswvu.volume_pour)
+                        target_value=self.active_control_stop_at_volume,
+                        current_value=sswvu.volume_pour,
+                        active_state=self.active_state,
+                        current_frame=self.current_frame)
 
-        return stop_at_volume
+        return stop_at_volume_subscriber
 
-    def _create_stop_at_weight_subscriber(self) -> Coroutine:
+    def _create_act_on_weight_subscriber(self) -> Coroutine:
         """
         Should be subscribed to WeightAndFlowUpdate on ScaleProcessor
         """
         flow_sequencer = self
         saw_logger = pyDE1.getLogger('FlowSequencer.StopAtWeight')
+        mow_logger = pyDE1.getLogger('FlowSequencer.MoveOnWeight')
 
-        async def stop_at_weight(wafu: WeightAndFlowUpdate):
-            nonlocal flow_sequencer, saw_logger
+        async def act_on_weight_subscriber(wafu: WeightAndFlowUpdate):
+            nonlocal flow_sequencer, saw_logger, mow_logger
+
+            done = False
 
             if (flow_sequencer._stop_at_weight_active
                     and (target := flow_sequencer.active_control.stop_at_weight)
                     is not None):
-                stop_lag = flow_sequencer.de1.stop_lead_time
                 # TODO: Should the choice of flow estimate be switchable?
                 flow = wafu.average_flow
                 dw = target - wafu.current_weight
@@ -758,32 +955,57 @@ class FlowSequencerImpl (Singleton, FlowSequencer):
                         await flow_sequencer.stop_at_notify(
                             stop_at=StopAtType.WEIGHT,
                             action=StopAtNotificationAction.TRIGGERED,
-                            current=wafu.current_weight)
+                            target_value=target,
+                            current_value=wafu.current_weight,
+                            active_state=self.active_state,
+                            current_frame=self.current_frame)
+                        done = True
 
-        return stop_at_weight
+            if not done and (flow_sequencer._move_on_weight_active
+                    and ((target := flow_sequencer.active_control.mow_get_frame(
+                         frame := flow_sequencer.current_frame )) is not None)
+                    and (frame != self._last_frame_advanced_from)):
+                flow = wafu.average_flow
+                start_of_frame_weight = self._last_profile_frame_weight or 0
+                dw = target - (wafu.current_weight - start_of_frame_weight)
+                if flow > 0:
+                    dt = dw / flow
+                    target_time = wafu.scale_time + dt \
+                                  - flow_sequencer.de1.stop_lead_time
+                    if time.time() >= target_time:
+                        await flow_sequencer.de1.skip_to_next()
+                        self._last_frame_advanced_from = frame
+                        mow_logger.info(
+                            "Triggered frame "
+                            "{:d} at {:.1f} g for {:.1f} g target".format(
+                                frame, wafu.current_weight, target))
+                        await flow_sequencer.stop_at_notify(
+                            stop_at=StopAtType.MOW,
+                            action=StopAtNotificationAction.TRIGGERED,
+                            target_value=target,
+                            current_value=wafu.current_weight,
+                            active_state=self.active_state,
+                            current_frame=self.current_frame)
+                        done = True
+
+        return act_on_weight_subscriber
 
     async def stop_at_notify(self, stop_at: StopAtType,
                              action: StopAtNotificationAction,
-                             current: Optional[float]=None):
+                             target_value: Optional[float],
+                             current_value: Optional[float],
+                             active_state: API_MachineStates,
+                             current_frame: Optional[int]):
 
-        if action == StopAtNotificationAction.DISABLED:
-            target = None
-        elif stop_at == StopAtType.TIME:
-            target = self.active_control.stop_at_time
-        elif stop_at == StopAtType.VOLUME:
-            target = self.active_control.stop_at_volume
-        elif stop_at == StopAtType.WEIGHT:
-            target = self.active_control.stop_at_weight
-        else:
-            target = None
         notification = StopAtNotification(
             stop_at=stop_at,
             action=action,
-            target_value=target,
-            current_value=current,
-            active_state=self.active_state
+            target_value=target_value,
+            current_value=current_value,
+            active_state=active_state,
+            current_frame=current_frame
         )
-        # Usinf FlowSequencer() here still results in FlowSequencerImpl
+        # Using FlowSequencer() here still results in FlowSequencerImpl
         notification._sender = self
         await send_to_outbound_pipes(notification)
 
@@ -793,70 +1015,70 @@ class FlowSequencerImpl (Singleton, FlowSequencer):
         await send_to_outbound_pipes(notification)
 
     def stop_at_time_set(self, state: API_MachineStates, duration: float):
-        bmc = self.active_control_for_state(state)
-        if bmc is None:
+        mode_control = self.active_control_for_state(state)
+        if mode_control is None:
             raise DE1APIValueError(
-                f"No ByModeController for {state}")
-        if not isinstance(bmc, StopAtTime):
+                f"No ModeControl for {state}")
+        if not isinstance(mode_control, StopAtTimeControl):
             raise DE1APIAttributeError(
-                f"Not a StopAtTime ByModeControl {bmc}"
+                f"Does not implement StopAtTime {mode_control}"
             )
         try:
-            if not bmc.profile_can_override_stop_limits:
+            if not mode_control.profile_can_override_stop_limits:
                 return
         except AttributeError:
             pass
-        bmc.stop_at_time = duration
+        mode_control.stop_at_time = duration
 
     def stop_at_volume_set(self, state: API_MachineStates, volume: float):
-        bmc = self.active_control_for_state(state)
-        if bmc is None:
+        mode_control = self.active_control_for_state(state)
+        if mode_control is None:
             raise DE1APIValueError(
-                f"No ByModeController for {state}")
-        if not isinstance(bmc, StopAtVolume):
+                f"No ModeControl for {state}")
+        if not isinstance(mode_control, StopAtVolumeControl):
             raise DE1APIAttributeError(
-                f"Not a StopAtTime ByModeControl {bmc}"
+                f"Does not implement StopAtVolume {mode_control}"
             )
         try:
-            if not bmc.profile_can_override_stop_limits:
+            if not mode_control.profile_can_override_stop_limits:
                 return
         except AttributeError:
             pass
-        bmc.stop_at_volume = volume
+        mode_control.stop_at_volume = volume
 
     def stop_at_weight_set(self, state: API_MachineStates, weight: float):
-        bmc = self.active_control_for_state(state)
-        if bmc is None:
+        mode_control = self.active_control_for_state(state)
+        if mode_control is None:
             raise DE1APIValueError(
-                f"No ByModeController for {state}")
-        if not isinstance(bmc, StopAtWeight):
+                f"No ModeControl for {state}")
+        if not isinstance(mode_control, StopAtWeightControl):
             raise DE1APIAttributeError(
-                f"Not a StopAtTime ByModeControl {bmc}"
+                f"Does not implement StopAtWeight {mode_control}"
             )
         try:
-            if not bmc.profile_can_override_stop_limits:
+            if not mode_control.profile_can_override_stop_limits:
                 return
         except AttributeError:
             pass
-        bmc.stop_at_weight = weight
+        mode_control.stop_at_weight = weight
 
     def profile_can_override_stop_limits(self, state: API_MachineStates):
-        bmc = self.active_control_for_state(state)
-        if bmc is None:
+        mode_control = self.active_control_for_state(state)
+        if mode_control is None:
             raise DE1APIValueError(
-                f"No ByModeController for {state}")
+                f"No ModeControl for {state}")
         try:
-            return bmc.profile_can_override_stop_limits
+            return mode_control.profile_can_override_stop_limits
         except AttributeError:
             return True
 
     def profile_can_override_tank_temperature(self, state: API_MachineStates):
-        bmc = self.active_control_for_state(state)
-        if bmc is None:
+        mode_control = self.active_control_for_state(state)
+        if mode_control is None:
             raise DE1APIValueError(
-                f"No ByModeController for {state}")
+                f"No ModeControl for {state}")
         try:
-            return bmc.profile_can_override_tank_temperature
+            return mode_control.profile_can_override_tank_temperature
         except AttributeError:
             return True
 
@@ -864,115 +1086,33 @@ class FlowSequencerImpl (Singleton, FlowSequencer):
         await self.hot_water_rinse_control.on_de1_nearly_ready()
 
 
-class EspressoControl (StopAtTime, StopAtVolume, StopAtWeight, ByModeControl):
+class EspressoControl (I_EspressoControl):
+    pass
 
-    def __init__(self, disable_auto_tare: bool = False,
-                 stop_at_time: Optional[float] = None,
-                 stop_at_volume: Optional[float] = None,
-                 stop_at_weight: Optional[float] = None,
-                 profile_can_override_stop_limits: bool = True,
-                 profile_can_override_tank_temperature: bool = True,
-                 first_drops_threshold: Optional[float] = \
-                         FIRST_DROPS_THRESHOLD_DEFAULT,
-                 last_drops_minimum_time: float = \
-                         LAST_DROPS_MINIMUM_TIME_DEFAULT,
-                 ):
-        self._profile_can_override_stop_limits = True
-        self._profile_can_override_tank_temperature = True
-        self._first_drops_threshold = None
-        ByModeControl.__init__(self, disable_auto_tare=disable_auto_tare)
-        StopAtTime.__init__(self, stop_at_time=stop_at_time)
-        StopAtVolume.__init__(self, stop_at_volume=stop_at_volume)
-        StopAtWeight.__init__(self, stop_at_weight=stop_at_weight)
-        self._profile_can_override_stop_limits \
-            = profile_can_override_stop_limits
-        self._profile_can_override_tank_temperature \
-            = profile_can_override_tank_temperature
-        self.first_drops_threshold = first_drops_threshold
-        self.last_drops_minimum_time = last_drops_minimum_time
+
+class SteamControl (I_SteamControl):
 
     @property
-    def profile_can_override_stop_limits(self):
-        return self._profile_can_override_stop_limits
+    def stop_at_time(self):
+        """
+        Return the value from the DE1 for consistency with flush,
+        which is managed by the DE1 starting with FW 1283
+        """
+        return FlowSequencer().de1._cuuid_dict[
+            CUUID.ShotSettings].last_value.TargetSteamLength
 
-    @profile_can_override_stop_limits.setter
-    def profile_can_override_stop_limits(self, value):
-        if not isinstance(value, bool):
-            raise DE1APITypeError(
-                "profile_can_override_stop_limits must be a bool, "
-                f"not {value}"
-            )
-        self._profile_can_override_stop_limits = value
-
-    @property
-    def profile_can_override_tank_temperature(self):
-        return self._profile_can_override_tank_temperature
-
-    @profile_can_override_tank_temperature.setter
-    def profile_can_override_tank_temperature(self, value):
-        if not isinstance(value, bool):
-            raise DE1APITypeError(
-                "profile_can_override_tank_temperature must be a bool, "
-                f"not {value}"
-            )
-        self._profile_can_override_tank_temperature = value
-
-    @property
-    def first_drops_threshold(self):
-        return self._first_drops_threshold
-
-    @first_drops_threshold.setter
-    def first_drops_threshold(self, value):
-        if value and not (0 <= value <= 10):
-            raise DE1APIValueError(
-                f"first_drops_threshold not 0 <= {value} <= 10")
-        self._first_drops_threshold = value
-
-    @property
-    def last_drops_minimum_time(self):
-        return self._last_drops_minimum_time
-
-    @last_drops_minimum_time.setter
-    def last_drops_minimum_time(self, value):
-        if value < 0:
-            raise DE1APIValueError(
-                f"last_drops_minimum_time less than zero ({value}")
-        self._last_drops_minimum_time = value
+    @stop_at_time.setter
+    def stop_at_time(self, value):
+        raise DE1APINotManagedHereException(
+            "Steam time is set in the DE1 with CUUID.ShotSettings"
+        )
 
 
-class SteamControl (ByModeControl):
-
-        def __init__(self, disable_auto_tare: bool = True):
-            super(SteamControl, self).__init__(
-                disable_auto_tare=disable_auto_tare)
-
-        @property
-        def stop_at_time(self):
-            """
-            Return the value from the DE1 for consistency with flush,
-            which is managed by the DE1 starting with FW 1283
-            """
-            return FlowSequencer().de1._cuuid_dict[
-                CUUID.ShotSettings].last_value.TargetSteamLength
-
-        @stop_at_time.setter
-        def stop_at_time(self, value):
-            raise DE1APINotManagedHereException(
-                "Steam time is set in the DE1 with CUUID.ShotSettings"
-            )
+class HotWaterControl (I_HotWaterControl):
+    pass
 
 
-class HotWaterControl (StopAtWeight, ByModeControl):
-
-    def __init__(self, disable_auto_tare: bool = True,
-                 stop_at_weight: Optional[float] = None,
-                 ):
-        ByModeControl.__init__(self,
-                               disable_auto_tare=disable_auto_tare)
-        StopAtWeight.__init__(self, stop_at_weight=stop_at_weight)
-
-
-class HotWaterRinseControl (StopAtTime, ByModeControl):
+class HotWaterRinseControl (I_HotWaterRinseControl):
 
     # Duration is controlled by FlowSequencer prior to FW 1283
     # but is handled by the DE1 after FW 1283
@@ -995,12 +1135,8 @@ class HotWaterRinseControl (StopAtTime, ByModeControl):
     #   But the FS has not been explicitly set
     #       Use the DE1 value, but don't mark as "explicitly set" (??)
 
-    def __init__(self, disable_auto_tare: bool = True,
-                 stop_at_time: Optional[float] = None,
-                 ):
-        ByModeControl.__init__(self,
-                               disable_auto_tare=disable_auto_tare)
-        StopAtTime.__init__(self, stop_at_time=stop_at_time)
+    def __init__(self, *args, **kwargs):
+        super(HotWaterRinseControl, self).__init__(*args, **kwargs)
         # Distinguish between not set and intentionally set to None
         self._stop_at_time_api_set = False
 
@@ -1023,7 +1159,7 @@ class HotWaterRinseControl (StopAtTime, ByModeControl):
         )
 
     async def stop_at_time_set_async(self, value):
-        self._stop_at_time = self._validate_stop_at(value)
+        self._stop_at_time = validate_stop_at(value)
         self._stop_at_time_api_set = True
         de1 = FlowSequencer().de1
         if de1 is not None and de1.is_ready \

@@ -53,6 +53,7 @@ class Profile:
         self.author: Optional[str] = None
         self.notes: Optional[str] = None
         self.beverage_type: Optional[str] = None
+        self.move_on_weight_list: Optional[list[Optional[Union[float,int]]]] = None
 
     @property
     def id(self) -> Optional[str]:
@@ -208,6 +209,7 @@ class ProfileByFrames (Profile):
 
         self.source = json_str_or_bytes     # This sets the id as well
                                             # Fingerprint is set on upload
+        self.move_on_weight_list = []
 
         try:
             json_dict = json.loads(json_str_or_bytes)
@@ -269,6 +271,10 @@ class ProfileByFrames (Profile):
             temperature = float(step['temperature'])
             seconds = float(step['seconds'])
             volume = float(step['volume'])
+            if 'weight' in step:
+                self.move_on_weight_list.append(float(step['weight']))
+            else:
+                self.move_on_weight_list.append(None)
 
             if pump == 'flow':
                 flag |= FrameFlags.CtrlF
@@ -401,6 +407,10 @@ class ProfileByFrames (Profile):
             self.beverage_type = json_dict['beverage_type']
         except KeyError:
             pass
+
+        while (len(self.move_on_weight_list)
+               and self.move_on_weight_list[-1] is None):
+            self.move_on_weight_list.pop()
 
         return self
 
