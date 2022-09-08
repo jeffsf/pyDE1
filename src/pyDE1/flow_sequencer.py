@@ -14,10 +14,10 @@ Resolve by defining a restricted interface
 import enum
 import multiprocessing
 import time
-from typing import Optional
+from typing import Optional, Union
 
 import pyDE1
-from pyDE1.de1.c_api import API_MachineStates
+from pyDE1.de1.c_api import API_MachineStates, MAX_FRAMES
 from pyDE1.event_manager.payloads import EventPayload
 from pyDE1.exceptions import (
     DE1APITypeError, DE1APIValueError, DE1APINotManagedHereException
@@ -25,6 +25,13 @@ from pyDE1.exceptions import (
 
 
 logger = pyDE1.getLogger('FlowSequencer')
+
+ModeControl = Union[
+    'I_EspressoControl',
+    'I_HotWaterControl',
+    'I_HotWaterRinseControl',
+    'I_SteamControl'
+]
 
 
 class FlowSequencer():
@@ -61,21 +68,24 @@ class FlowSequencer():
         raise NotImplementedError
 
     def active_control_for_state(self,
-                                 state: API_MachineStates) -> 'ByModeControl':
+                                 state: API_MachineStates) -> ModeControl:
         raise NotImplementedError
 
     @property
-    def active_control(self) -> 'ByModeControl':
+    def active_control(self) -> ModeControl:
         raise NotImplementedError
 
     @property
     def sequence_start_time(self):
         raise NotImplementedError
 
-    async def stop_at_notify(self, stop_at: 'StopAtType',
-                             action: 'StopAtNotificationAction',
-                             current: Optional[float] = None):
-        raise NotImplementedError
+    # async def stop_at_notify(self, stop_at: 'StopAtType',
+    #                          action: 'StopAtNotificationAction',
+    #                          target_value: Optional[float],
+    #                          current_value: Optional[float],
+    #                          active_state: API_MachineStates,
+    #                          current_frame: Optional[int]):
+    #     raise NotImplementedError
 
     def stop_at_time_set(self, state: API_MachineStates, duration: float):
         raise NotImplementedError
@@ -111,6 +121,7 @@ class StopAtType (enum.Enum):
     TIME = 'time'
     VOLUME = 'volume'
     WEIGHT = 'weight'
+    MOW  = 'move on by weight'
 
 
 class StopAtNotification (EventPayload):
@@ -127,18 +138,20 @@ class StopAtNotification (EventPayload):
                  action: StopAtNotificationAction,
                  target_value: Optional[float] = None,
                  current_value: Optional[float] = None,
-                 active_state: API_MachineStates = API_MachineStates.NoRequest):
+                 active_state: API_MachineStates = API_MachineStates.NoRequest,
+                 current_frame: Optional[int] = None):
         now = time.time()
         super(StopAtNotification, self).__init__(
             arrival_time=now,
             create_time=now
         )
-        self._version = "1.0.0"
+        self._version = "1.1.0"
         self.stop_at = stop_at
         self.action = action
         self.target_value = target_value
         self.current_value = current_value
         self.active_state = active_state
+        self.current_frame = current_frame
 
 
 class AutoTareNotificationAction (enum.Enum):
@@ -158,21 +171,10 @@ class AutoTareNotification (EventPayload):
         self.action = action
 
 
-class ByModeControl:
+class BaseModeControl:
     """
-    Generic holder for stop-at values and other "in-the-moment" parameters
-    that are related to flow sequence
-
-    As stop-at-time is handled for steam by the DE1 and that is an async call
-    will have to figure out how to manage that at this level. The API already
-    directs to the DE1.
-
-    stop_at_time: Steam (DE1), HotWaterRinse, Espresso desirable to add
-    stop_at_volume: Espresso, HotWater
-    stop_at_weight: Espresso, HotWater
-    disable_auto_tare: All
-
-    specials: Espresso only
+    Generic holder for parameters common to all four ModeControl objects,
+    Espresso, HotWater, HotWaterFlush, and Steam
     """
 
     def __init__(self, disable_auto_tare: bool = False):
@@ -191,44 +193,22 @@ class ByModeControl:
             )
         self._disable_auto_tare = value
 
-    @property
-    def stop_at_time(self):
-        return None
 
-    @property
-    def stop_at_weight(self):
-        return None
-
-    @property
-    def stop_at_volume(self):
-        return None
-
-    @property
-    def last_drops_minimum_time(self):
-        return 0
-
-    @property
-    def first_drops_threshold(self):
-        return 0
-
-    # Validate these, as they will be coming from the API
-    # The API should have already done type validation
-    # Though not used by the base class, lowers repetition
-
-    @staticmethod
-    def _validate_stop_at(value):
-        if value is not None:
-            if value == 0:
-                value = None
-                logger.info(
-                    "Deprecated use of 0 for stop-at, replaced by None")
-            elif value < 0:
-                raise DE1APIValueError(
-                    f"Stop-at values need to be non-negative ({value})")
-        return value
+def validate_stop_at(value):
+    if value is not None:
+        if value == 0:
+            value = None
+            logger.info(
+                "Deprecated use of 0 for stop-at or move-on, "
+                "replaced by None")
+        elif value < 0:
+            raise DE1APIValueError(
+                "Stop-at and move-on values need to be non-negative, "
+                f"not '{value}'")
+    return value
 
 
-class StopAtTime (ByModeControl):
+class StopAtTimeControl:
 
     def __init__(self, stop_at_time: Optional[float] = None):
         # Mix-in, call super from concrete instance
@@ -244,10 +224,10 @@ class StopAtTime (ByModeControl):
 
     @stop_at_time.setter
     def stop_at_time(self, value):
-        self._stop_at_time = self._validate_stop_at(value)
+        self._stop_at_time = validate_stop_at(value)
 
 
-class StopAtVolume (ByModeControl):
+class StopAtVolumeControl:
 
     def __init__(self, stop_at_volume: Optional[float] = None):
         # Mix-in, call super from concrete instance
@@ -260,10 +240,10 @@ class StopAtVolume (ByModeControl):
 
     @stop_at_volume.setter
     def stop_at_volume(self, value):
-        self._stop_at_volume = self._validate_stop_at(value)
+        self._stop_at_volume = validate_stop_at(value)
 
 
-class StopAtWeight (ByModeControl):
+class StopAtWeightControl:
 
     def __init__(self, stop_at_weight: Optional[float] = None):
         # Mix-in, call super from concrete instance
@@ -276,7 +256,207 @@ class StopAtWeight (ByModeControl):
 
     @stop_at_weight.setter
     def stop_at_weight(self, value):
-        self._stop_at_weight = self._validate_stop_at(value)
+        self._stop_at_weight = validate_stop_at(value)
 
-# Create importable for mode-specific control classes?
-# No, just import locally, if needed, from flow_sequencer_impl
+
+class MoveOnWeightControl:
+
+    def __init__(self, mow_all_frames: Optional[list[Optional[float]]] = None):
+        # Mix-in, call super from concrete instance
+        self._mow_all_frames = []
+        self.mow_all_frames = mow_all_frames
+
+    @property
+    def mow_all_frames(self) -> list[Optional[Union[int, float]]]:
+        return self._mow_all_frames.copy()
+
+    @mow_all_frames.setter
+    def mow_all_frames(self,
+                       value_list: Optional[list[Optional[Union[int, float]]]]):
+        if value_list is None:
+            value_list = []
+        if not isinstance(value_list, list):
+            raise DE1APIValueError(
+                f"Move-on-weight setter expecting a list, not '{value_list}'")
+        if len(value_list):
+            map(validate_stop_at, value_list)
+        self._mow_all_frames = value_list
+
+    def mow_get_frame(self, frame_number: int) -> Optional[Union[int, float]]:
+        retval = None
+        if frame_number is not None:
+            try:
+                retval = self._mow_all_frames[frame_number]
+            except IndexError:
+                pass
+        return retval
+
+    def mow_set_frame(self, frame_number: int,
+                      value: Optional[Union[int, float]]):
+        if frame_number > MAX_FRAMES:
+            raise DE1APIValueError(
+                f"Request to set mow for frame {frame_number} > MAX_FRAMES")
+        if frame_number is None:
+            raise DE1APIValueError(
+                f"Request to set mow for frame 'None'")
+        if frame_number < 0:
+            raise DE1APIValueError(
+                f"Request to set mow for frame {frame_number} < 0")
+        validate_stop_at(value)
+        while len(self._mow_all_frames) < frame_number:
+            self._mow_all_frames.append(None)
+        self._mow_all_frames[frame_number] = value
+
+
+class ProfileOverrideControl:
+
+    def __init__(self,
+                 profile_can_override_stop_limits: bool = True,
+                 profile_can_override_tank_temperature: bool = True,
+                 ):
+        self._profile_can_override_stop_limits \
+            = profile_can_override_stop_limits
+        self._profile_can_override_tank_temperature \
+            = profile_can_override_tank_temperature
+
+    @property
+    def profile_can_override_stop_limits(self):
+        return self._profile_can_override_stop_limits
+
+    @profile_can_override_stop_limits.setter
+    def profile_can_override_stop_limits(self, value):
+        if not isinstance(value, bool):
+            raise DE1APITypeError(
+                "profile_can_override_stop_limits must be a bool, "
+                f"not {value}"
+            )
+        self._profile_can_override_stop_limits = value
+
+    @property
+    def profile_can_override_tank_temperature(self):
+        return self._profile_can_override_tank_temperature
+
+    @profile_can_override_tank_temperature.setter
+    def profile_can_override_tank_temperature(self, value):
+        if not isinstance(value, bool):
+            raise DE1APITypeError(
+                "profile_can_override_tank_temperature must be a bool, "
+                f"not {value}"
+            )
+        self._profile_can_override_tank_temperature = value
+
+
+class EspressoDropsControl:
+
+    def __init__(self,
+                 first_drops_threshold: Optional[float] = \
+                         FIRST_DROPS_THRESHOLD_DEFAULT,
+                 last_drops_minimum_time: float = \
+                         LAST_DROPS_MINIMUM_TIME_DEFAULT,
+                 ):
+        self.first_drops_threshold = first_drops_threshold
+        self.last_drops_minimum_time = last_drops_minimum_time
+
+    @property
+    def first_drops_threshold(self):
+        return self._first_drops_threshold
+
+    @first_drops_threshold.setter
+    def first_drops_threshold(self, value):
+        if value and not (0 <= value <= 10):
+            raise DE1APIValueError(
+                f"first_drops_threshold not 0 <= {value} <= 10")
+        self._first_drops_threshold = value
+
+    @property
+    def last_drops_minimum_time(self):
+        return self._last_drops_minimum_time
+
+    @last_drops_minimum_time.setter
+    def last_drops_minimum_time(self, value):
+        if value < 0:
+            raise DE1APIValueError(
+                f"last_drops_minimum_time less than zero ({value}")
+        self._last_drops_minimum_time = value
+
+
+# These are primarily defined here as interfaces and some "real" implementation
+# details in flow_sequencer_impl.py to break circular dependencies
+# between the DE1 and FlowSequencer definitions.
+
+class I_EspressoControl (BaseModeControl,
+                         StopAtTimeControl,
+                         StopAtVolumeControl,
+                         StopAtWeightControl,
+                         MoveOnWeightControl,
+                         EspressoDropsControl,
+                         ProfileOverrideControl):
+
+    def __init__(self, disable_auto_tare: bool = False,
+                 stop_at_time: Optional[float] = None,
+                 stop_at_volume: Optional[float] = None,
+                 stop_at_weight: Optional[float] = None,
+                 profile_can_override_stop_limits: bool = True,
+                 profile_can_override_tank_temperature: bool = True,
+                 first_drops_threshold: Optional[float] = \
+                         FIRST_DROPS_THRESHOLD_DEFAULT,
+                 last_drops_minimum_time: float = \
+                         LAST_DROPS_MINIMUM_TIME_DEFAULT,
+                 ):
+        BaseModeControl.__init__(self, disable_auto_tare=disable_auto_tare)
+        StopAtTimeControl.__init__(self, stop_at_time=stop_at_time)
+        StopAtVolumeControl.__init__(self, stop_at_volume=stop_at_volume)
+        StopAtWeightControl.__init__(self, stop_at_weight=stop_at_weight)
+        # As the control is usually instantiated before a DE1 is connected
+        # and before a profile is uploaded, the default here is OK
+        MoveOnWeightControl.__init__(self, mow_all_frames=None)
+        EspressoDropsControl.__init__(self,
+                            first_drops_threshold=first_drops_threshold,
+                            last_drops_minimum_time=last_drops_minimum_time)
+        ProfileOverrideControl.__init__(self,
+                            profile_can_override_stop_limits= \
+                                profile_can_override_stop_limits,
+                            profile_can_override_tank_temperature= \
+                                profile_can_override_tank_temperature)
+
+
+class I_HotWaterControl (BaseModeControl,
+                         StopAtTimeControl,
+                         StopAtVolumeControl,
+                         StopAtWeightControl):
+
+    def __init__(self, disable_auto_tare: bool = False,
+                 stop_at_time: Optional[float] = None,
+                 stop_at_volume: Optional[float] = None,
+                 stop_at_weight: Optional[float] = None,
+                 ):
+        BaseModeControl.__init__(self, disable_auto_tare=disable_auto_tare)
+        StopAtTimeControl.__init__(self, stop_at_time=stop_at_time)
+        StopAtVolumeControl.__init__(self, stop_at_volume=stop_at_volume)
+        StopAtWeightControl.__init__(self, stop_at_weight=stop_at_weight)
+
+
+class I_HotWaterRinseControl (BaseModeControl,
+                              StopAtTimeControl,
+                              ):
+
+    def __init__(self, disable_auto_tare: bool = False,
+                 stop_at_time: Optional[float] = None,
+                 ):
+        BaseModeControl.__init__(self, disable_auto_tare=disable_auto_tare)
+        StopAtTimeControl.__init__(self, stop_at_time=stop_at_time)
+
+    # stop_at_time overridden by HotWaterRinseControl
+
+
+class I_SteamControl (BaseModeControl,
+                      StopAtTimeControl,
+                      ):
+
+    def __init__(self, disable_auto_tare: bool = False,
+                 stop_at_time: Optional[float] = None,
+                 ):
+        BaseModeControl.__init__(self, disable_auto_tare=disable_auto_tare)
+        StopAtTimeControl.__init__(self, stop_at_time=stop_at_time)
+
+    # stop_at_time overridden by SteamControl

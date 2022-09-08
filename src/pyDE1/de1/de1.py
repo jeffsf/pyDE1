@@ -1087,6 +1087,15 @@ class DE1 (Singleton):
                             weight=target
                         )
 
+                FlowSequencer().espresso_control.mow_all_frames \
+                    = profile.move_on_weight_list
+                if profile.move_on_weight_list is not None:
+                    if not self.feature_flag.skip_to_next:
+                        logger.warning(
+                            "DE1 does not support skip to next as requested by "
+                            f"profile {profile.title}: {profile.move_on_weight_list}"
+                        )
+
                 self._latest_profile = profile
 
         except asyncio.CancelledError:
