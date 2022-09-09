@@ -79,7 +79,7 @@ class AtomaxSkaleII(Scale):
         # await self._bleak_client.read_gatt_char(
         #     Characteristic.UNKNOWN_EF83.uuid)
         # # That CUUID doesn't look like weight
-        raise NotImplementedError
+        return None
 
     async def display_on(self):
         await self.send_command(Command.DISPLAY_WEIGHT)

@@ -303,7 +303,11 @@ class Scale:
     async def _tare_internal(self):
         raise NotImplementedError
 
-    async def current_weight(self):
+    async def current_weight(self) -> Optional[float]:
+        """
+        Intended to request an in-the-moment read from the scale
+        If not supported, may return None instead of a weight
+        """
         raise NotImplementedError
 
     async def display_on(self):
