@@ -62,6 +62,8 @@ class ScaleProcessor (Singleton):
         self._scale = None
         self._event_weight_and_flow_update = SubscribedEvent(self)
 
+        self.CURRENT_WEIGHT_MAX_AGE = 1.0  # seconds, else return None
+
         # init of Estimator checks that the targets are present
         # (good practice to explicily declare anyways)
         self._current_weight: float = 0
@@ -164,6 +166,14 @@ class ScaleProcessor (Singleton):
             return self.scale.connectivity
         else:
             return ConnectivityEnum.NOT_CONNECTED
+
+    @property
+    def current_weight(self) -> Optional[float]:
+        if (time.time() - self._current_weight_time
+                < self.CURRENT_WEIGHT_MAX_AGE):
+            return self._current_weight
+        else:
+            return None
 
     #
     # Self-contained call for API
