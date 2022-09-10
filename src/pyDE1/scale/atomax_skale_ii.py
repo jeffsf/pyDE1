@@ -8,6 +8,7 @@ SPDX-License-Identifier: GPL-3.0-only
 
 import asyncio
 import enum
+import logging
 import sys
 import time
 from typing import Callable
@@ -114,29 +115,34 @@ class AtomaxSkaleII(Scale):
 
     def _create_weight_update_hander(self) -> Callable:
         scale = self
+        local_logger = logger
 
         async def weight_update_handler(sender, data):
-            nonlocal scale
+            nonlocal scale, local_logger
 
-            now = time.time()
+            try:
+                now = time.time()
 
-            w1 = int.from_bytes(data[1:4], byteorder='little',
-                                signed=True) / 10.0
-            w2 = int.from_bytes(data[5:8], byteorder='little',
-                                signed=True) / 10.0
-            # if w1 == w2:
-            #     print(f"{dt:8.6f} {w1}")
-            # else:
-            #     print(f"{dt:8.6f} {w1}  {w2}")
+                w1 = int.from_bytes(data[1:4], byteorder='little',
+                                    signed=True) / 10.0
+                w2 = int.from_bytes(data[5:8], byteorder='little',
+                                    signed=True) / 10.0
+                # if w1 == w2:
+                #     print(f"{dt:8.6f} {w1}")
+                # else:
+                #     print(f"{dt:8.6f} {w1}  {w2}")
 
-            self._update_scale_time_estimator(now)
+                self._update_scale_time_estimator(now)
 
-            await scale.event_weight_update.publish(
-                ScaleWeightUpdate(
-                    arrival_time=now,
-                    scale_time=self._scale_time_from_latest_arrival(now),
-                    weight=w1
-                ))
+                await scale.event_weight_update.publish(
+                    ScaleWeightUpdate(
+                        arrival_time=now,
+                        scale_time=self._scale_time_from_latest_arrival(now),
+                        weight=w1
+                    ))
+            except Exception as e:
+                local_logger.exception(e)
+                raise e
 
         return weight_update_handler
 
