@@ -94,20 +94,6 @@ def run_api_inbound(master_config: pyDE1.config.Config,
 
     SupervisedTask(heartbeat)
 
-    try:
-        str.removeprefix  # Python 3.9 and later
-
-        def remove_prefix(string: str, prefix: str) -> str:
-            return string.removeprefix(prefix)
-
-    except AttributeError:
-
-        def remove_prefix(string: str, prefix: str) -> str:
-            if string.startswith(prefix):
-                return string[len(prefix):]
-            else:
-                return string
-
     MIME_TYPE_MAP = {
         '.txt': 'text/plain',
         '.log': 'text/plain',
@@ -204,7 +190,7 @@ def run_api_inbound(master_config: pyDE1.config.Config,
             parameter_dict = {}
             code = None
             resp_str = ''
-            root_relative = remove_prefix(self.path, config.http.SERVER_ROOT)
+            root_relative = self.path.removeprefix(config.http.SERVER_ROOT)
             try:
                 # resource = Resource(self.path.removeprefix(SERVER_ROOT))
                 resource = Resource(root_relative)
@@ -255,8 +241,8 @@ def run_api_inbound(master_config: pyDE1.config.Config,
 
             this_content_limit = config.http.PATCH_SIZE_LIMIT
             try:
-                resource = Resource(
-                    remove_prefix(self.path, config.http.SERVER_ROOT))
+                resource = Resource(self.path.removeprefix(
+                                                config.http.SERVER_ROOT))
                 if resource == Resource.DE1_FIRMWARE:
                     this_content_limit = 1 * 1024 * 1024  # FW1258 < 500 kB
             except ValueError:
