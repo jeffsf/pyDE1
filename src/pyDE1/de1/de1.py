@@ -1500,17 +1500,18 @@ class DE1 (Singleton):
     async def skip_to_next(self):
         """
         Requests the next frame if in Espresso mode.
-
-        Tries to go to Idle in other modes
         """
-        was_espresso = self.current_state == API_MachineStates.Espresso
-        await self._request_state(API_MachineStates.SkipToNext)
-        if was_espresso:
-            logger.info("Skip to next request made")
+        if self.feature_flag.skip_to_next:
+            if self.current_state == API_MachineStates.Espresso:
+                await self._request_state(API_MachineStates.SkipToNext)
+                logger.info(
+                    f"Skip to next request made from frame {self.current_frame}")
+            else:
+                logger.warning(
+                    "Skip to next request ignored while in "
+                    f"{self.current_state.name}")
         else:
-            logger.warning(
-                "Skip to next request granted while in "
-                f"{self.current_state.name}")
+            logger.warning("Skip to next not supported, request ignored.")
 
     async def stop_flow(self):
         """
