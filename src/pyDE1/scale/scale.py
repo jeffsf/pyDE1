@@ -597,7 +597,7 @@ class PeriodEstimator:
             self._n_counter += 1
             if self._n_counter >= self._persist_every_n:
                 self._n_counter = 0
-                logger.debug(f"Scale period: {self._ma}")
+                logger.getChild('Period').debug(f"Persisting {self._ma}")
                 await self._scale._persist_period_to_db()
 
 
