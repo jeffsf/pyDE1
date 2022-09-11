@@ -218,18 +218,23 @@ class _DE1 (ConfigLoadable):
         self.MAX_WAIT_FOR_READY_EVENTS = 4.0 # Seconds (28 at 0.1 each)
         self.CUUID_LOCK_WAIT_TIMEOUT = 2 # Seconds
         self.SEQUENCE_WATCHDOG_TIMEOUT = 270 # seconds
-        # Do these "settings" belong here,
-        # or should they be separated from parameters?
         self.DEFAULT_AUTO_OFF_TIME = None   # Minutes
         self.STOP_AT_WEIGHT_ADJUST = -0.07  # Secs, larger increases weight
-        # For stop/skip based on weight, try to ignore "bumps"
-        # If the estimated weight flow is over the threshold
-        # and is is over the multiplier * DE1 estimated flow
-        # use the DE1 flow instead -- _adjust_flow_for_prediction()
-        self.ACT_AT_WEIGHT_FLOW_THRESHOLD = 10.0  # g/s
-        self.ACT_AT_WEIGHT_FLOW_MULTIPLIER = 1.1
+        self.bump_resist = _BumpResist()
         self.API_STOP_IGNORES_CHECKS = False  # Request Idle in all cases
         self.PATCH_ON_CONNECT = None  # If defined as a dict, PATCH /de1
+
+
+class _BumpResist (ConfigLoadable):
+    def __init__(self):
+        # For stop/skip based on weight, try to ignore "bumps"
+        # If the estimated weight flow is over the threshold
+        # use multiplier * DE1 estimated flow
+        self.FLOW_THRESHOLD = 10.0  # g/s
+        self.FLOW_MULTIPLIER = 1.1
+        self.SUB_MEDIAN_WEIGHT = True  # when excessive flow
+        self.USE_MEDIAN_WEIGHT_ALWAYS = False
+        self.USE_MEDIAN_FLOW_ALWAYS = False
 
 
 config = Config()

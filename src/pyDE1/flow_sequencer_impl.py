@@ -11,10 +11,11 @@ FlowSequencer
 Responsible for coordinating the actions around any of the flow modes
 """
 import asyncio
+import enum
 import multiprocessing
 import time
 from asyncio import Task
-from typing import Optional, Callable, Coroutine, List, Union
+from typing import Optional, Callable, Coroutine, List, Union, NamedTuple
 
 import pyDE1
 from pyDE1.config import config
@@ -23,7 +24,7 @@ from pyDE1.database.recorder_control import RecorderControl
 from pyDE1.de1 import DE1
 from pyDE1.de1.ble import CUUID
 from pyDE1.de1.c_api import (
-    API_MachineStates, API_Substates, MMR0x80LowAddr
+    API_MachineStates, API_Substates, MMR0x80LowAddr, ShotSample
 )
 from pyDE1.de1.events import (
     ShotSampleUpdate, StateUpdate, ShotSampleWithVolumesUpdate
@@ -922,6 +923,43 @@ class FlowSequencerImpl (Singleton, FlowSequencer):
 
         return stop_at_volume_subscriber
 
+    def _select_weight_flow (self,
+                             wafu: WeightAndFlowUpdate) -> 'WeightFlowTuple':
+        """
+        Pick the appropriate weight and flow estimates to use
+
+        Right now, use average unless high or negative flow suggests a bump
+        Also implement "median weight always", for high-vibration settings
+        """
+        flow = wafu.average_flow
+        flow_time = wafu.average_flow_time
+        weight = wafu.current_weight
+        weight_time = wafu.current_weight_time
+        if config.de1.bump_resist.USE_MEDIAN_WEIGHT_ALWAYS:
+            weight = wafu.median_weight
+            weight_time = wafu.median_weight_time
+        if config.de1.bump_resist.USE_MEDIAN_FLOW_ALWAYS:
+            flow = wafu.median_flow
+            flow_time = wafu.median_flow_time
+        if flow > config.de1.bump_resist.FLOW_THRESHOLD:
+            flow = (self.de1._cuuid_dict[
+                            CUUID.ShotSample].last_value.GroupFlow
+                        * config.de1.bump_resist.FLOW_MULTIPLIER)
+            flow_time = self.de1._cuuid_dict[
+                            CUUID.ShotSample].last_value.arrival_time
+            if config.de1.bump_resist.SUB_MEDIAN_WEIGHT:
+                weight = wafu.median_weight
+                weight_time = wafu.median_weight_time
+        elif flow < 0:
+            flow = 0
+
+        return WeightFlowTuple(
+            weight=weight,
+            weight_time=weight_time,
+            flow=flow,
+            flow_time=flow_time
+        )
+
     def _create_act_on_weight_subscriber(self) -> Coroutine:
         """
         Should be subscribed to WeightAndFlowUpdate on ScaleProcessor
@@ -935,15 +973,16 @@ class FlowSequencerImpl (Singleton, FlowSequencer):
 
             done = False
 
+            wft = self._select_weight_flow(wafu)
+
             if (flow_sequencer._stop_at_weight_active
                     and (target := flow_sequencer.active_control.stop_at_weight)
                     is not None):
                 # TODO: Should the choice of flow estimate be switchable?
-                flow = wafu.average_flow
-                dw = target - wafu.current_weight
-                if flow > 0:
-                    dt = dw / flow
-                    target_time = wafu.scale_time + dt \
+                dw = target - wft.weight
+                if wft.flow > 0:
+                    dt = dw / wft.flow
+                    target_time = wft.weight_time + dt \
                                   - flow_sequencer.de1.stop_lead_time \
                                   - flow_sequencer.de1.fall_time \
                                   + flow_sequencer.stop_at_weight_adjust
@@ -951,7 +990,7 @@ class FlowSequencerImpl (Singleton, FlowSequencer):
                         await flow_sequencer.de1.stop_flow()
                         saw_logger.info(
                             "Triggered at {:.1f} g for {:.1f} g target".format(
-                                wafu.current_weight, target))
+                                wft.weight, target))
                         await flow_sequencer.stop_at_notify(
                             stop_at=StopAtType.WEIGHT,
                             action=StopAtNotificationAction.TRIGGERED,
@@ -965,12 +1004,12 @@ class FlowSequencerImpl (Singleton, FlowSequencer):
                     and ((target := flow_sequencer.active_control.mow_get_frame(
                          frame := flow_sequencer.current_frame )) is not None)
                     and (frame != self._last_frame_advanced_from)):
-                flow = wafu.average_flow
+                flow = self._adjust_flow_for_prediction(wafu.average_flow)
                 start_of_frame_weight = self._last_profile_frame_weight or 0
-                dw = target - (wafu.current_weight - start_of_frame_weight)
-                if flow > 0:
-                    dt = dw / flow
-                    target_time = wafu.scale_time + dt \
+                dw = target - (wft.weight - start_of_frame_weight)
+                if wft.flow > 0:
+                    dt = dw / wft.flow
+                    target_time = wft.weight_time + dt \
                                   - flow_sequencer.de1.stop_lead_time
                     if time.time() >= target_time:
                         await flow_sequencer.de1.skip_to_next()
@@ -978,7 +1017,7 @@ class FlowSequencerImpl (Singleton, FlowSequencer):
                         mow_logger.info(
                             "Triggered frame "
                             "{:d} at {:.1f} g for {:.1f} g target".format(
-                                frame, wafu.current_weight, target))
+                                frame, wft.weight, target))
                         await flow_sequencer.stop_at_notify(
                             stop_at=StopAtType.MOW,
                             action=StopAtNotificationAction.TRIGGERED,
@@ -1084,6 +1123,8 @@ class FlowSequencerImpl (Singleton, FlowSequencer):
 
     async def on_de1_nearly_ready(self):
         await self.hot_water_rinse_control.on_de1_nearly_ready()
+
+
 
 
 class EspressoControl (I_EspressoControl):
@@ -1202,3 +1243,10 @@ class HotWaterRinseControl (I_HotWaterRinseControl):
                 # Don't use the setter as it already is in the DE1
                 self._stop_at_time = de1_val
                 self._stop_at_time_api_set = False
+
+
+class WeightFlowTuple (NamedTuple):
+    weight: float
+    weight_time: float
+    flow: float
+    flow_time: float
