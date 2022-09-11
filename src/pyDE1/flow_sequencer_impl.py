@@ -23,7 +23,7 @@ from pyDE1.database.recorder_control import RecorderControl
 from pyDE1.de1 import DE1
 from pyDE1.de1.ble import CUUID
 from pyDE1.de1.c_api import (
-    API_MachineStates, API_Substates, MMR0x80LowAddr
+    API_MachineStates, API_Substates, MMR0x80LowAddr, ShotSample
 )
 from pyDE1.de1.events import (
     ShotSampleUpdate, StateUpdate, ShotSampleWithVolumesUpdate
@@ -922,6 +922,15 @@ class FlowSequencerImpl (Singleton, FlowSequencer):
 
         return stop_at_volume_subscriber
 
+    def _adjust_flow_for_prediction(self, flow: float):
+        if flow > config.de1.ACT_AT_WEIGHT_FLOW_THRESHOLD:
+            flow = (self.de1._cuuid_dict[
+                            CUUID.ShotSample].last_value.GroupFlow
+                        * config.de1.ACT_AT_WEIGHT_FLOW_MULTIPLIER)
+        elif flow < 0:
+            flow = 0
+        return flow
+
     def _create_act_on_weight_subscriber(self) -> Coroutine:
         """
         Should be subscribed to WeightAndFlowUpdate on ScaleProcessor
@@ -939,7 +948,7 @@ class FlowSequencerImpl (Singleton, FlowSequencer):
                     and (target := flow_sequencer.active_control.stop_at_weight)
                     is not None):
                 # TODO: Should the choice of flow estimate be switchable?
-                flow = wafu.average_flow
+                flow = self._adjust_flow_for_prediction(wafu.average_flow)
                 dw = target - wafu.current_weight
                 if flow > 0:
                     dt = dw / flow
@@ -965,7 +974,7 @@ class FlowSequencerImpl (Singleton, FlowSequencer):
                     and ((target := flow_sequencer.active_control.mow_get_frame(
                          frame := flow_sequencer.current_frame )) is not None)
                     and (frame != self._last_frame_advanced_from)):
-                flow = wafu.average_flow
+                flow = self._adjust_flow_for_prediction(wafu.average_flow)
                 start_of_frame_weight = self._last_profile_frame_weight or 0
                 dw = target - (wafu.current_weight - start_of_frame_weight)
                 if flow > 0:
@@ -1084,6 +1093,8 @@ class FlowSequencerImpl (Singleton, FlowSequencer):
 
     async def on_de1_nearly_ready(self):
         await self.hot_water_rinse_control.on_de1_nearly_ready()
+
+
 
 
 class EspressoControl (I_EspressoControl):
