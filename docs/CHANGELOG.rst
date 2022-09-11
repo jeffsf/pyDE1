@@ -10,6 +10,108 @@ Changelog
 =========
 
 ------------------
+1.5.0 - Pending
+------------------
+
+.. warning::
+
+  Now requires Python 3.9 or later
+
+Overview
+========
+
+MAPPING 4.3.0
+
+Add move-on by weight functionality, including parsing from JSON profile.
+
+"Bump resist" to help prevent triggering SAW/MOW too early
+
+Provide a utility to convert Tcl profile files to JSON, including directly
+from a Visualizer URL. Author names can be corrected in the process.
+
+Significant refactoring of FlowSequencer
+
+Improvements to logging
+
+
+New
+===
+
+* Move-on by weight functionality
+
+* "Bump resist" for SAW / MOW and config
+
+  Active when mass-flow estimate exceeds FLOW_THRESHOLD or goes negative
+
+  Can also select to always use median-based estimation
+
+::
+
+        config.de1.bump_resist.FLOW_THRESHOLD = 10.0  # g/s
+        config.de1.bump_resist.FLOW_MULTIPLIER = 1.1
+        config.de1.bump_resist.SUB_MEDIAN_WEIGHT = True  # when excessive flow
+        config.de1.bump_resist.USE_MEDIAN_WEIGHT_ALWAYS = False
+        config.de1.bump_resist.USE_MEDIAN_FLOW_ALWAYS = False
+
+* ``legacy_to_json.py`` converts profiles to JSON format
+
+* DE1 supplies ``current_frame`` property
+
+* ScaleProcessor supplies ``current_weight`` property
+
+
+Changed
+=======
+
+* Logic for DE1 skip_to_next() improved to limit to when it is available
+  in the firmware and sensible (during espresso only)
+
+* Logging
+
+  * Scale period logged with ``Scaler.Period`` logger to assist in
+    filtering out "expected, periodic" log messages
+
+  * Scale: Add logging of exception to weight_update_handler
+
+  * Frame changes are now logged at the INFO level, including the previous
+    and current frames, as well as an estimate of the weight.
+
+* ``None`` is now permitted as a return value in the Scale class
+  from ``current_weight()`` coroutine. ``AtomaxSkaleII`` returns
+  ``None`` rather than raising ``NotImplementedError``
+  (It does not appear that the weight can be requested on demand,
+  just notifications.)
+
+  See also new ``ScaleProcessor.current_weight`` property.
+
+* The StopAtNotification has been updated to version 1.1.0 as it adds
+  the current frame, which may be None/null, as well as the action of
+  'move on by weight'.
+
+* The mode-control objects within the FlowSequencer have been refactored.
+  Any code accessing these directly should examine both ``flow_sequencer.py``
+  and ``flow_sequencer_impl.py``.
+
+* The signature of the ``stop_at_notify`` method of the FlowSequencer has been
+  changed to capture information at the time of the call, rather than when
+  the call is serviced. With ``skip_to_next`` being called, it is possible
+  that the time of service could be in a different frame of the profile.
+
+* The FlowSequencer internal ``stop_at_weight`` routine has been renamed to
+  act_on_weight and handles both SAW and move-on by weight.
+
+Fixed
+=====
+
+
+Removed
+=======
+
+* Python 3.8 support removed
+
+
+
+------------------
 1.4.0 – 2022-09-12
 ------------------
 
@@ -26,12 +128,14 @@ steam-purge mode control is the most interesting.
 
 (Includes changes previously pending for 1.3.0)
 
+
 New
 ===
 
 * Patch DE1 from config file when it first connects -- ``0c22418``
 
 * Support for firmware through version 1352 -- ``94034a5``
+
 
 Changed
 =======
@@ -54,7 +158,6 @@ Changed
 * Clarified return value of ``DE1().start_notifying()`` as an event
   that triggers when the notification is received. Removed return value
   of ``stop_notifying()`` which was always ``None``. -- ``c425703``
-
 
 
 Fixed
