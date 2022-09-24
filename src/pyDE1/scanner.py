@@ -18,6 +18,8 @@ from bleak import BleakScanner
 from bleak.backends.device import BLEDevice
 from bleak.backends.scanner import AdvertisementData
 
+from pyDE1.bleak_version_check import BLEAK_AFTER_0_17
+
 import pyDE1
 from pyDE1.config import config
 from pyDE1.event_manager import EventPayload, send_to_outbound_pipes
@@ -241,24 +243,14 @@ async def find_first_matching(prefix_set: Iterable[str],
             "Prefix set of type str will iterate the characters. "
             "('DE1',) is better")
 
-    # scanner = BleakScannerWrapped()
+    scanner = BleakScannerWrapped()
+    run_id = scanner.run_id
     dd = DiscoveredDevices()
 
     def is_match(device: BLEDevice, adv: AdvertisementData) -> bool:
-        nonlocal dd
-        # NB: This is really, really fragile
-        # [2] bleak/backends/bluezdbus/scanner.py',
-        #   line 276, code _invoke_callback
-        # [3] bleak/backends/bluezdbus/scanner.py',
-        #   line 349, code _parse_msg
-        run_id = None
-        try:
-            run_id = \
-                inspect.currentframe().f_back.f_back.f_locals['self'].run_id
-        finally:
-            pass
-        dd.add(device=device, run_id=run_id)
+        nonlocal run_id, dd
 
+        dd.add(device=device, run_id=run_id)
         retval = False
         for prefix in prefix_set:
             if adv.local_name and adv.local_name.startswith(prefix):
@@ -268,9 +260,12 @@ async def find_first_matching(prefix_set: Iterable[str],
                 retval = True
         return retval
 
-    # Using the .find_first_device_by_filter() function creates
-    # an instance of cls, so don't have access to it for ID
-    return await BleakScannerWrapped.find_device_by_filter(filterfunc=is_match)
+    if BLEAK_AFTER_0_17:
+        fdbf = await scanner.find_device_by_filter(filter_func=is_match)
+    else:
+        fdbf = await scanner.find_device_by_filter(filterfunc=is_match)
+
+    return fdbf
 
 
 async def scan_until_timeout(timeout=None) -> Tuple[BleakScannerWrapped,
