@@ -268,7 +268,7 @@ def run_mqtt_outbound(master_config: pyDE1.config.Config,
             except KeyError:
                 counts[item_as_dict['class']] = 1
             if now - last_update > update_period:
-                logger.debug(counts)
+                logger.getChild('Counts').debug(counts)
                 counts = {}
                 last_update = now
 
