@@ -109,6 +109,12 @@ Removed
 
 * Python 3.8 support removed
 
+* Deprecations in v1.2.0 (2022-03) removed
+
+    * Use of `first_if_found` to imitiate scanning removed
+
+    * Use of a Boolean when setting Bluetooth scan timeout removed
+
 
 
 ------------------
