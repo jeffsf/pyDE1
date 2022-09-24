@@ -2731,18 +2731,21 @@ class MMR0x80LowAddr (enum.IntEnum):
         ) or self.in_debug_buffer(self.value)
 
     @classmethod
-    def for_logging(cls, addr_low):
+    def for_logging(cls, addr_low, return_as_hex=False):
         try:
-            addr_name = cls(addr_low).name.title()
+            addr_name = cls(addr_low).name
             # The above catches the at-start condition
         except ValueError:
             if cls.in_debug_buffer(addr_low):
                 addr_name = "{}+0x{:03x}".format(
-                    cls.DEBUG_BUFFER.name.title(),
+                    cls.DEBUG_BUFFER.name,
                     addr_low - cls.DEBUG_BUFFER.value,
                 )
             else:
-                addr_name = ""
+                if return_as_hex:
+                    addr_name = f"0x{addr_low:04x}"
+                else:
+                    addr_name = ""
         return addr_name
 
     def __repr__(self):
