@@ -179,18 +179,11 @@ class ScaleProcessor (Singleton):
     # Self-contained call for API
     #
 
-    async def first_if_found(self, doit: bool, warn_deprecated=True):
-        if warn_deprecated:
-            logger.warning(
-                "Use of 'first_if_found' is deprecated in favor of "
-                "setting {'id': 'scan'}")
+    async def first_if_found(self):
         if self.scale and self.scale.is_connected:
             logger.warning(
                 "first_if_found requested, but already connected. "
                 "No action taken.")
-        elif not doit:
-            logger.warning(
-                "first_if_found requested, but not True. No action taken.")
         else:
             device = await find_first_matching(
                 recognized_scale_prefixes())
@@ -206,7 +199,7 @@ class ScaleProcessor (Singleton):
         logger.info(f"Request to replace scale with {ble_device_id}")
 
         if ble_device_id == 'scan':
-            await self.first_if_found(doit=True, warn_deprecated=False)
+            await self.first_if_found()
             return
 
         # TODO: Need to make distasteful assumption that the id is the address
