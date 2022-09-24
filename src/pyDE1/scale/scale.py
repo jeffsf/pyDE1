@@ -143,6 +143,7 @@ class Scale:
 
         if not self.is_connected:
 
+            # TODO: Deprecated bleak v0.18.0
             self._bleak_client.set_disconnected_callback(
                 self._create_disconnect_callback()
             )
@@ -403,6 +404,7 @@ class Scale:
         # Oh, and the list of those collbacks!
         logger.info(f'Decommissioning {self} at {self.address}')
 
+        # TODO: Deprecated bleak v0.18.0
         self._bleak_client.set_disconnected_callback(None)
         for break_ref in self._to_decommission:
             setattr(self, break_ref, None)
