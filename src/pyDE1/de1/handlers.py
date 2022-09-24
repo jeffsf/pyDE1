@@ -176,11 +176,8 @@ def create_ReadFromMMR_callback(de1: de1):
                 notify_state.data_raw = obj.Data[start:(start + 4)]
                 # This ensures that the data is decoded before Event.set()
                 notify_state.mark_updated(notify_state.data_raw, arrival_time)
-                try:
-                    mmr = MMR0x80LowAddr(this_addr).__str__()
-                except ValueError:
-                    mmr = f"MMR0x80LowAddr.{this_addr:0x04x}"
-                pyDE1.getLogger(f"DE1.{mmr}").debug(notify_state.data_decoded)
+                mmr = MMR0x80LowAddr.for_logging(this_addr, return_as_hex=True)
+                logger.getChild(mmr).info(notify_state.data_decoded)
                 start += 4
         de1._cuuid_dict[CUUID.ReadFromMMR].mark_updated(obj, arrival_time)
     return ReadFromMMR_callback
