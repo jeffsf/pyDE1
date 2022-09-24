@@ -29,7 +29,7 @@ from pyDE1.dispatcher.resource import (
     Resource, RESOURCE_VERSION, DE1ModeEnum, ConnectivityEnum
 )
 
-MAPPING_VERSION = "4.3.0"
+MAPPING_VERSION = "5.0.0"
 
 logger = pyDE1.getLogger('Inbound.Mapping')
 
@@ -209,10 +209,9 @@ MAPPING[Resource.DE1_FIRMWARE_CANCEL] = IsAt(target=TO.DE1, attr_path=None,
 
 MAPPING[Resource.SCAN] = {
     # Passing a number sets the timeout. Passing null takes the default.
-    # Use of bool DEPRECATED -- 2022-02-05
     'begin': IsAt(target=None, attr_path=None,
                   setter_path='scan_from_api',
-                  v_type=Optional[Union[int, float, bool]])
+                  v_type=Optional[Union[int, float]])
 }
 
 # Note: This is an async getter because of the lock
@@ -233,10 +232,6 @@ MAPPING[Resource.DE1_ID] = {
     'id': IsAt(target=TO.DE1, attr_path='address', v_type=Optional[str],
                setter_path='change_de1_to_id',
                if_not_ready=True),
-    # DEPRECATED -- 2022-02-05
-    'first_if_found': IsAt(target=TO.DE1, attr_path=None,
-                           setter_path='first_if_found', v_type=bool,
-                           if_not_ready=True),
 }
 
 # NB: A single-entry tuple needs to end with a comma
@@ -494,10 +489,6 @@ MAPPING[Resource.SCALE_ID] = {
                  v_type=Optional[str],
                  read_only=True,
                  if_not_ready=True),
-    # DEPRECATED -- 2022-02-05
-    'first_if_found': IsAt(target=TO.ScaleProcessor, attr_path=None,
-                           setter_path='first_if_found', v_type=bool,
-                           if_not_ready=True),
 }
 
 MAPPING[Resource.SCALE_CONNECTIVITY] = {
