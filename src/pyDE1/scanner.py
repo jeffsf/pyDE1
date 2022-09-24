@@ -284,15 +284,13 @@ async def scan_until_timeout(timeout=None) -> Tuple[BleakScannerWrapped,
     if timeout is None:
         timeout = config.bluetooth.SCAN_TIME
 
-    scanner = BleakScannerWrapped()
-    event = asyncio.Event()
-    dd = DiscoveredDevices()
-
     def add_to_dd(device: BLEDevice, adv: AdvertisementData) -> None:
         nonlocal dd, scanner
         dd.add(device=device, run_id=scanner.run_id)
 
-    scanner.register_detection_callback(add_to_dd)
+    scanner = BleakScannerWrapped(detection_callback=add_to_dd)
+    event = asyncio.Event()
+    dd = DiscoveredDevices()
 
     async def stop_later(after: float):
         nonlocal scanner, event
