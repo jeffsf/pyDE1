@@ -33,9 +33,8 @@ class BleakClientWrapped (BleakClient):
         def atexit_disconnect(self):
             def sync_disconnect():
     """
-    def __init__(self, address_or_ble_device: Union[BLEDevice, str], **kwargs):
-        super(BleakClientWrapped, self).__init__(
-            address_or_ble_device=address_or_ble_device)
+    def __init__(self, *args, **kwargs):
+        super(BleakClientWrapped, self).__init__(*args, **kwargs)
         self._willful_disconnect = False
 
     @property
@@ -51,7 +50,6 @@ class BleakClientWrapped (BleakClient):
     @property
     def willful_disconnect(self):
         return self._willful_disconnect
-
 
     def sync_disconnect(self):
         if not self.is_connected:
