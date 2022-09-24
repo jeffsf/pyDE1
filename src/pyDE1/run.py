@@ -60,7 +60,10 @@ def run():
     pyde1_logging.setup_queue_logging(config.logging, log_queue)
     pyde1_logging.config_logger_levels(config.logging)
 
-    loop = asyncio.get_event_loop()
+    # With Python 3.11: DeprecationWarning: There is no current event loop
+    # loop = asyncio.get_event_loop()
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
     loop.set_debug(True)
 
     def _sigchild_handler(signum: signal.Signals, frame: FrameType):
