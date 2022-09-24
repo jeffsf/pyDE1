@@ -468,6 +468,7 @@ class DE1 (Singleton):
 
         if not self.is_connected:
 
+            # TODO: Deprecated bleak v0.18.0
             self._bleak_client.set_disconnected_callback(
                 self._create_disconnect_callback()
             )
