@@ -20,7 +20,7 @@ Changelog
 Overview
 ========
 
-MAPPING 4.3.0
+MAPPING 5.0.0
 
 Add move-on by weight functionality, including parsing from JSON profile.
 
@@ -28,6 +28,10 @@ Add move-on by weight functionality, including parsing from JSON profile.
 
 Provide a utility to convert Tcl profile files to JSON, including directly
 from a Visualizer URL. Author names can be corrected in the process.
+
+Tested with Python 3.11.0rc2
+
+Changes to accommodate breaking changes in bleak v0.18.0
 
 Significant refactoring of FlowSequencer
 
@@ -63,28 +67,33 @@ New
 Changed
 =======
 
-* Logic for DE1 skip_to_next() improved to limit to when it is available
+* Logic for skip_to_next improved to limit to when it is available
   in the firmware and sensible (during espresso only)
 
 * Logging
 
-  * Scale period logged with ``Scaler.Period`` logger to assist in
+  * ``Scale.Period`` and ``Outbnound.Counts`` loggers to assist in
     filtering out "expected, periodic" log messages
 
-  * Scale: Add logging of exception to weight_update_handler
+  * Scale: Add logging of exception to ``weight_update_handler()``
 
   * Frame changes are now logged at the INFO level, including the previous
     and current frames, as well as an estimate of the weight.
 
+  * Adjusted ``MMR0x80LowAddr.for_logging()`` to retain uppercase names.
+    Also can return hex if no name associated. MMR Read notifications now
+    logged similar to
+    ``INFO [Controller] DE1.CUUID.ReadFromMMR.Notify.FLUSH_TIMEOUT: 3.0``
+
 * ``None`` is now permitted as a return value in the Scale class
   from ``current_weight()`` coroutine. ``AtomaxSkaleII`` returns
   ``None`` rather than raising ``NotImplementedError``
-  (It does not appear that the weight can be requested on demand,
-  just notifications.)
+  *(It does not appear that the weight can be requested on demand,
+  just notifications.)*
 
   See also new ``ScaleProcessor.current_weight`` property.
 
-* The StopAtNotification has been updated to version 1.1.0 as it adds
+* The ``StopAtNotification`` has been updated to version 1.1.0 as it adds
   the current frame, which may be None/null, as well as the action of
   'move on by weight'.
 
@@ -100,6 +109,23 @@ Changed
 * The FlowSequencer internal ``stop_at_weight`` routine has been renamed to
   act_on_weight and handles both SAW and move-on by weight.
 
+* Python 3.11 compatibility
+
+  * Event loop is now created explicitly based on DeprecationWarning
+
+* Bleak v0.18.0 compatibility
+
+  * Reworked deprecated ``BleakScanner.register_detection_callback()``
+
+  * Marked usages of deprcated ``BleakClient.set_disconnected_callback()``
+
+  * ``WrappedBleakClient()`` now passes ``*args, **kwargs`` to ``BleakClient()``
+
+  * Added ``bleak_version_check.BLEAK_AFTER_0_17``
+
+  * Signature used to call ``find_first_matching()`` depends on ``BLEAK_AFTER_0_17``
+
+
 Fixed
 =====
 
@@ -111,7 +137,7 @@ Removed
 
 * Deprecations in v1.2.0 (2022-03) removed
 
-    * Use of `first_if_found` to imitiate scanning removed
+    * Use of ``first_if_found`` to initiate scanning removed
 
     * Use of a Boolean when setting Bluetooth scan timeout removed
 
