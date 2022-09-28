@@ -10,6 +10,7 @@ import asyncio
 import enum
 import logging
 import re
+import sys
 import uuid
 
 from datetime import datetime
@@ -59,6 +60,22 @@ def address_is_persistent(address: str) -> bool:
         return False
 
 
+if sys.version_info.major >= 3 and sys.version_info.minor >= 11:
+    # In 3.11, the behavior of enum.IntFlag changed
+    # https://docs.python.org/3.11/whatsnew/3.11.html
+    # We're trying to get a human-readable version
+    def enum_intflag_for_json(val: enum.IntEnum):
+        if isinstance(name := val.name, str) and len(name):
+            retval = name
+        else:
+            retval = str(val.value)
+        return retval
+else:
+    # Remove the class name
+    def enum_intflag_for_json(val: enum.IntFlag):
+        return str(val).split('.', 2)[1]
+
+
 def prep_for_json(val):
     """
     Special cases for conversion to JSON:
@@ -73,8 +90,7 @@ def prep_for_json(val):
     if val is None or isinstance(val, (float, str, bool)):
         return val
     elif isinstance(val, enum.IntFlag):
-        # Remove the class name
-        return str(val).split('.',2)[1]
+        return enum_intflag_for_json(val)
     elif isinstance(val, enum.IntEnum):
         return val.name
     elif isinstance(val, enum.Enum):
