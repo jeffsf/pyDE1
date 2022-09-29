@@ -226,6 +226,8 @@ class Scale:
             logger.info(f"Disconnecting from {class_name}, no client")
             return
 
+        previous_address = self.address
+
         if self.is_connected:
             await asyncio.gather(
                 self._bleak_client.disconnect(),
@@ -247,7 +249,7 @@ class Scale:
         else:
             logger.info(
                 f"Scale.disconnect(): Disconnected from {class_name} "
-                f"at {self.address}")
+                f"at {previous_address}")
             await self._event_connectivity.publish(
                 self._connectivity_change(
                     arrival_time=time.time(),

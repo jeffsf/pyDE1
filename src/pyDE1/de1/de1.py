@@ -506,6 +506,8 @@ class DE1 (Singleton):
             logger.info(f"Disconnecting from DE1, no client")
             return
 
+        previous_address = self._bleak_client.address
+
         if self.is_connected:
             await asyncio.gather(
                 self._notify_not_ready(),
@@ -525,7 +527,7 @@ class DE1 (Singleton):
                         state=ConnectivityState.CONNECTED))
             else:
                 logger.info("DE1.disconnect(): Disconnected from DE1 at "
-                            f"{self.address}")
+                            f"{previous_address}")
                 await self._event_connectivity.publish(
                     self._connectivity_change(arrival_time=time.time(),
                                               state=ConnectivityState.DISCONNECTED))
