@@ -425,8 +425,11 @@ class Scale:
     def _create_disconnect_callback(self) -> Callable:
         scale = self
 
-        def disconnect_callback(client: BleakClientWrapped):
+        def disconnect_callback(passed_client: BleakClientWrapped):
             nonlocal scale
+            # Starting with bleak 0.18.0, client is BleakClientBlueZDBus
+            # not BleakClientWrapped
+            client = scale._bleak_client
             class_name = type(self).__name__
             logger.info(
                 "disconnect_callback: "

@@ -542,8 +542,11 @@ class DE1 (Singleton):
     def _create_disconnect_callback(self) -> Callable:
         de1 = self
 
-        def disconnect_callback(client: BleakClientWrapped):
+        def disconnect_callback(passed_client: BleakClientWrapped):
             nonlocal de1
+            # Starting with bleak 0.18.0, client is BleakClientBlueZDBus
+            # not BleakClientWrapped
+            client = de1._bleak_client
             logger.info(
                 "disconnect_callback: "
                 f"Disconnected from DE1 at {client.address}, "
