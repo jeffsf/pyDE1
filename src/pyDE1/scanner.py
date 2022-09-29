@@ -260,11 +260,7 @@ async def find_first_matching(prefix_set: Iterable[str],
                 retval = True
         return retval
 
-    if BLEAK_AFTER_0_17:
-        fdbf = await scanner.find_device_by_filter(filter_func=is_match)
-    else:
-        fdbf = await scanner.find_device_by_filter(filterfunc=is_match)
-
+    fdbf = await scanner.find_device_by_filter(filterfunc=is_match)
     return fdbf
 
 
