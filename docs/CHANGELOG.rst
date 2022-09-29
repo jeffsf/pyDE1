@@ -10,6 +10,158 @@ Changelog
 =========
 
 ------------------
+1.5.0 - Pending
+------------------
+
+.. warning::
+
+  Now requires Python 3.9 or later
+
+Overview
+========
+
+MAPPING 5.0.0
+
+Add move-on by weight functionality, including parsing from JSON profile.
+
+"Bump resist" to help prevent triggering SAW/MOW too early
+
+Provide a utility to convert Tcl profile files to JSON, including directly
+from a Visualizer URL. Author names can be corrected in the process.
+
+Tested with Python 3.11.0rc2
+
+Changes to accommodate breaking changes in bleak v0.18.1
+
+Significant refactoring of FlowSequencer
+
+Improvements to logging
+
+
+New
+===
+
+* Move-on by weight functionality -- ``75a52e3``, ``674f06c``
+
+* "Bump resist" for SAW / MOW and config -- ``148cd44``
+
+  Active when mass-flow estimate exceeds FLOW_THRESHOLD or goes negative
+
+  Can also select to always use median-based estimation
+
+::
+
+        config.de1.bump_resist.FLOW_THRESHOLD = 10.0  # g/s
+        config.de1.bump_resist.FLOW_MULTIPLIER = 1.1
+        config.de1.bump_resist.SUB_MEDIAN_WEIGHT = True  # when excessive flow
+        config.de1.bump_resist.USE_MEDIAN_WEIGHT_ALWAYS = False
+        config.de1.bump_resist.USE_MEDIAN_FLOW_ALWAYS = False
+
+* ``legacy_to_json.py`` converts profiles to JSON format -- ``40d8a86``
+
+* DE1 supplies ``current_frame`` property -- ``cc2ae17``
+
+* ScaleProcessor supplies ``current_weight`` property -- ``93ea42f``
+
+
+Changed
+=======
+
+* Requires Python 3.9 or later, supports Python 3.11
+
+* Logic for skip_to_next improved to limit to when it is available
+  in the firmware and sensible (during espresso only) -- ``62da713``
+
+* Logging
+
+  * ``Scale.Period`` and ``Outbound.Counts`` loggers to assist in
+    filtering out "expected, periodic" log messages
+    -- ``09500d3``, ``3b8f87a``
+
+  * Scale: Add logging of exception to ``weight_update_handler()``
+    -- ``472eb90``
+
+  * Frame changes are now logged at the INFO level, including the previous
+    and current frames, as well as an estimate of the weight.
+
+  * Adjusted ``MMR0x80LowAddr.for_logging()`` to retain uppercase names.
+    Also can return hex if no name associated. MMR Read notifications now
+    logged similar to
+    ``INFO [Controller] DE1.CUUID.ReadFromMMR.Notify.FLUSH_TIMEOUT: 3.0``
+    -- ``b013d7a``, ``b455744``
+
+  * Improved message on scale/DE1 disconnect to include previous address
+    -- ``6e9fe24``
+
+* ``None`` is now permitted as a return value in the Scale class
+  from ``current_weight()`` coroutine. ``AtomaxSkaleII`` returns
+  ``None`` rather than raising ``NotImplementedError``
+  *(It does not appear that the weight can be requested on demand,
+  just notifications.)*  -- ``816e29c``
+
+  See also new ``ScaleProcessor.current_weight`` property -- ``93ea42f``
+
+* The ``StopAtNotification`` has been updated to version 1.1.0 as it adds
+  the current frame, which may be None/null, as well as the action of
+  'move on by weight'.
+
+* The mode-control objects within the FlowSequencer have been refactored.
+  Any code accessing these directly should examine both ``flow_sequencer.py``
+  and ``flow_sequencer_impl.py``.
+
+* The signature of the ``stop_at_notify`` method of the FlowSequencer has been
+  changed to capture information at the time of the call, rather than when
+  the call is serviced. With ``skip_to_next`` being called, it is possible
+  that the time of service could be in a different frame of the profile.
+
+* The FlowSequencer internal ``stop_at_weight`` routine has been renamed to
+  act_on_weight and handles both SAW and move-on by weight.
+
+* Python 3.11 compatibility
+
+  * Event loop is now created explicitly based on DeprecationWarning
+    -- ``b939868``
+
+  * Changes in how enum.IntFlag are string-ified are accommodated
+    for 3.11 and later -- ``3e953cd``
+
+* Bleak v0.18.1 compatibility
+
+  * Reworked deprecated ``BleakScanner.register_detection_callback()``
+    -- ``d21f1a6``
+
+  * Marked usages of deprecated ``BleakClient.set_disconnected_callback()``
+    -- ``d8c63fb``
+
+  * ``WrappedBleakClient()`` now passes ``*args, **kwargs``
+    to ``BleakClient()`` -- ``b5468b4``
+
+  * Added ``bleak_version_check.BLEAK_AFTER_0_17`` -- ``7082b8c``
+    (unused as changes in method signatures were reverted in bleak v0.18.1)
+
+
+Fixed
+=====
+
+* Example pyde1.conf comments now properly refer to ``purge_deferred`` -- ``5e63756``
+
+* Scan-initiation now properly accepts ``null`` to accept default timeout -- ``84308ec``
+
+
+Removed
+=======
+
+* Python 3.8 support removed
+
+* Deprecations in v1.2.0 (2022-03) removed
+
+    * Use of ``first_if_found`` to initiate scanning removed -- ``2c957fd``
+
+    * Use of a Boolean when setting Bluetooth scan timeout removed -- ``2c957fd``
+
+
+
+------------------
 1.4.0 – 2022-09-12
 ------------------
 
@@ -26,12 +178,14 @@ steam-purge mode control is the most interesting.
 
 (Includes changes previously pending for 1.3.0)
 
+
 New
 ===
 
 * Patch DE1 from config file when it first connects -- ``0c22418``
 
 * Support for firmware through version 1352 -- ``94034a5``
+
 
 Changed
 =======
@@ -54,7 +208,6 @@ Changed
 * Clarified return value of ``DE1().start_notifying()`` as an event
   that triggers when the notification is received. Removed return value
   of ``stop_notifying()`` which was always ``None``. -- ``c425703``
-
 
 
 Fixed
