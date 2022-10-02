@@ -3,3 +3,9 @@ requires = [
     "setuptools>=42",
     "wheel"
 ]
+
+# https://docs.pytest.org/en/7.1.x/explanation/goodpractices.html#test-discovery
+[tool.pytest.ini_options]
+addopts = [
+    "--import-mode=importlib",
+]

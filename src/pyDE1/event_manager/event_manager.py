@@ -196,6 +196,15 @@ class SubscribedEvent:
         self._subscriber_list_lock = asyncio.Lock()
         self._last_create_time = 0
 
+    @property
+    def sender(self):
+        return self._sender
+
+    @sender.setter
+    def sender(self, sender):
+        logger.info(f"Changing sender from {self._sender} to {sender}")
+        self._sender = sender
+
     async def subscribe(self,
                         callback: Coroutine[
                             None, EventPayload, None]) -> uuid.UUID:
