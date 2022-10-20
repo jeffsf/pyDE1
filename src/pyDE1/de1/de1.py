@@ -122,7 +122,7 @@ class DE1 (Singleton):
         asyncio.create_task(self._event_shot_sample.subscribe(
             self._create_self_callback_ssu()))
 
-        asyncio.create_task(self._sleep_if_bored())
+        self._sleep_watcher_task = asyncio.create_task(self._sleep_if_bored())
 
         self.prepare_for_connection(wipe_address=True)
         asyncio.create_task(
@@ -130,6 +130,10 @@ class DE1 (Singleton):
                 self._connectivity_change(arrival_time=time.time(),
                                           state=ConnectivityState.DISCONNECTED))
         )
+
+    def __del__(self):
+        if self._sleep_watcher_task is not None:
+            self._sleep_watcher_task.cancel()
 
     #
     # High-level initialization and re-initialization
