@@ -30,18 +30,19 @@ import sys
 from pathlib import Path
 
 from pyDE1.config import config
+from pyDE1.exceptions import DE1ValueError
 
 re_nonhex = re.compile('[^0-9a-fA-F]')
 
 
 def filename_from_id(id: str) -> Path:
     if id is None:
-        raise ValueError("Attempt to persist None as Bluetooth ID")
+        raise DE1ValueError("Attempt to reference None as Bluetooth ID")
     suffix = config.bluetooth.ID_FILE_SUFFIX
     fname = re.sub(re_nonhex, '', id)
     # This is only "active" for Linux, so expect 12, hex characters
     if len(fname) != 12:
-        raise ValueError(
+        raise DE1ValueError(
             f"Hex-filtered ID '{fname}' from '{id}' is not 12 characters")
     if not suffix.startswith('.'):
         suffix = '.' + suffix
@@ -60,5 +61,5 @@ def remove_connection_file(id: str):
         return
     try:
         os.remove(filename_from_id(id))
-    except FileNotFoundError:
+    except (FileNotFoundError, DE1ValueError):
         pass
