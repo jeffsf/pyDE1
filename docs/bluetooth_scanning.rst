@@ -1,5 +1,5 @@
 ..
-    Copyright © 2021 Jeff Kletsky. All Rights Reserved.
+    Copyright © 2021-2022 Jeff Kletsky. All Rights Reserved.
 
     License for this software, part of the pyDE1 package, is granted under
     GNU General Public License v3.0 only
@@ -22,6 +22,7 @@ changing of the DE1 and scale, when those APIs become available.
 Revision History
 ~~~~~~~~~~~~~~~~
 
+-  2022-10-22 – Update for scanning changes deprecated in v1.2.0
 -  2021-11-16 – Converted with ``pandoc`` to rST format
 -  2021-07-06 – Initial revision
 
@@ -52,7 +53,7 @@ such as
 
 ::
 
-   curl -X PATCH --data '{"begin": true}' http://localhost:1234/scan
+   curl -X PATCH --data '{"begin": null}' http://localhost:1234/scan
 
    [
        {
@@ -63,6 +64,10 @@ such as
 
 Note that the scan is initiated asynchronously. The return to the caller
 is “immediate”.
+
+The ``begin`` parameter can take ``null`` to use the default timeout duration
+or a positive value for the timeout in seconds. Use of ``true`` was deprecated
+in v1.2.0 and removed in v1.5.0.
 
 The two parameters returned provide the duration of the scan (seconds)
 and a reference to “this scan” in updates that are provided over MQTT.
@@ -89,7 +94,7 @@ packets include:
 
 -  “action” — one of ``ScannerNotificationAction`` (started, found,
    ended)
--  “run_id” – opaque identifier (may be noll)
+-  “run_id” – opaque identifier (may be null)
 -  “id” — (string or null) if a “found” notification, the unique ID of
    the device to the Bluetooth system
 -  “name” – (string or null) if a “found” notification, the advertised
