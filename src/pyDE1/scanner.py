@@ -305,7 +305,7 @@ async def scan_from_api(timeout: Optional[Union[int, float, bool]]=None):
             "Passing false for 'begin' is deprecated. "
             "Pass a timeout in seconds or null to accept the default.")
         return None
-    elif timeout <= 0:
+    elif timeout is not None and timeout <= 0:
         raise DE1ValueError(
             f"Timeout must be greater than zero {timeout}")
 
