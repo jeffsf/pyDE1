@@ -10,6 +10,25 @@ Changelog
 =========
 
 ------------------
+1.6.0 - Pending
+------------------
+
+.. warning::
+
+  Acaia support is very much an "alpha" feature
+
+Overview
+========
+
+Adds Acaia support from work done in 2022/02
+
+New
+===
+
+* Alpha support for Acaia scales
+
+
+------------------
 1.5.0 - Pending
 ------------------
 
