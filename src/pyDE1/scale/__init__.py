@@ -9,4 +9,12 @@ SPDX-License-Identifier: GPL-3.0-only
 from .scale import (
     Scale, scale_factory, recognized_scale_prefixes
 )
+
+from .acaia import (
+    AcaiaAcaia,
+    AcaiaLunar,
+    AcaiaPearlS,
+    AcaiaProch,
+    AcaiaPyxis,
+)
 from .atomax_skale_ii import AtomaxSkaleII
