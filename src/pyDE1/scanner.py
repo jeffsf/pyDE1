@@ -18,8 +18,6 @@ from bleak import BleakScanner
 from bleak.backends.device import BLEDevice
 from bleak.backends.scanner import AdvertisementData
 
-from pyDE1.bleak_version_check import BLEAK_AFTER_0_17
-
 import pyDE1
 from pyDE1.config import config
 from pyDE1.event_manager import EventPayload, send_to_outbound_pipes
