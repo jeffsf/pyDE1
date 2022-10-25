@@ -10,6 +10,20 @@ Changelog
 =========
 
 ------------------
+1.5.1 - 2022-10-24
+------------------
+
+Overview
+========
+
+Resolves issue with changes in bleak v0.19.0 -- removes version restriction
+
+Removed
+=======
+
+* Unused ``BLEAK_AFTER_0_17`` check -- ``085394f``
+
+------------------
 1.5.0 - 2022-10-24
 ------------------
 
