@@ -62,6 +62,9 @@ class Singleton:
         it._singleton_init(*args, **kwds)
         return it
 
+    def __init__(self, *args, **kwargs):
+        pass
+
     def _singleton_init(self, *args, **kwds):
         pass
 

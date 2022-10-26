@@ -1,5 +1,5 @@
 """
-Copyright © 2021 Jeff Kletsky. All Rights Reserved.
+Copyright © 2021-2022 Jeff Kletsky. All Rights Reserved.
 
 License for this software, part of the pyDE1 package, is granted under
 GNU General Public License v3.0 only
@@ -187,3 +187,20 @@ def timestamp_to_str_with_ms(timestamp: float, show_date=True) -> str:
     return string
 
 
+def call_str(full_trace=True) -> str:
+    import inspect
+    stack = inspect.stack()[2]
+    retval = f"at {stack.function}:{stack.lineno}"
+    if full_trace:
+        idx = 3
+        while True:
+            try:
+                stack = inspect.stack()[idx]
+                next_caller = f"{stack.function}:{stack.lineno}"
+                if stack.function.startswith('_run'):
+                    break
+                retval = f"{retval} < {next_caller}"
+            except IndexError:
+                break
+            idx += 1
+    return retval

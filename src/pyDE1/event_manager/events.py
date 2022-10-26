@@ -18,7 +18,17 @@ from typing import Optional
 from pyDE1.event_manager import EventPayload
 
 
+class DeviceRole (enum.Enum):
+    DE1 = 'de1'
+    SCALE = 'scale'
+    THERMOMETER = 'thermometer'
+    OTHER = 'other'
+    UNKNOWN = 'unknown'
+
+
 class ConnectivityState (enum.Enum):
+    # NB: Will deprecate in favor of DeviceAvailability
+    INITIAL = 'initial'
     UNKNOWN = 'unknown'
     CONNECTING = 'connecting'
     CONNECTED = 'connected'
@@ -29,7 +39,7 @@ class ConnectivityState (enum.Enum):
 
 
 class ConnectivityChange (EventPayload):
-
+    # NB: Will deprecate in favor of DeviceAvailability
     def __init__(self,
                  arrival_time: float,
                  state: ConnectivityState = ConnectivityState.UNKNOWN,
@@ -39,6 +49,34 @@ class ConnectivityChange (EventPayload):
         super(ConnectivityChange, self).__init__(arrival_time=arrival_time)
         self._version = "1.1.0"
         self.state = state
+        self.id = id
+        self.name = name
+
+
+class DeviceAvailabilityState (enum.Enum):
+    INITIAL = 'initial'
+    UNKNOWN = 'unknown'
+    CAPTURING = 'capturing'
+    CAPTURED = 'captured'
+    READY = 'ready'  # "Ready for use"
+    NOT_READY = 'not ready'  # Was READY, but is no longer
+    RELEASING = 'releasing'
+    RELEASED = 'released'
+
+
+class DeviceAvailability (EventPayload):
+    def __init__(self,
+                 arrival_time: float,
+                 state: DeviceAvailabilityState \
+                         = DeviceAvailabilityState.UNKNOWN,
+                 role: DeviceRole = DeviceRole.UNKNOWN,
+                 id: Optional[str] = None,
+                 name: Optional[str] = None,
+                 ):
+        super(DeviceAvailability, self).__init__(arrival_time=arrival_time)
+        self._version = "1.1.0"
+        self.state = state
+        self.role = role
         self.id = id
         self.name = name
 

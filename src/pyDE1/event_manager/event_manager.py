@@ -47,13 +47,17 @@ Don't need a queue to start as there will only be one publisher for an event.
 """
 
 import asyncio
+import copy
+import enum
+import gc
 import multiprocessing
 import multiprocessing.connection as mpc
 import queue
 import time
 import uuid
-from inspect import iscoroutinefunction, signature
-from typing import Optional, Coroutine, Union, List
+import weakref
+from inspect import iscoroutinefunction, signature, ismethod
+from typing import Optional, Union, List, Callable, NamedTuple, Awaitable
 
 import pyDE1
 from pyDE1.event_manager.payloads import (
@@ -169,6 +173,18 @@ async def send_to_outbound_pipes(payload: EventPayload):
         logger.error("Database queue full")
         # Not much else to do. Killing a shot in progress seems excessive
 
+# TODO: Is there any guarantee that the "empty" enum.Flag is zero?
+class SESType (enum.Flag):
+    AWAIT = enum.auto()
+    METHOD = enum.auto()
+    HARDREF = enum.auto()
+
+
+class SESubscriber (NamedTuple):
+    id: Union[uuid.UUID, str]
+    ref: Union[weakref.ref, weakref.WeakMethod]
+    flags: SESType
+
 
 class SubscribedEvent:
     """
@@ -189,12 +205,17 @@ class SubscribedEvent:
     outbound_pipe: Optional[mpc.Connection] = None
     database_queue: Optional[multiprocessing.Queue] = None
 
-    def __init__(self, sender):
+    def __init__(self, sender,
+                 adjust_payload: Optional[Callable[
+                     ['SubscribedEvent',EventPayload], None]] = None):
         self._sender = sender
-        self._subscribers = []
+        self._subscribers: list[SESubscriber] = []
         # perhaps don't need a lock on the list as not threaded
         self._subscriber_list_lock = asyncio.Lock()
         self._last_create_time = 0
+        self._last_sent: Optional[EventPayload] = None
+        self._adjust_payload = adjust_payload
+
 
     @property
     def sender(self):
@@ -206,29 +227,60 @@ class SubscribedEvent:
         self._sender = sender
 
     async def subscribe(self,
-                        callback: Coroutine[
-                            None, EventPayload, None]) -> uuid.UUID:
+                        callback: Callable[
+                            [EventPayload], Union[None,
+                                                  Awaitable]]) -> uuid.UUID:
         """
         Subscribe to the series of events
 
         Returns a UUID that can be later used to unsubscribe
         """
-        # iscoroutine() fails on "async def something(payload)
-        if not iscoroutinefunction(callback):
-            raise TypeError(
-                f"The callback must be a coroutine function: {callback}")
+
+        flags = SESType(0)
+        if iscoroutinefunction(callback):
+            flags |= SESType.AWAIT
+        if ismethod(callback):
+            flags |= SESType.METHOD
 
         # For now, just assume that optional parameters aren't being used
         scb = signature(callback)
-        if len(scb.parameters) != 1:
+        if not (flags & SESType.METHOD) and len(scb.parameters) != 1:
             raise TypeError(
-                f"The callback must accept a single argument: {scb.parameters}")
+                "The callback signature must accept a single argument: "
+                "{}".format(
+                    scb.parameters))
+        # signature().parameters doesn't include the "self" argument
+        elif (flags & SESType.METHOD) and len(scb.parameters) != 1:
+            raise TypeError(
+                "The method signature must accept self and a single argument: "
+                "{}".format(
+                    scb.parameters))
 
-        id = uuid.uuid4()
+        if ( not (flags & SESType.METHOD) and
+                len(gc.get_referrers(callback)) == 0):
+            logger.warning(
+                f"No references to {callback}, "
+                "subscribing using a hard reference")
+            flags |= SESType.HARDREF
+
+        subscriber_id = uuid.uuid4()
+        if flags & SESType.METHOD:
+            cb_ref = weakref.WeakMethod(callback)
+        elif flags & SESType.HARDREF:
+            cb_ref = callback
+        else:
+            cb_ref = weakref.ref(callback)
+
+        ses = SESubscriber(id=subscriber_id,
+                           ref=cb_ref,
+                           flags=flags)
+
         async with self._subscriber_list_lock:
-            self._subscribers.append((id, callback))
-        logger.debug(f"Subscribed {callback} to {self}")
-        return id
+            self._subscribers.append(ses)
+        logger.debug(
+            f"Subscribed {callback} {ses.flags} as {ses.id} "
+            f"to event with sender '{self.sender}'")
+        return subscriber_id
 
     async def unsubscribe(self, id: Union[uuid.UUID, str,
                                           None]) -> Union[bool, None]:
@@ -271,7 +323,10 @@ class SubscribedEvent:
         """
         payload._sender = self._sender
         async with self._subscriber_list_lock:
+            if self._adjust_payload is not None:
+                self._adjust_payload(self, payload)
             payload._event_time = time.time()
+            self._last_sent = payload
             tasks = []
             for s in self._subscribers:
                 # These have ben validated as coroutines
@@ -286,8 +341,22 @@ class SubscribedEvent:
                 # t = asyncio.create_task(s[1](copy(payload)))
                 # tasks.append(t)
                 # await s[1](copy(payload))
-
-                await s[1](payload)
+                if s.flags & SESType.HARDREF:
+                    cb = s.ref
+                else:
+                    cb = s.ref()
+                if cb is None:
+                    logger.warning(
+                        f"Subscriber disappeared, unsubscribing {s}")
+                    # Don't change the list while iterating through it
+                    asyncio.create_task(self.unsubscribe(s.id))
+                elif s.flags & SESType.AWAIT:
+                        # Interestingly, this just works for both cases
+                        #     and not (s.flags & SESType.METHOD)):
+                        #     and (s.flags & SESType.METHOD)):
+                    await cb(payload)
+                else:
+                    cb(payload)
         internal_done = time.time()
 
         # multiprocessing.queue() can block at least on "full"
@@ -310,3 +379,15 @@ class SubscribedEvent:
             delay = (delivery_done - payload.create_time) * 1000
             logger.debug( f"Dispatch delay: {delay:.3f} ms {type(payload)}")
         return tasks
+
+    @property
+    def last_sent(self):
+        """
+        Return a copy here as may be "reused" by caller
+        NB: deepcopy causes TypeError: cannot pickle '_asyncio.Task' object
+            probably somewhere in the deep copy of the sender object
+        """
+        return copy.copy(self._last_sent)
+
+    def last_sent_clear(self):
+        self._last_sent = None

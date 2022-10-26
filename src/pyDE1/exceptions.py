@@ -54,6 +54,13 @@ class DE1OperationInProgressError(DE1Error):
     pass
 
 
+class DE1UnsupportedDeviceError (DE1Error):
+    """
+    The device requested does not have support available
+    """
+    pass
+
+
 class DE1APIError (DE1Error):
     pass
 

@@ -10,7 +10,7 @@ Enum that defines the recognized resources that the Dispatcher can access
 
 import enum
 
-RESOURCE_VERSION = '3.8.0'
+RESOURCE_VERSION = '3.9.0'
 
 
 class Resource (enum.Enum):
@@ -40,6 +40,7 @@ class Resource (enum.Enum):
     DE1_FIRMWARE_ID = 'de1/firmware/id'
     DE1_FIRMWARES = 'de1/firmwares'
 
+    DE1_AVAILABILITY = 'de1/availability'
     DE1_CONNECTIVITY = 'de1/connectivity'
 
     DE1_CONTROL = 'de1/control'
@@ -81,6 +82,7 @@ class Resource (enum.Enum):
     SCALE_TARE = 'scale/tare'
     SCALE_DISPLAY = 'scale/display'
 
+    SCALE_AVAILABILITY = 'scale/availability'
     SCALE_CONNECTIVITY = 'scale/connectivity'
 
     FLOW_SEQUENCER = 'flow_sequencer'

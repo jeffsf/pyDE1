@@ -124,13 +124,15 @@ async def _request_queue_processor(request_queue: asyncio.Queue,
                 tbe = TracebackException.from_exception(exception)
                 if isinstance(exception, DE1NotConnectedError):
                     level = logging.INFO
+                    show_traceback = False
                 else:
                     level = logging.ERROR
+                    show_traceback = True
                 logger.log(level,
                            "Exception in processing "
                            f"{got.method} {got.resource} {repr(exception)}")
-                logger.log(level,
-                           ''.join(tbe.format()))
+                if show_traceback:
+                    logger.log(level, ''.join(tbe.format()))
 
             response = APIResponse(original_timestamp=got.timestamp,
                                    timestamp=time.time(),
@@ -142,22 +144,13 @@ async def _request_queue_processor(request_queue: asyncio.Queue,
 
         elif got.method is HTTPMethod.PATCH:
 
-            if got.resource in (Resource.DE1_ID, Resource.SCALE_ID):
-                if 'first_if_found' in got.payload:
-                    # Only acceptable patch, if present
-                    if len(got.payload.keys()) > 1:
-                        raise DE1ValueError(
-                            f"Use of 'first_if_found' with {got.resource} "
-                            f"needs to be exclusive: {got.payload}")
-
             results_list = None
             check_de1 = True
             check_scale = True
             try:
                 if (got.resource is Resource.DE1_ID
                     and len(got.payload.keys()) == 1
-                    and ('id' in got.payload
-                         or 'first_if_found' in got.payload)
+                    and 'id' in got.payload
                     and not de1.is_ready
                 ):
                     logger.debug("DE1 gets a pass while disconnected")
@@ -165,8 +158,7 @@ async def _request_queue_processor(request_queue: asyncio.Queue,
 
                 elif (got.resource is Resource.SCALE_ID
                         and len(got.payload.keys()) == 1
-                        and ('id' in got.payload
-                             or 'first_if_found' in got.payload)
+                        and 'id' in got.payload
                         and (scale_processor.scale is None
                              or not scale_processor.scale.is_ready)
                 ):

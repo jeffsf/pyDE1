@@ -29,7 +29,14 @@ from pyDE1.dispatcher.resource import (
     Resource, RESOURCE_VERSION, DE1ModeEnum, ConnectivityEnum
 )
 
-MAPPING_VERSION = "5.0.0"
+from pyDE1.bledev.managed_bleak_device import CaptureRequest
+
+try:
+    from pyDE1.source_data import source_data
+except ImportError:
+    source_data = None
+
+MAPPING_VERSION = "5.4.0"
 
 logger = pyDE1.getLogger('Inbound.Mapping')
 
@@ -184,7 +191,8 @@ MAPPING[Resource.VERSION] = {
         'releaselevel': sys.version_info.releaselevel,
         'serial': sys.version_info.serial,
     },
-    'module_versions': module_versions()
+    'module_versions': module_versions(),
+    'source_data': source_data,
 }
 
 # "Specials" -- content-only
@@ -245,6 +253,9 @@ MAPPING[Resource.DE1_STATE] = {
     'state': IsAt(target=TO.DE1, attr_path='state_getter',
                   read_only=True,
                   v_type=str, internal_type=str),
+    'mqtt':  IsAt(target=TO.DE1, attr_path='state_update_last_sent',
+                  read_only=True,
+                  v_type=str)
 }
 
 MAPPING[Resource.DE1_FEATURE_FLAGS] = {
@@ -266,6 +277,16 @@ MAPPING[Resource.DE1_PROFILE_ID] = {
 MAPPING[Resource.DE1_FIRMWARE_ID] = {
     'id': IsAt(target=MMR0x80LowAddr.CPU_FIRMWARE_BUILD,
                attr_path='', v_type=int),
+}
+
+MAPPING[Resource.DE1_AVAILABILITY] = {
+    'mode': IsAt(target=TO.DE1, attr_path='availability_state',
+                 setter_path='availability_setter', v_type=str,
+                 internal_type=CaptureRequest,
+                 if_not_ready=True),
+    'mqtt': IsAt(target=TO.DE1,
+                 attr_path='device_availability_last_sent',
+                 read_only=True, if_not_ready=True, v_type=str),
 }
 
 MAPPING[Resource.DE1_CONNECTIVITY] = {
@@ -394,7 +415,7 @@ MAPPING[Resource.DE1_SETTING_BEFORE_FLOW] = {
 }
 
 MAPPING[Resource.DE1_SETTING_STEAM] = {
-    'temperature': IsAt(target=ShotSettings, attr_path='TargetSteamTemp', v_type=int),
+    'temperature': IsAt(target=ShotSettings, attr_path='TargetSteamTemp', v_type=Optional[int]),
     'flow': IsAt(target=MMR0x80LowAddr.TARGET_STEAM_FLOW, attr_path='', v_type=float),
     'high_flow_time': IsAt(target=MMR0x80LowAddr.STEAM_START_SECS, attr_path='', v_type=float),
     'purge_deferred': IsAt(target=MMR0x80LowAddr.STEAM_PURGE_MODE, attr_path='', v_type=bool),
@@ -491,6 +512,17 @@ MAPPING[Resource.SCALE_ID] = {
                  if_not_ready=True),
 }
 
+MAPPING[Resource.SCALE_AVAILABILITY] = {
+    'mode': IsAt(target=TO.ScaleProcessor,
+                 attr_path='scale_availability_state',
+                 setter_path="scale_availability_setter", v_type=str,
+                 internal_type=CaptureRequest,
+                 if_not_ready=True),
+    'mqtt': IsAt(target=TO.ScaleProcessor,
+                 attr_path='device_availability_last_sent',
+                 read_only=True, if_not_ready=True, v_type=str),
+}
+
 MAPPING[Resource.SCALE_CONNECTIVITY] = {
     'mode': IsAt(target=TO.ScaleProcessor, attr_path='scale_connectivity',
                  setter_path="connectivity_setter", v_type=str,
@@ -542,6 +574,7 @@ MAPPING[Resource.DE1] = {
     # profiles
     # firmware
     # firmwares
+    'availability': MAPPING[Resource.DE1_AVAILABILITY],
     'connectivity': MAPPING[Resource.DE1_CONNECTIVITY],
     'control': MAPPING[Resource.DE1_CONTROL],
     'setting': MAPPING[Resource.DE1_SETTING],
@@ -552,6 +585,7 @@ MAPPING[Resource.DE1] = {
 
 MAPPING[Resource.SCALE] = {
     'id': MAPPING[Resource.SCALE_ID],
+    'availability': MAPPING[Resource.SCALE_AVAILABILITY],
     'connectivity': MAPPING[Resource.SCALE_CONNECTIVITY],
     'tare': MAPPING[Resource.SCALE_TARE],
     'display': MAPPING[Resource.SCALE_DISPLAY],
