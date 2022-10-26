@@ -261,7 +261,7 @@ To First-Found DE1
 
 .. code-block::
 
-  $ curl -X PATCH --data '{"first_if_found": true}' http://localhost:1234/de1/id
+  $ curl -X PATCH --data '{"id": "scan"}' http://localhost:1234/de1/id
   [
       "D9:B2:48:AA:BB:CC"
   ]

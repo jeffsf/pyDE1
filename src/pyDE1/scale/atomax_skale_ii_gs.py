@@ -1,30 +1,32 @@
 """
-Copyright © 2021, 2022 Jeff Kletsky. All Rights Reserved.
+Copyright © 2021-2022 Jeff Kletsky. All Rights Reserved.
 
 License for this software, part of the pyDE1 package, is granted under
 GNU General Public License v3.0 only
 SPDX-License-Identifier: GPL-3.0-only
 """
-
 import asyncio
 import enum
-import logging
 import sys
 import time
-from typing import Callable
 
 import pyDE1
-from pyDE1.scale import Scale
 from pyDE1.scale.events import ScaleWeightUpdate, ScaleButtonPress
+from pyDE1.scale.generic_scale import register_scale_class, GenericScale
 
 logger = pyDE1.getLogger('Scale.AtomaxSkaleII')
 
 
-class AtomaxSkaleII(Scale):
+@register_scale_class
+class AtomaxSkaleII (GenericScale):
+
+    _supports_prefixes = ['Skale']
 
     def __init__(self):
-
         super(AtomaxSkaleII, self).__init__()
+        self._adopt_sync()
+
+    def _adopt_sync(self):
         self._nominal_period = 0.1  # seconds per sample
         self._minimum_tare_request_interval = 2.5 * self._nominal_period
         self._sensor_lag = 0.38  # seconds, including all transit delays
@@ -33,14 +35,32 @@ class AtomaxSkaleII(Scale):
 
         # Enable tare on button 1, hold UUID if need to unsubscribe
         self._button_1_tare_subscriber_id = None
-        asyncio.create_task(self._subscribe_button_press())
+        self._task_button_press = asyncio.create_task(
+            self._subscribe_button_press())
 
         # Linux, at least on an RPi 3B, needs response=True for write_gatt_char
-        self._write_gatt_char_response = sys.platform == 'linux'
+        self._write_gatt_char_response = (sys.platform == 'linux')
+
+    async def _adopt_class(self):
+        self._adopt_sync()
+
+    async def _leave_class(self):
+        try:
+            self._task_button_press.cancel()
+        except AttributeError:
+            pass
+        await self._event_button_press.unsubscribe(
+            self._button_1_tare_subscriber_id)
+        for attr in (
+            '_write_gatt_char_response',
+            '_button_1_tare_subscriber_id',
+            '_task_button_press',
+        ):
+            delattr(self, attr)
 
     async def _initialize_after_connection(self, hold_ready=False):
-        await super(AtomaxSkaleII, self)._initialize_after_connection(hold_ready=True)
-        logger.info(f"AtomaxSkaleII._initialize_after_connection()")
+        await super(AtomaxSkaleII, self)._initialize_after_connection(
+            hold_ready=True)
         await self.set_grams()
         if not hold_ready:
             self._notify_ready()
@@ -98,7 +118,9 @@ class AtomaxSkaleII(Scale):
         logger.info("Stopped button updates")
 
     async def send_command(self, command: "Command"):
-        await self._bleak_client.write_gatt_char(command.cuuid, command.value,
+        await self._bleak_client.write_gatt_char(
+            command.cuuid,
+            command.value,
             response=self._write_gatt_char_response)
 
     async def _update_self_from_device(self):
@@ -154,26 +176,26 @@ class AtomaxSkaleII(Scale):
     async def _subscribe_button_press(self):
         self._button_1_tare_subscriber_id \
             = await self._event_button_press.subscribe(
-                            self._button_press_subscriber)
-        
+            self._button_press_subscriber)
+        self._task_button_press = None
+
 
 class Characteristic(enum.Enum):
+    CONFIGURATION_EF80 = 'ef80'  # W
+    WEIGHT_NOTIFY_EF81 = 'ef81'  # N
+    BUTTON_NOTIFY_EF82 = 'ef82'  # N
+    UNKNOWN_EF83 = 'ef83'  # R
 
-    CONFIGURATION_EF80 =    'ef80'  # W
-    WEIGHT_NOTIFY_EF81 =    'ef81'  # N
-    BUTTON_NOTIFY_EF82 =    'ef82'  # N
-    UNKNOWN_EF83 =          'ef83'  # R
+    BATTERY_LEVEL = '2a19'  # 0-63
 
-    BATTERY_LEVEL =         '2a19'  # 0-63
+    MODEL_NUMBER = '2a24'  # "SkaleII"
 
-    MODEL_NUMBER =          '2a24'  # "SkaleII"
+    FW_REVISION = '2a26'
+    HW_REVISION = '2a27'
+    SW_REVISION = '2a28'
+    MANUFACTURER_NAME = '2a29'  # "ATOMAX INC."
 
-    FW_REVISION =           '2a26'
-    HW_REVISION =           '2a27'
-    SW_REVISION =           '2a28'
-    MANUFACTURER_NAME =     '2a29'  # "ATOMAX INC."
-
-    UNKNOWN =               '0f050002-3225-44b1-b97d-d3274acb29de'  # R
+    UNKNOWN = '0f050002-3225-44b1-b97d-d3274acb29de'  # R
 
     @property
     def cuuid(self):
@@ -182,7 +204,6 @@ class Characteristic(enum.Enum):
 
 # These typically get written to CONFIGURATION_EF80
 class Command(enum.Enum):
-
     DISPLAY_WEIGHT = b'\xec'
     DISPLAY_ON = b'\xed'
     DISPLAY_OFF = b'\xee'
@@ -210,6 +231,3 @@ class Command(enum.Enum):
     @property
     def cuuid(self):
         return Characteristic.CONFIGURATION_EF80.cuuid
-
-
-Scale.register_constructor(AtomaxSkaleII, 'Skale')

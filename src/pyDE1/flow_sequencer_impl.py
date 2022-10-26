@@ -186,16 +186,16 @@ class FlowSequencerImpl (Singleton, FlowSequencer):
 
         await asyncio.gather(
             self.de1.event_state_update.subscribe(
-                self._create_state_update_callback()),
+                self._state_update_subscriber),
 
             self.de1.event_shot_sample.subscribe(
-                self._create_shot_sample_update_callback()),
+                self._shot_sample_update_subscriber),
 
             self.de1.event_shot_sample_with_volumes_update.subscribe(
-                self._create_stop_at_volume_subscriber()),
+                self._stop_at_volume_subscriber),
 
             self.scale_processor.event_weight_and_flow_update.subscribe(
-                self._create_act_on_weight_subscriber()),
+                self._act_on_weight_subscriber),
         )
         logger.info("FlowSequencer subscriptions done")
         return self
@@ -280,94 +280,73 @@ class FlowSequencerImpl (Singleton, FlowSequencer):
     # SAW and SAV have their own handlers, supervisor enables and disables
     # Subscribe to the ScaleProcessor, let it handle scale-instance changes
 
-    def _create_weight_and_flow_update_callback(self) -> Callable:
-        flow_sequencer = self
+    async def _state_update_subscriber(self, su: StateUpdate):
+        """
+        There is the possibility that the transitions never go through flow
+        such as hitting "start" and deciding to stop before flow begins.
+        If this is not accounted for, the sequence might "never end".
+        """
 
-        async def flow_sequencer_wafu_cb(wafu: WeightAndFlowUpdate):
-            nonlocal flow_sequencer
-            pass  # SAW is _create_act_on_weight_subscriber
+        if su.state.is_flow_state:
 
-        return flow_sequencer_wafu_cb
+            if not su.previous_state.is_flow_state:
+                self._start_sequence(su.state)
+                logger.info("Start sequence")
 
-    def _create_state_update_callback(self) -> Callable:
-        flow_sequencer = self
+            if su.substate.flow_phase == 'during' \
+                    and su.previous_substate.flow_phase != 'during':
+                self._gate_flow_begin.set()
+                logger.info("Gate: Flow begin")
 
-        async def flow_sequencer_su_cb(su: StateUpdate):
-            """
-            There is the possibility that the transitions never go through flow
-            such as hitting "start" and deciding to stop before flow begins.
-            If this is not accounted for, the sequence might "never end".
-            """
-            nonlocal flow_sequencer
+            if su.previous_substate == API_Substates.PreInfuse \
+                    and su.substate != API_Substates.PreInfuse:
+                self._gate_exit_preinfuse.set()
+                logger.info("Gate: Exit preinfuse")
 
-            if su.state.is_flow_state:
+            if su.previous_substate.flow_phase == 'during' \
+                    and su.substate.flow_phase != 'during':
+                self._gate_flow_end.set()
+                logger.info("Gate: Flow end")
 
-                if not su.previous_state.is_flow_state:
-                    flow_sequencer._start_sequence(su.state)
-                    logger.info("Start sequence")
-
-                if su.substate.flow_phase == 'during' \
-                        and su.previous_substate.flow_phase != 'during':
-                    flow_sequencer._gate_flow_begin.set()
-                    logger.info("Gate: Flow begin")
-
-                if su.previous_substate == API_Substates.PreInfuse \
-                        and su.substate != API_Substates.PreInfuse:
-                    flow_sequencer._gate_exit_preinfuse.set()
-                    logger.info("Gate: Exit preinfuse")
-
-                if su.previous_substate.flow_phase == 'during' \
-                        and su.substate.flow_phase != 'during':
-                    flow_sequencer._gate_flow_end.set()
-                    logger.info("Gate: Flow end")
-
-            elif su.previous_state.is_flow_state:  # current is not a flow state
-                if su.previous_substate == API_Substates.PreInfuse:
-                    flow_sequencer._gate_exit_preinfuse.set()
-                    logger.info("Gate: Exit preinfuse")
-                if su.previous_substate.flow_phase == 'during':
-                    flow_sequencer._gate_flow_end.set()
-                    logger.info("Gate: Flow end")
-                flow_sequencer._gate_flow_state_exit.set()
-                logger.info("Gate: Flow state exit")
-                if flow_sequencer.sequence_is_running_and_flow_not_started:
-                    # Catch leaving before flow starts
-                    logger.info(
-                        "Non-flow state detected during sequence: "
-                        f"{su.state.name},{su.substate.name} "
-                        'calling _end_sequence().')
-                    await flow_sequencer._end_sequence()
-
-        return flow_sequencer_su_cb
-
-    def _create_shot_sample_update_callback(self) -> Callable:
-        flow_sequencer = self
-
-        async def flow_sequencer_ssu_cb(ssu: ShotSampleUpdate):
-            nonlocal flow_sequencer
-
-            if ssu.frame_number != self._last_profile_frame:
+        elif su.previous_state.is_flow_state:  # current is not a flow state
+            if su.previous_substate == API_Substates.PreInfuse:
+                self._gate_exit_preinfuse.set()
+                logger.info("Gate: Exit preinfuse")
+            if su.previous_substate.flow_phase == 'during':
+                self._gate_flow_end.set()
+                logger.info("Gate: Flow end")
+            self._gate_flow_state_exit.set()
+            logger.info("Gate: Flow state exit")
+            if self.sequence_is_running_and_flow_not_started:
+                # Catch leaving before flow starts
                 logger.info(
-                    "Frame change "
-                    f"{self._last_profile_frame} => {ssu.frame_number} at "
-                    f"{self.scale_processor.current_weight} g")
-                self._last_profile_frame = ssu.frame_number
-                self._last_profile_frame_weight = self.scale_processor.current_weight
+                    "Non-flow state detected during sequence: "
+                    f"{su.state.name},{su.substate.name} "
+                    'calling _end_sequence().')
+                await self._end_sequence()
 
-            try:
-                threshold = flow_sequencer.active_control.first_drops_threshold
-            except AttributeError:
-                threshold = None
-            if self.de1.current_state.is_flow_state \
-                    and threshold is not None \
-                    and not flow_sequencer._gate_expect_drops.is_set() \
-                    and self.de1.current_substate.flow_phase == 'during' \
-                    and ssu.group_pressure \
-                        > flow_sequencer.active_control.first_drops_threshold:
-                flow_sequencer._gate_expect_drops.set()
-                logger.info("Gate: Expect drops")
+    async def _shot_sample_update_subscriber(self, ssu: ShotSampleUpdate):
 
-        return flow_sequencer_ssu_cb
+        if ssu.frame_number != self._last_profile_frame:
+            logger.info(
+                "Frame change "
+                f"{self._last_profile_frame} => {ssu.frame_number} at "
+                f"{self.scale_processor.current_weight} g")
+            self._last_profile_frame = ssu.frame_number
+            self._last_profile_frame_weight = self.scale_processor.current_weight
+
+        try:
+            threshold = self.active_control.first_drops_threshold
+        except AttributeError:
+            threshold = None
+        if self.de1.current_state.is_flow_state \
+                and threshold is not None \
+                and not self._gate_expect_drops.is_set() \
+                and self.de1.current_substate.flow_phase == 'during' \
+                and ssu.group_pressure \
+                    > self.active_control.first_drops_threshold:
+            self._gate_expect_drops.set()
+            logger.info("Gate: Expect drops")
 
     # Should this be async def now?
     def _start_sequence(self, state: API_MachineStates):
@@ -895,33 +874,23 @@ class FlowSequencerImpl (Singleton, FlowSequencer):
         finally:
             self._sequence_watchdog_task = None
 
-    def _create_stop_at_volume_subscriber(self) -> Coroutine:
-        """
-        Should be subscribed to ShotSampleWithVolumesUpdate on DE1
-        """
-        flow_sequencer = self
-        sav_logger = pyDE1.getLogger('FlowSequencer.StopAtVolume')
-
-        async def stop_at_volume_subscriber(sswvu: ShotSampleWithVolumesUpdate):
-            nonlocal flow_sequencer, sav_logger
-
-            if (flow_sequencer._stop_at_volume_active
-                    and (target := flow_sequencer.active_control.stop_at_volume)
-                    is not None):
-                if sswvu.volume_pour >= target:
-                    await flow_sequencer.de1.stop_flow()
-                    sav_logger.info(
-                        "Triggered at {:.1f} mL for {:.1f} mL target".format(
-                            sswvu.volume_pour, target))
-                    await flow_sequencer.stop_at_notify(
-                        stop_at=StopAtType.VOLUME,
-                        action=StopAtNotificationAction.TRIGGERED,
-                        target_value=self.active_control_stop_at_volume,
-                        current_value=sswvu.volume_pour,
-                        active_state=self.active_state,
-                        current_frame=self.current_frame)
-
-        return stop_at_volume_subscriber
+    async def _stop_at_volume_subscriber(self, sswvu: ShotSampleWithVolumesUpdate):
+        sav_logger = logger.getChild('StopAtVolume')
+        if (self._stop_at_volume_active
+                and (target := self.active_control.stop_at_volume)
+                is not None):
+            if sswvu.volume_pour >= target:
+                await self.de1.stop_flow()
+                sav_logger.info(
+                    "Triggered at {:.1f} mL for {:.1f} mL target".format(
+                        sswvu.volume_pour, target))
+                await self.stop_at_notify(
+                    stop_at=StopAtType.VOLUME,
+                    action=StopAtNotificationAction.TRIGGERED,
+                    target_value=self.active_control_stop_at_volume,
+                    current_value=sswvu.volume_pour,
+                    active_state=self.active_state,
+                    current_frame=self.current_frame)
 
     def _select_weight_flow (self,
                              wafu: WeightAndFlowUpdate) -> 'WeightFlowTuple':
@@ -970,74 +939,64 @@ class FlowSequencerImpl (Singleton, FlowSequencer):
             flow_time=flow_time
         )
 
-    def _create_act_on_weight_subscriber(self) -> Coroutine:
-        """
-        Should be subscribed to WeightAndFlowUpdate on ScaleProcessor
-        """
-        flow_sequencer = self
-        saw_logger = pyDE1.getLogger('FlowSequencer.StopAtWeight')
-        mow_logger = pyDE1.getLogger('FlowSequencer.MoveOnWeight')
+    async def _act_on_weight_subscriber(self, wafu: WeightAndFlowUpdate):
 
-        async def act_on_weight_subscriber(wafu: WeightAndFlowUpdate):
-            nonlocal flow_sequencer, saw_logger, mow_logger
+        saw_logger = logger.getChild('StopAtWeight')
+        mow_logger = logger.getChild('MoveOnWeight')
 
-            done = False
+        done = False
 
-            wft = self._select_weight_flow(wafu)
+        wft = self._select_weight_flow(wafu)
 
-            if (flow_sequencer._stop_at_weight_active
-                    and (target := flow_sequencer.active_control.stop_at_weight)
-                    is not None):
-                # TODO: Should the choice of flow estimate be switchable?
-                dw = target - wft.weight
-                if wft.flow > 0:
-                    dt = dw / wft.flow
-                    target_time = wft.weight_time + dt \
-                                  - flow_sequencer.de1.stop_lead_time \
-                                  - flow_sequencer.de1.fall_time \
-                                  + flow_sequencer.stop_at_weight_adjust
-                    if time.time() >= target_time:
-                        await flow_sequencer.de1.stop_flow()
-                        saw_logger.info(
-                            "Triggered at {:.1f} g for {:.1f} g target".format(
-                                wft.weight, target))
-                        await flow_sequencer.stop_at_notify(
-                            stop_at=StopAtType.WEIGHT,
-                            action=StopAtNotificationAction.TRIGGERED,
-                            target_value=target,
-                            current_value=wafu.current_weight,
-                            active_state=self.active_state,
-                            current_frame=self.current_frame)
-                        done = True
+        if (self._stop_at_weight_active
+                and (target := self.active_control.stop_at_weight)
+                is not None):
+            # TODO: Should the choice of flow estimate be switchable?
+            dw = target - wft.weight
+            if wft.flow > 0:
+                dt = dw / wft.flow
+                target_time = wft.weight_time + dt \
+                              - self.de1.stop_lead_time \
+                              - self.de1.fall_time \
+                              + self.stop_at_weight_adjust
+                if time.time() >= target_time:
+                    await self.de1.stop_flow()
+                    saw_logger.info(
+                        "Triggered at {:.1f} g for {:.1f} g target".format(
+                            wft.weight, target))
+                    await self.stop_at_notify(
+                        stop_at=StopAtType.WEIGHT,
+                        action=StopAtNotificationAction.TRIGGERED,
+                        target_value=target,
+                        current_value=wafu.current_weight,
+                        active_state=self.active_state,
+                        current_frame=self.current_frame)
+                    done = True
 
-            if not done and (flow_sequencer._move_on_weight_active
-                    and ((target := flow_sequencer.active_control.mow_get_frame(
-                         frame := flow_sequencer.current_frame )) is not None)
-                    and (frame != self._last_frame_advanced_from)):
-                flow = self._adjust_flow_for_prediction(wafu.average_flow)
-                start_of_frame_weight = self._last_profile_frame_weight or 0
-                dw = target - (wft.weight - start_of_frame_weight)
-                if wft.flow > 0:
-                    dt = dw / wft.flow
-                    target_time = wft.weight_time + dt \
-                                  - flow_sequencer.de1.stop_lead_time
-                    if time.time() >= target_time:
-                        await flow_sequencer.de1.skip_to_next()
-                        self._last_frame_advanced_from = frame
-                        mow_logger.info(
-                            "Triggered frame "
-                            "{:d} at {:.1f} g for {:.1f} g target".format(
-                                frame, wft.weight, target))
-                        await flow_sequencer.stop_at_notify(
-                            stop_at=StopAtType.MOW,
-                            action=StopAtNotificationAction.TRIGGERED,
-                            target_value=target,
-                            current_value=wafu.current_weight,
-                            active_state=self.active_state,
-                            current_frame=self.current_frame)
-                        done = True
-
-        return act_on_weight_subscriber
+        if not done and (self._move_on_weight_active
+                and ((target := self.active_control.mow_get_frame(
+                     frame := self.current_frame )) is not None)
+                and (frame != self._last_frame_advanced_from)):
+            start_of_frame_weight = self._last_profile_frame_weight or 0
+            dw = target - (wft.weight - start_of_frame_weight)
+            if wft.flow > 0:
+                dt = dw / wft.flow
+                target_time = wft.weight_time + dt - self.de1.stop_lead_time
+                if time.time() >= target_time:
+                    await self.de1.skip_to_next()
+                    self._last_frame_advanced_from = frame
+                    mow_logger.info(
+                        "Triggered frame "
+                        "{:d} at {:.1f} g for {:.1f} g target".format(
+                            frame, wft.weight, target))
+                    await self.stop_at_notify(
+                        stop_at=StopAtType.MOW,
+                        action=StopAtNotificationAction.TRIGGERED,
+                        target_value=target,
+                        current_value=wafu.current_weight,
+                        active_state=self.active_state,
+                        current_frame=self.current_frame)
+                    done = True
 
     async def stop_at_notify(self, stop_at: StopAtType,
                              action: StopAtNotificationAction,

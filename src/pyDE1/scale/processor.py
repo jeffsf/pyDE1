@@ -18,9 +18,15 @@ from pyDE1.de1.c_api import API_MachineStates
 from pyDE1.de1.events import StateUpdate
 from pyDE1.dispatcher.resource import ConnectivityEnum
 from pyDE1.event_manager import SubscribedEvent
-from pyDE1.event_manager.events import ConnectivityState
+from pyDE1.event_manager.events import ConnectivityState, \
+    DeviceAvailabilityState
 from pyDE1.exceptions import DE1NoAddressError, DE1APIValueError
-from pyDE1.scale import Scale, scale_factory, recognized_scale_prefixes
+from pyDE1.scale.generic_scale import (
+    GenericScale, recognized_scale_prefixes, prefix_to_class,
+)
+# This needs to be here (or somewhere) to get it added to the lists
+from pyDE1.scale.atomax_skale_ii_gs import AtomaxSkaleII
+
 from pyDE1.scale.events import (
     ScaleWeightUpdate, ScaleTareSeen, WeightAndFlowUpdate
 )
@@ -50,16 +56,16 @@ class ScaleProcessor (Singleton):
 
     def _singleton_init(self):
 
-        self._scale: Optional[Scale] = None
+        self._scale = GenericScale()
         self._scale_weight_update_id: Optional[UUID] = None
         self._scale_tare_seen_id: Optional[UUID] = None
+        self._scale_changed_id: Optional[UUID] = None
         self._state_update_id: Optional[UUID] = None
         self._history_max = 10  # Will be extended if needed by Estimator
         self._history_time: List[float] = []
         self._history_weight: List[float] = []
         self._history_lock = asyncio.Lock()
         # set_scale needs _history_lock
-        self._scale = None
         self._event_weight_and_flow_update = SubscribedEvent(self)
 
         self.CURRENT_WEIGHT_MAX_AGE = 1.0  # seconds, else return None
@@ -81,61 +87,36 @@ class ScaleProcessor (Singleton):
             MedianFlow(self, '_median_flow', 11, 5),
         ]
 
-        # This is a bit tricky, as self._scale is None
-        bare_scale = Scale()
-        asyncio.create_task(
-            bare_scale._event_connectivity.publish(
-                bare_scale._connectivity_change(
-                    arrival_time=time.time(),
-                    state=ConnectivityState.DISCONNECTED))
-        )
+        asyncio.get_running_loop().create_task(self.wire_scale())
 
     @property
     def scale(self):
         return self._scale
 
-    async def set_scale(self, scale: Optional[Scale]):
-        # NB: A Scale is self-referential and may not be GCed if "dropped" here
-        if self._scale == scale:
-            return
-        # Unsubscribe the existing scale
-        if self._scale is not None:
-            await asyncio.gather(
-                self._scale.event_weight_update.unsubscribe(
-                    self._scale_weight_update_id
-                ),
-                self._scale.event_tare_seen.unsubscribe(
-                    self._scale_tare_seen_id
-                ),
-                DE1().event_state_update.unsubscribe(
-                    self._state_update_id
-                )
-            )
+    async def wire_scale(self):
+        (
+            self._scale_weight_update_id,
+            self._scale_tare_seen_id,
+            self._scale_changed_id,
+            self._state_update_id,
 
-        # Always set
-        self._scale = scale
+        ) = await asyncio.gather(
+            self._scale.event_weight_update.subscribe(
+                self._weight_update_subscriber),
 
-        if self._scale is not None:
-            (
-                self._scale_weight_update_id,
-                self._scale_tare_seen_id,
-                self._state_update_id,
+            self._scale.event_tare_seen.subscribe(
+                self._tare_seen_subscriber),
 
-            ) = await asyncio.gather(
-                self._scale.event_weight_update.subscribe(
-                    self._create_scale_weight_update_subscriber()),
+            self._scale.event_scale_changed.subscribe(
+                self._reset()
+            ),
 
-                self._scale.event_tare_seen.subscribe(
-                    self._create_scale_tare_seen_subscriber()),
+            DE1().event_state_update.subscribe(
+                self._state_update_subscriber),
 
-                DE1().event_state_update.subscribe(
-                    self._create_state_update_subscriber()),
-
-                return_exceptions=True
-            )
+            return_exceptions=True
+        )
         await self._reset()  # New scale, toss old history
-
-        return self
 
     # Provide "null-safe" methods for API
 
@@ -154,18 +135,34 @@ class ScaleProcessor (Singleton):
             return None
 
     @property
-    def scale_type(self):
-        if self.scale is not None:
-            return self.scale.type
-        else:
-            return None
-
-    @property
     def scale_connectivity(self):
         if self.scale is not None:
             return self.scale.connectivity
         else:
             return ConnectivityEnum.NOT_CONNECTED
+
+    async def connectivity_setter(self, value):
+        if self.scale is not None:
+            return await self.scale.connectivity_setter(value)
+        else:
+            raise DE1NoAddressError("No scale associated")
+
+    @property
+    def scale_availability_state(self):
+        if self.scale is not None:
+            return self.scale.availability_state
+        else:
+            return DeviceAvailabilityState.UNKNOWN
+
+    async def scale_availability_setter(self, value):
+        if self.scale is not None:
+            return await self.scale.availability_setter(value)
+        else:
+            raise DE1NoAddressError("No scale associated")
+
+    @property
+    def device_availability_last_sent(self):
+        return self.scale.device_availability_last_sent
 
     @property
     def current_weight(self) -> Optional[float]:
@@ -175,21 +172,25 @@ class ScaleProcessor (Singleton):
         else:
             return None
 
+
+
     #
     # Self-contained call for API
     #
 
-    async def first_if_found(self):
-        if self.scale and self.scale.is_connected:
+    async def connect_to_first_if_found(self):
+        if self.scale.is_connected:
             logger.warning(
-                "first_if_found requested, but already connected. "
+                "'scan' requested, but already connected. "
                 "No action taken.")
         else:
             device = await find_first_matching(
                 recognized_scale_prefixes())
             if device:
-                await self.change_scale_to_id(device.address)
+                await self.scale.change_address(device)
+                await self.scale.capture()
         return self.scale_address
+
 
     async def change_scale_to_id(self, ble_device_id: Optional[str]):
         """
@@ -199,70 +200,11 @@ class ScaleProcessor (Singleton):
         logger.info(f"Request to replace scale with {ble_device_id}")
 
         if ble_device_id == 'scan':
-            await self.first_if_found()
-            return
-
-        # TODO: Need to make distasteful assumption that the id is the address
-        try:
-            if self.scale_address == ble_device_id:
-                logger.info(f"Already using {ble_device_id}. No action taken")
-                return
-        except AttributeError:
-            pass
-
-        old_scale = self.scale
-
-        try:
-            if ble_device_id is None:
-                # Straightforward request to disconnect and not replace
-                await self.set_scale(None)
-
-            else:
-                ble_device = DiscoveredDevices().ble_device_from_id(ble_device_id)
-                if ble_device is None:
-                    logger.warning(f"No record of {ble_device_id}, initiating scan")
-                    # TODO: find_device_by_filter doesn't add to DiscoveredDevices
-                    ble_device = await BleakScannerWrapped.find_device_by_address(
-                        ble_device_id,
-                        timeout=config.bluetooth.CONNECT_TIMEOUT)
-                if ble_device is None:
-                    raise DE1NoAddressError(
-                        f"Unable to find device with id: '{ble_device_id}'")
-
-                try:
-                    logger.info(f"Disconnecting {self.scale}")
-                    await self.scale.disconnect()
-                except AttributeError:
-                    pass
-
-                new_scale = scale_factory(ble_device)
-                if new_scale is None:
-                    raise DE1APIValueError(
-                        f"No scale could be created from {ble_device}")
-
-                await self.set_scale(new_scale)
-                await self.scale.connect()
-
-        finally:
-            # Scale is self-referential, make sure GC-ed
-            if old_scale is not None and self.scale != old_scale:
-                await old_scale.disconnect()
-                old_scale.decommission()
-                del old_scale
-
-    async def connectivity_setter(self, value):
-        assert isinstance(value, ConnectivityEnum), \
-            f"mode of {value} not a ConnectivityEnum"
-        if value is ConnectivityEnum.NOT_CONNECTED:
-            if self.scale is not None:
-                await self.scale.disconnect()
-        elif value is ConnectivityEnum.CONNECTED:
-            if self.scale is not None:
-                await self.scale.connect()
+            await self.connect_to_first_if_found()
         else:
-            raise DE1APIValueError(
-                "Only CONNECTED and NOT_CONNECTED can be set, "
-                f"not {value}")
+            await self.scale.change_address(ble_device_id)
+
+        return self.scale.address
 
     @property
     def event_weight_and_flow_update(self):
@@ -283,90 +225,79 @@ class ScaleProcessor (Singleton):
         # Ultra safe
         return min(len(self._history_weight), len(self._history_time))
 
-    def _create_scale_tare_seen_subscriber(self) -> Callable:
-        scale_processor = self
+    async def _tare_seen_subscriber(self, sts: ScaleTareSeen):
+        await self._reset()
 
-        async def scale_tare_seen_subscriber(sts: ScaleTareSeen):
-            nonlocal scale_processor
-            await scale_processor._reset()
+    async def _weight_update_subscriber(self, swu: ScaleWeightUpdate):
+        # TODO: This has the potential to get really messy
+        #       Make sure this doesn't block other things
+        # The Skale can return multiple updates in milliseconds
+        # Is there any guarantee that they will be processed in order?
+        # "Acquiring a lock is fair: the coroutine that proceeds
+        #  will be the first coroutine that started waiting on the lock."
+        async with self._history_lock:
+            # Detect a gap in reporting being "too long"
+            # (typically from a disconnect/reconnect)
+            # A skip of three at 150 ms per update with the Skale II
+            TOO_LONG = 0.8 # seconds
+            try:
+                if ((dt := swu.scale_time
+                           - self._history_time[-1]) > TOO_LONG):
+                    logger.warning(
+                        "Resetting scale due to gap in reports: "
+                        f"{dt:0.3f} > {TOO_LONG} s")
+                    self._reset_have_lock()
+                    return
+            except IndexError:
+                pass  # (No elements in the history list)
+            self._history_time.append(swu.scale_time)
+            self._history_weight.append(swu.weight)
+            # Unlikely, but possibly the case that history_max shrunk
+            while len(self._history_time) \
+                    > self._history_max:
+                self._history_time.pop(0)
+            while len(self._history_weight) \
+                    > self._history_max:
+                self._history_weight.pop(0)
 
-        return scale_tare_seen_subscriber
+            # There's nothing here really parallelizable
+            for estimator in self._estimators:
+                estimator.estimate()
 
-    def _create_scale_weight_update_subscriber(self) -> Callable:
-        scale_processor = self
-
-        async def scale_weight_update_subscriber(swu: ScaleWeightUpdate):
-            nonlocal scale_processor
-            # TODO: This has the potential to get really messy
-            #       Make sure this doesn't block other things
-            # The Skale can return multiple updates in milliseconds
-            # Is there any guarantee that they will be processed in order?
-            # "Acquiring a lock is fair: the coroutine that proceeds
-            #  will be the first coroutine that started waiting on the lock."
-            async with self._history_lock:
-                # Detect a gap in reporting being "too long"
-                # (typically from a disconnect/reconnect)
-                # A skip of three at 150 ms per update with the Skale II
-                TOO_LONG = 0.8 # seconds
-                try:
-                    if ((dt := swu.scale_time
-                               - scale_processor._history_time[-1]) > TOO_LONG):
-                        logger.warning(
-                            "Resetting scale due to gap in reports: "
-                            f"{dt:0.3f} > {TOO_LONG} s")
-                        scale_processor._reset_have_lock()
-                        return
-                except IndexError:
-                    pass  # (No elements in the history list)
-                scale_processor._history_time.append(swu.scale_time)
-                scale_processor._history_weight.append(swu.weight)
-                # Unlikely, but possibly the case that history_max shrunk
-                while len(scale_processor._history_time) \
-                        > scale_processor._history_max:
-                    scale_processor._history_time.pop(0)
-                while len(scale_processor._history_weight) \
-                        > scale_processor._history_max:
-                    scale_processor._history_weight.pop(0)
-
-                # There's nothing here really parallelizable
-                for estimator in self._estimators:
-                    estimator.estimate()
-
-                await self._event_weight_and_flow_update.publish(
-                    WeightAndFlowUpdate(
-                        arrival_time=swu.arrival_time,
-                        scale_time=swu.scale_time,
-                        current_weight=self._current_weight,
-                        current_weight_time=self._current_weight_time,
-                        average_flow=self._average_flow,
-                        average_flow_time=self._average_flow_time,
-                        median_weight=self._median_weight,
-                        median_weight_time=self._median_weight_time,
-                        median_flow=self._median_flow,
-                        median_flow_time=self._median_flow_time,
-                    )
+            await self._event_weight_and_flow_update.publish(
+                WeightAndFlowUpdate(
+                    arrival_time=swu.arrival_time,
+                    scale_time=swu.scale_time,
+                    current_weight=self._current_weight,
+                    current_weight_time=self._current_weight_time,
+                    average_flow=self._average_flow,
+                    average_flow_time=self._average_flow_time,
+                    median_weight=self._median_weight,
+                    median_weight_time=self._median_weight_time,
+                    median_flow=self._median_flow,
+                    median_flow_time=self._median_flow_time,
                 )
+            )
 
-        return scale_weight_update_subscriber
-
-    def _create_state_update_subscriber(self) -> Callable:
-        scale_processor = self
-
-        async def state_update_subscriber(su: StateUpdate):
-            nonlocal scale_processor
-            scale = scale_processor.scale
-            if (su.previous_state == API_MachineStates.Sleep
-                    and su.state != API_MachineStates.Sleep
-                    and scale.address is not None
-                    and not scale.is_connected):
-                logger.info(
-                    "Reconnecting to scale as DE1 left Sleep to "
-                    f"{API_MachineStates(su.state).name}")
-                scale._reset_reconnect()
-                await scale_processor.scale._reconnect()
-
-        return state_update_subscriber
-
+    async def _state_update_subscriber(self, su: StateUpdate):
+        scale = self.scale
+        if (su.previous_state == API_MachineStates.Sleep
+                and su.state != API_MachineStates.Sleep
+                and scale.address not in ('', None)
+                and not scale.is_captured):
+            logger.info(
+                "Reconnecting to scale as DE1 left Sleep to "
+                f"{API_MachineStates(su.state).name}")
+            await self.scale.request_capture()
+        # If DE1 reports Sleep while the scale is awaiting connection
+        # such as in change_scale_to_id(), a timeout will occur.
+        # This happens when clicking both "Scan" buttons.
+        elif (su.state == API_MachineStates.Sleep
+              and scale.is_captured):
+            logger.info(
+                "Releasing scale as DE1 entered Sleep,"
+                f"{API_MachineStates(su.substate).name}")
+            await self.scale.request_release()
 
 # Prevent dreaded "circular import" problems
 from pyDE1.scale.estimator import CurrentWeight, AverageFlow, \

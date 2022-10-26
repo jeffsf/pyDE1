@@ -17,10 +17,10 @@ Typical usage:
 """
 
 import asyncio
-import inspect
 import time
 
 import pyDE1
+from pyDE1.utils import call_str
 
 
 class LockLogger:
@@ -36,7 +36,7 @@ class LockLogger:
         if self._lock.locked():
             self._checked = time.time()
             self._logger.warning(
-                f"Waiting for lock {repr(self._lock)} {self.call_str()}")
+                f"Waiting for lock {repr(self._lock)} {call_str()}")
         else:
             self._checked = None
         return self  # Allows lock_logger = LockLogger(...).check()
@@ -48,35 +48,18 @@ class LockLogger:
             # Warning here allows setting log level to warning
             # and still seeing how long the waits were
             self._logger.warning(
-                f"Acquired lock after {dt:.0f} ms {self.call_str(full_trace)}")
+                f"Acquired lock after {dt:.0f} ms {call_str(full_trace)}")
         else:
             self._logger.info(
-                f"Acquired lock {self.call_str()}")
+                f"Acquired lock {call_str()}")
 
     def released(self, full_trace=False):
         dt = (time.time() - self._acquired) * 1000
         if self._lock.locked():
             self._logger.error(
-                f"NOT RELEASED after {dt:.0f} ms {self.call_str()}")
+                f"NOT RELEASED after {dt:.0f} ms {call_str()}")
         else:
             self._logger.info(
-                f"Released lock after {dt:.0f} ms {self.call_str(full_trace)}")
+                f"Released lock after {dt:.0f} ms {call_str(full_trace)}")
 
-    @staticmethod
-    def call_str(full_trace=True):
-        stack = inspect.stack()[2]
-        retval = f"at {stack.function}:{stack.lineno}"
-        if full_trace:
-            idx = 3
-            while True:
-                try:
-                    stack = inspect.stack()[idx]
-                    next_caller = f"{stack.function}:{stack.lineno}"
-                    if stack.function.startswith('_run'):
-                        break
-                    retval = f"{retval} < {next_caller}"
-                except IndexError:
-                    break
-                idx += 1
-        return retval
 

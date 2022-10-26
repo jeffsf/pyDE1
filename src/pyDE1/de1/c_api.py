@@ -99,25 +99,25 @@ def validate_u_p_noneok(value, u, p):
     return validate_u_p(value, u, p)
 
 def u(val):
-    return int(round(val))
+    return int(round((0 if val is None else val)))
 
 def p0(val):
-    return int(round(val))
+    return int(round((0 if val is None else val)))
 
 def p1(val):
-    return int(round(val * 2))
+    return int(round((0 if val is None else val) * 2))
 
 def p4(val):
-    return int(round(val * 16))
+    return int(round((0 if val is None else val) * 16))
 
 def p8(val):
-    return int(round(val * 256))
+    return int(round((0 if val is None else val) * 256))
 
 def p12(val):
-    return int(round(val * 4096))
+    return int(round((0 if val is None else val) * 4096))
 
 def p16(val):
-    return int(round(val * 65536))
+    return int(round((0 if val is None else val) * 65536))
 
 
 class PackedAttr:
@@ -523,6 +523,9 @@ class ShotSettings (PackedAttr):
          ) = unpack('>BBBBBBBH', wire_bytes)
 
         self._TargetGroupTemp = self._TargetGroupTemp / 2**8
+
+        if self._TargetSteamTemp == 0:
+            self._TargetSteamTemp = None
 
         return self
 
