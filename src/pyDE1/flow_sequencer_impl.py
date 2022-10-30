@@ -935,21 +935,31 @@ class FlowSequencerImpl (Singleton, FlowSequencer):
         flow_time = wafu.average_flow_time
         weight = wafu.current_weight
         weight_time = wafu.current_weight_time
+
         if config.de1.bump_resist.USE_MEDIAN_WEIGHT_ALWAYS:
             weight = wafu.median_weight
             weight_time = wafu.median_weight_time
+
         if config.de1.bump_resist.USE_MEDIAN_FLOW_ALWAYS:
             flow = wafu.median_flow
             flow_time = wafu.median_flow_time
+
         if flow > config.de1.bump_resist.FLOW_THRESHOLD:
-            flow = (self.de1._cuuid_dict[
-                            CUUID.ShotSample].last_value.GroupFlow
-                        * config.de1.bump_resist.FLOW_MULTIPLIER)
-            flow_time = self.de1._cuuid_dict[
-                            CUUID.ShotSample].last_value.arrival_time
+            try:
+                flow = (self.de1._cuuid_dict[
+                                CUUID.ShotSample].last_value.GroupFlow
+                            * config.de1.bump_resist.FLOW_MULTIPLIER)
+                flow_time = self.de1._cuuid_dict[
+                                CUUID.ShotSample].last_value.arrival_time
+                if time.time() - flow_time > 0.600:
+                    raise ValueError("Too old to use")
+            except (AttributeError, ValueError):
+                flow = wafu.median_flow
+                flow_time = wafu.median_flow_time
             if config.de1.bump_resist.SUB_MEDIAN_WEIGHT:
                 weight = wafu.median_weight
                 weight_time = wafu.median_weight_time
+
         elif flow < 0:
             flow = 0
 
