@@ -12,7 +12,9 @@ import logging
 import logging.handlers
 import os
 import os.path
+import pprint
 import queue
+import time
 
 from pprint import pformat
 from socket import gethostname
@@ -246,13 +248,18 @@ def configure_mqtt() -> mqtt.Client:
                             flow_end=userdata['flow_end'],
                         )
                     )
-                    t_pi = userdata['pour_start'] - userdata['flow_start']
-                    t_pour = userdata['flow_end'] - userdata['pour_start']
-                    t_total = userdata['flow_end'] - userdata['flow_start']
+                    fs = userdata['flow_start']
+                    ps = userdata['pour_start']
+                    fe = userdata['flow_end']
+                    # Mainly to "fix" logging
+                    if ps == 0 or ps < fs:
+                        ps = fe
+                    t_pi = ps - fs
+                    t_pour = fe - ps
+                    t_total = fe - fs
                     logger.info(
                         f"Queued: Timing: {t_pi:.0f} + {t_pour:.0f} for "
-                        f"{t_total:.0f} seconds"
-                    )
+                        f"{t_total:.0f} seconds")
 
                 else:
                     pass
@@ -349,7 +356,7 @@ async def loop_on_queue(client: mqtt.Client):
             logger.info("Ready and waiting")
             got: ShotCompleteItem = await async_queue_get(
                 from_queue=shot_complete_queue)
-            logger.info(f"Queue got: {got}")
+            logger.debug(f"Queue got: {got}")
             # None gets returned on termination of async_queue_get()
             if got is None:
                 if not sm.shutdown_underway.is_set():
@@ -398,9 +405,16 @@ async def loop_on_queue(client: mqtt.Client):
                     url='https://visualizer.coffee/api/shots/upload',
                     files=fd,
                     auth=HTTPBasicAuth(username=config.visualizer.USERNAME,
-                                       password=config.visualizer.PASSWORD)
+                                       password=config.visualizer.PASSWORD),
+                    timeout=5.0,
                 ))
-            r: requests.Response
+            try:
+                r: requests.Response
+            except requests.exceptions.Timeout:
+                logger.warning(f"Timeout on upload {got}, requeueing")
+                shot_complete_queue.put_nowait(got)
+                continue
+
             if r.ok:
                 d = json.loads(r.text)
                 url = f"https:///visualizer.coffee/shots/{d['id']}"
