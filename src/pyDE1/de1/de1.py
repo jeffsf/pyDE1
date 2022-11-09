@@ -1941,6 +1941,8 @@ class FeatureFlag:
     #       ie, leave this on "auto-detect:
     # 1324  ac30fc78 2022-08-27 USB power restores 10 min after turning it off
     # 1325  1ae30ed7 2022-08-29 non-debug version of 1324
+    # 1328  9eb07c2d 2022-10-08 fixes GHC tap-tap for small changes
+    # 1330  0a9fd542 fixes bugs with "auto detect refill kit" settings
 
     @property
     def fw_version(self):
