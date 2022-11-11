@@ -10,7 +10,31 @@ Changelog
 =========
 
 ------------------
-1.5.1 - 2022-10-24
+1.5.2 - 2022-11-11
+------------------
+
+Overview
+========
+
+Adds a five-second timeout to Visualizer connections that might resolve
+an intermittent stoppage of uploads. If the upload times out,
+the shot is re-queued.
+
+Should this seem to cause local issues, rollback to v1.5.1
+can be done through ``pip install pyDE1==1.5.1`` or similar
+
+Fixed
+=====
+
+* Visualizer uploads now have a five-second timeout -- ``1ac011e5``
+
+New
+===
+
+* Notes on firmware versions 1328 and 1330 added -- ``4362254a``
+
+------------------
+1.5.1 - 2022-11-11
 ------------------
 
 Overview
@@ -29,7 +53,7 @@ Removed
 
 .. note::
 
-  Requires bleak v0.18.1 — patch to use v0.19.0 underway
+  Requires bleak v0.18.1 — Use v1.5.1 or later for bleak v0.19
 
 .. warning::
 
