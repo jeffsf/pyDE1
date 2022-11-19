@@ -18,6 +18,7 @@ logging every update_period seconds (and resetting the count)
 import enum
 import multiprocessing
 import multiprocessing.connection as mpc
+from logging import Formatter
 
 import pyDE1.config
 
@@ -274,6 +275,10 @@ def run_mqtt_outbound(master_config: pyDE1.config.Config,
 
         return outbound_pipe_reader
 
+
+    # Format log record locally so that fields are distinct
+    mqtt_formatter = Formatter(fmt=config.logging.formatters.MQTT)
+
     def create_pipe_reader_log_record() -> Callable:
 
         def outbound_pipe_reader():
@@ -282,10 +287,11 @@ def run_mqtt_outbound(master_config: pyDE1.config.Config,
             nonlocal outbound_pipe, mqtt_client
 
             record: logging.LogRecord = outbound_pipe.recv()
+            formatted = mqtt_formatter.format(record)
 
             mqtt_client.publish(
                 topic=f"{config.mqtt.TOPIC_ROOT}/log",
-                payload=record.getMessage(),
+                payload=formatted,
                 qos=0,
                 retain=False,
                 properties=None

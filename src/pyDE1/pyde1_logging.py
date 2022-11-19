@@ -277,8 +277,10 @@ def _setup_logging_internal(config_logging: ConfigLogging,
 
     if mqtt_connection:
         mqtt_handler = PipeHandler(pipe_connection=mqtt_connection)
-        mqtt_formatter = Formatter(fmt=config_logging.formatters.MQTT)
-        mqtt_handler.setFormatter(mqtt_formatter)
+        # This formatter is intentionally *not* set here to allow
+        # the unformatted logrecord to be sent over MQTT
+        # mqtt_formatter = Formatter(fmt=config_logging.formatters.MQTT)
+        # mqtt_handler.setFormatter(mqtt_formatter)
         mqtt_handler.setLevel(config_logging.handlers.MQTT)
     else:
         mqtt_handler = logging.NullHandler()
@@ -421,6 +423,7 @@ def log_record_to_json(record: logging.LogRecord):
     NB: message -- "The logged message, computed as msg % args.
                     This is set when Formatter.format() is invoked."
     """
+
     to_send = {'version': '1.0.0'}
     for attr in (
             'created',
