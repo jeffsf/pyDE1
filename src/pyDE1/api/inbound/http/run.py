@@ -94,6 +94,8 @@ def run_api_inbound(master_config: pyDE1.config.Config,
 
     SupervisedTask(heartbeat)
 
+    X_TIMESTAMP_HEADER = 'x-pyde1-timestamp'
+
     MIME_TYPE_MAP = {
         '.txt': 'text/plain',
         '.log': 'text/plain',
@@ -181,6 +183,7 @@ def run_api_inbound(master_config: pyDE1.config.Config,
             self.send_header("Content-length", str(len(resp_bytes)))
             self.send_header("Last-Modified", formatdate(timestamp,
                                                          localtime=True))
+            self.send_header(X_TIMESTAMP_HEADER, str(timestamp))
             self.end_headers()
             self.wfile.write(resp_bytes)
 
@@ -291,6 +294,9 @@ def run_api_inbound(master_config: pyDE1.config.Config,
 
             if resp.exception is None:
                 content = resp.payload
+                timestamp = resp.timestamp
+                if not timestamp:
+                    timestamp = time.time()
                 if mime_type.endswith('/json') and not isinstance(content, str):
                     content = json.dumps(content,
                                           sort_keys=True, indent=4) + "\n"
@@ -302,6 +308,7 @@ def run_api_inbound(master_config: pyDE1.config.Config,
                 self.send_header("Content-length", str(len(content)))
                 self.send_header("Last-Modified", formatdate(resp.timestamp,
                                                              localtime=True))
+                self.send_header(X_TIMESTAMP_HEADER, str(timestamp))
                 self.end_headers()
                 self.wfile.write(content)
 
