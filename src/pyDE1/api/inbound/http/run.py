@@ -334,6 +334,7 @@ def run_api_inbound(master_config: pyDE1.config.Config,
 
                 elif isinstance(resp.exception, DE1APIError):
                     http_status = HTTPStatus.BAD_REQUEST
+                    logger.debug(f"400 BAD_REQUEST: {resp.exception}")
 
                 elif isinstance(resp.exception,
                                 (TimeoutError,
@@ -435,6 +436,7 @@ def run_api_inbound(master_config: pyDE1.config.Config,
 
             content = self.get_content()
             if content is None:
+                logger.debug(f"400 BAD_REQUEST: No content")
                 self.send_error_response(
                     HTTPStatus.BAD_REQUEST,
                     "No content provided for PATCH request"
@@ -447,6 +449,7 @@ def run_api_inbound(master_config: pyDE1.config.Config,
                                                         patch=patch)
 
             except (json.JSONDecodeError, DE1APIError) as exception:
+                logger.debug(f"400 BAD_REQUEST: {exception}")
                 self.send_error_response(
                     HTTPStatus.BAD_REQUEST,
                     repr(exception))
@@ -481,6 +484,7 @@ def run_api_inbound(master_config: pyDE1.config.Config,
 
             content = self.get_content()
             if content is None:
+                logger.debug(f"400 BAD_REQUEST: No content")
                 self.send_error_response(
                     HTTPStatus.BAD_REQUEST,
                     "No content provided for PUT request"
@@ -500,6 +504,7 @@ def run_api_inbound(master_config: pyDE1.config.Config,
                                                         patch=patch)
 
             except (json.JSONDecodeError, DE1APIError) as exception:
+                logger.debug(f"400 BAD_REQUEST: {exception}")
                 self.send_error_response(
                     HTTPStatus.BAD_REQUEST,
                     repr(exception))
