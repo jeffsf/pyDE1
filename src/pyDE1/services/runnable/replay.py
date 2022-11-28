@@ -23,6 +23,7 @@ import socket
 import sqlite3
 import time
 import asyncio
+import uuid
 
 from typing import NamedTuple, Union, List, Optional
 
@@ -529,8 +530,15 @@ if __name__ == '__main__':
 
     result = None
 
+    new_sequence_id = str(uuid.uuid4())
+
     while len(send_list):
-        next_to_send = send_list.pop(0)
+        next_from_queue = send_list.pop(0)
+        next_to_send = SendListEntry(
+            send_at=next_from_queue.send_at,
+            payload=next_from_queue.payload.replace(
+                config.sequence.ID, new_sequence_id)
+        )
         while next_to_send.send_at > time.time() + MQTT_LEAD_TIME:
             time.sleep(0.010)
         # print(time.time(), next_to_send)
