@@ -221,12 +221,16 @@ class DE1 (Singleton, ManagedBleakDevice):
                 event: asyncio.Event
                 if not event.is_set():
                     if idx < len(event_list) - 1:
-                        failed = MMR0x80LowAddr(addr_low_list[idx])
+                        addr_low = addr_low_list[idx]
+                        failed = MMR0x80LowAddr.for_logging(addr_low,
+                                                            return_as_hex=True)
                         self._logger.warning(
                             f"No response from #{idx + 1} "
-                            f"of {len(event_list)}, " \
-                            + str(failed))
-                        await self.read_one_mmr0x80(failed)
+                            f"of {len(event_list)}, "
+                            f"{failed} (0x{addr_low:04x})"
+                        )
+                        # Retry
+                        await self.read_one_mmr0x80(addr_low)
                     else:
                         self._logger.warning(
                             "No response from CUUID.StateInfo"
