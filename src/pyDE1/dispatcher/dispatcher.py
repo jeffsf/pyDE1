@@ -20,7 +20,7 @@ from traceback import TracebackException
 import pyDE1
 from pyDE1.de1 import DE1
 from pyDE1.dispatcher.implementation import (
-    get_resource_to_dict, patch_resource_from_dict
+    get_resource_to_dict, patch_resource_from_dict, generate_mqtt_push
 )
 from pyDE1.dispatcher.payloads import APIRequest, APIResponse, HTTPMethod
 from pyDE1.dispatcher.resource import Resource
@@ -235,3 +235,9 @@ async def _request_queue_processor(request_queue: asyncio.Queue,
             logger.error(
                 "Response queue exceeded QUEUE_TOO_DEEP, "
                 f"{qd} > {QUEUE_TOO_DEEP}")
+
+        # Not all are implemented methods
+        if got.method in (HTTPMethod.PUT, HTTPMethod.PATCH,
+                          HTTPMethod.POST, HTTPMethod.DELETE):
+            await generate_mqtt_push(req=got)
+

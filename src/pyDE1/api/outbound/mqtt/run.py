@@ -253,25 +253,41 @@ def run_mqtt_outbound(master_config: pyDE1.config.Config,
 
             item_json = outbound_pipe.recv()
             item_as_dict = json.loads(item_json)
-            topic = f"{config.mqtt.TOPIC_ROOT}/{item_as_dict['class']}"
-            mqtt_client.publish(
-                topic=topic,
-                payload=item_json,
-                qos=0,
-                # retain=True,  # Can cause client to always check if "current"
-                retain=False,
-                properties=None
-            )
+            if 'class' in item_as_dict.keys():  # Is an event payload
+                topic = f"{config.mqtt.TOPIC_ROOT}/{item_as_dict['class']}"
+                mqtt_client.publish(
+                    topic=topic,
+                    payload=item_json,
+                    qos=0,
+                    # retain=True,  # Can cause client to always check if "current"
+                    retain=False,
+                    properties=None
+                )
 
-            now = time.time()
-            try:
-                counts[item_as_dict['class']] += 1
-            except KeyError:
-                counts[item_as_dict['class']] = 1
-            if now - last_update > update_period:
-                logger.getChild('Counts').debug(counts)
-                counts = {}
-                last_update = now
+                now = time.time()
+                try:
+                    counts[item_as_dict['class']] += 1
+                except KeyError:
+                    counts[item_as_dict['class']] = 1
+                if now - last_update > update_period:
+                    logger.getChild('Counts').debug(counts)
+                    counts = {}
+                    last_update = now
+
+            elif 'subtopic' in item_as_dict.keys():
+                subtopic = item_as_dict.pop('subtopic')
+                topic = f"{config.mqtt.TOPIC_ROOT}/update/{subtopic}"
+                mqtt_client.publish(
+                    topic=topic,
+                    payload=json.dumps(item_as_dict),
+                    qos=0,
+                    retain=False,
+                    properties=None
+                )
+
+            else:
+                logger.error(
+                    f"Unrecognized JSON for MQTT routing: '{item_json}'")
 
         return outbound_pipe_reader
 
