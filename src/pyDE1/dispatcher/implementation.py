@@ -9,6 +9,8 @@ SPDX-License-Identifier: GPL-3.0-only
 import asyncio
 import copy
 import inspect
+import json
+
 import math  # for nan to be uniquely math.nan
 import time
 from functools import reduce
@@ -20,7 +22,9 @@ from pyDE1.de1 import DE1
 from pyDE1.de1.c_api import PackedAttr, MMR0x80LowAddr, pack_one_mmr0x80_write
 from pyDE1.de1.notifications import MMR0x80Data
 from pyDE1.dispatcher.mapping import MAPPING, TO, IsAt
+from pyDE1.dispatcher.payloads import APIRequest
 from pyDE1.dispatcher.resource import Resource
+from pyDE1.event_manager import SubscribedEvent
 from pyDE1.exceptions import (
     DE1APITypeError, DE1APIValueError, DE1APIAttributeError, DE1APIKeyError,
     DE1NotConnectedError
@@ -48,6 +52,22 @@ To be able to return meaningful results from PUT/PATCH, the recipient
 needs to know which of possibly many elements the result comes from.
 As most won't be returning anything, at least right now, append each,
 within a nested dict, to a list and pass that back.
+
+2022-12
+=======
+
+Any time a PATCH or PUT (state-modifying request) is processed, 
+an MQTT packet is sent out with the content of the impacted area.
+
+At this time those areas include:
+    * de1/profile/id
+    * de1/control
+    * de1/setting
+    * de1/calibration
+    
+The retain flag was considered for these, but has not been added
+as the broker might be down or have been down, so a retained packet
+may not be available or may not represent current state.
 """
 
 
@@ -584,3 +604,25 @@ async def _patch_dict_to_mapping_inner(partial_value_dict: dict,
                 results_list=results_list)
         else:
             this_val = new_value
+
+
+async def generate_mqtt_push(req: APIRequest):
+    logger.info(f"Generating readback for {req}")
+    resource_path_changed = req.resource.value
+    resource_area = None
+    for res in (Resource.DE1_PROFILE_ID,
+               Resource.DE1_SETTING,
+               Resource.DE1_CONTROL,
+               Resource.DE1_CALIBRATION,
+               ):
+        if resource_path_changed.startswith(res.value):
+            resource_area = res
+            break
+    if resource_area is None:
+        return
+    timestamp = time.time()
+    read_back_dict = await get_resource_to_dict(resource_area)
+    if 'timestamp' not in read_back_dict.keys():
+        read_back_dict['timestamp'] = timestamp
+    read_back_dict['subtopic'] = resource_area.value
+    SubscribedEvent.outbound_pipe.send(json.dumps(read_back_dict))
