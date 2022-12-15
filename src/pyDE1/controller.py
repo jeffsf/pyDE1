@@ -7,7 +7,6 @@ SPDX-License-Identifier: GPL-3.0-only
 
 See `manual_setup()` for some still-needed setup on process start
 """
-
 import multiprocessing
 import multiprocessing.connection as mpc
 
@@ -28,6 +27,7 @@ def run_controller(master_config: pyDE1.config.Config,
 
     import pyDE1.pyde1_logging as pyde1_logging
     import pyDE1.shutdown_manager as sm
+    import pyDE1.status_reporter as status_reporter
 
     from pyDE1.de1 import DE1
     from pyDE1.de1.c_api import API_MachineStates
@@ -111,5 +111,7 @@ def run_controller(master_config: pyDE1.config.Config,
 
     # TODO: This may no longer be robust, make a classmethod to set/get?
     FlowSequencer.database_queue = database_queue
+
+    status_reporter.attach('status/controller', loop, logger)
 
     loop.run_forever()

@@ -15,9 +15,9 @@ import multiprocessing
 import pyDE1.config
 
 
-def run_database_logger(master_config: pyDE1.config.Config,
-                        log_queue: multiprocessing.Queue,
-                        notification_queue: multiprocessing.Queue):
+def run_database_recorder(master_config: pyDE1.config.Config,
+                          log_queue: multiprocessing.Queue,
+                          notification_queue: multiprocessing.Queue):
 
     pyDE1.config.config = master_config
     from pyDE1.config import config
@@ -27,6 +27,7 @@ def run_database_logger(master_config: pyDE1.config.Config,
 
     import pyDE1.pyde1_logging as pyde1_logging
     import pyDE1.shutdown_manager as sm
+    import pyDE1.status_reporter as status_reporter
 
     # Failing if only here (and not at the module level)
     from pyDE1.database.write_notifications import record_data
@@ -73,5 +74,7 @@ def run_database_logger(master_config: pyDE1.config.Config,
     SupervisedTask(heartbeat)
 
     SupervisedTask(record_data, notification_queue)
+
+    status_reporter.attach('status/db_recorder', loop, logger)
 
     loop.run_forever()

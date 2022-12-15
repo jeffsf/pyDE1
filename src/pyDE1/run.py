@@ -45,7 +45,7 @@ def run():
     from pyDE1.api.outbound.mqtt import run_mqtt_outbound, OutboundMode
     from pyDE1.api.inbound.http import run_api_inbound
     from pyDE1.controller import run_controller
-    from pyDE1.database.run import run_database_logger
+    from pyDE1.database.run import run_database_recorder
     from pyDE1.database.manage import check_schema
     from pyDE1.supervise import SupervisedProcess
 
@@ -175,7 +175,7 @@ def run():
 
     # Database logging
     supervised_database_logger_process = SupervisedProcess(
-        target=run_database_logger,
+        target=run_database_recorder,
         kwargs={
             'master_config': config,
             'log_queue': log_queue,

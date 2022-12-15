@@ -47,6 +47,7 @@ def run_api_inbound(master_config: pyDE1.config.Config,
     import pyDE1
     import pyDE1.pyde1_logging as pyde1_logging
     import pyDE1.shutdown_manager as sm
+    import pyDE1.status_reporter as status_reporter
 
     from pyDE1.dispatcher.mapping import MAPPING, mapping_requires
     from pyDE1.dispatcher.resource import Resource
@@ -537,5 +538,7 @@ def run_api_inbound(master_config: pyDE1.config.Config,
         logger.warning(f"Flushing stale response{from_str}: {got}")
 
     SupervisedExecutor(None, server.serve_forever)
+
+    status_reporter.attach('status/http', loop, logger)
 
     loop.run_forever()
