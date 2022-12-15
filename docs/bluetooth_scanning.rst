@@ -9,6 +9,12 @@
 Bluetooth Scanning
 ==================
 
+.. warning::
+
+  The approach for scanning was significantly changed for v2.0.0
+
+  This document is obsolete and will be removed on the next release
+
 Overview
 --------
 
@@ -22,6 +28,7 @@ changing of the DE1 and scale, when those APIs become available.
 Revision History
 ~~~~~~~~~~~~~~~~
 
+-  2023-01-21 - Marked as "obsolete" and will be deleted
 -  2022-10-22 – Update for scanning changes deprecated in v1.2.0
 -  2021-11-16 – Converted with ``pandoc`` to rST format
 -  2021-07-06 – Initial revision

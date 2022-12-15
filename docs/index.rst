@@ -18,6 +18,7 @@ Welcome to pyDE1's Documentation!
    :caption: Contents:
 
    README
+   whats_new_version_2
    api
    security
    quick_start
