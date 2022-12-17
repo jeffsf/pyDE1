@@ -67,21 +67,41 @@ SOFTWARE.
 # 2a2a    IEEE 11073-20601 Regulatory Certification Data List
 #
 
+# 2022-12-17 -- available firmware
+#   Lunar 2.6.016           (AL006 in hand)
+#   Lunar (2021) 1.0.009
+#
+# Seen on ACAIAL1
+#
+# 2a80  Age             Write w/o, notify
+# 2a19  Battery level   Read, notify
+# 2a50  PnP ID          Read -- 0x30-30-31-43-39-37
+#
+# 2a25  Serial number
+# 2a26  Firmware rev
+# 2a27  Hardware rev
+# 2a28  Software rev
+# 2a29  Manufacturer
+#
+
 import asyncio
 import enum
 import logging
 import time
 from typing import Optional, Union, Coroutine, Awaitable, NamedTuple
 
+import bleak
+
 import pyDE1
 import pyDE1.event_manager
-from pyDE1.scale import Scale
+from pyDE1.scale.generic_scale import GenericScale, register_scale_class
 from pyDE1.scale.events import ScaleWeightUpdate
 from pyDE1.supervise import SupervisedTask
 
 from pyDE1.config import config
 
 logger = pyDE1.getLogger('Scale.Acaia')
+logger_notify = logger.getChild('Notify')
 
 
 class InteractionStyle (enum.Enum):
@@ -261,6 +281,7 @@ def pack_config(setting_type: ConfigType,
                      ConfigRange,
                      ConfigBeep
                  ]) -> bytearray:
+    # TODO: Why is this a tuple that is raising "unexpected type"?
     payload = bytes((setting_type.value, setting_enum_instance.value))
     return pack_request(MessageType.CONFIG, sequence_number, payload)
 
@@ -270,14 +291,24 @@ class FixedMessage (enum.Enum):
     These messages are not time/situation varying
     and may not follow the `pack_message` format
 
-    Gathered from iOS "acaia Coffee" app on 2022-01-31
+    Gathered from iOS "acaia Coffee" app on 2022-01-31 and again 2022-12-18
     """
     IDENT   = bytes.fromhex('EFDD 0B2D 2D2D 2D2D 2D2D 2D2D 2D2D 2D2D 2D2D 683B')
+
+    # Follows with
+    #   Channel ID: 0x0004  Length: 0x0011 (17) [ 52 0D 00
+    #   EF DD 0C 09 00 01 01 02 02 05 03 04 15 ... ]
 
     # App sends every 5 seconds
     UNKNOWN_1 = bytes.fromhex('EFDD 0200 0000')
     HEARTBEAT = bytes.fromhex('EFDD 0002 0002 00')
     STATUS_REQUEST = bytes.fromhex('EFDD 0600 0000')  # seq can increment
+
+    # Both UNKNOWN_1 and STATUS_REQUEST seem to increment a sequence numbber
+    # after every command send
+    # ... 0204 0400 and 0604 0400
+    # ... 0205 0500 and 0605 0500
+    # wraps at ff back to 00
 
     TARE        = bytes.fromhex('EFDD 0400 0000')
 
@@ -303,16 +334,19 @@ class TimestampedData (NamedTuple):
     timestamp: float
     data: Union[bytes, bytearray]
 
+# This holds the common functionality, but is NOT registered
+class AcaiaGeneric (GenericScale):
 
-class AcaiaGeneric (Scale):
-
+    # _supports_prefixes = None
     _requires_heartbeat = True
     _heartbeat_period = 5  # Seconds
     _style = InteractionStyle.CLASSIC
 
     def __init__(self):
         super(AcaiaGeneric, self).__init__()
+        self._adopt_sync()
 
+    def _adopt_sync(self):
         # This config override is for development only, will be deprecated
         # 8<
         if config.acaia.INTERACTION_STYLE is not None:
@@ -324,10 +358,13 @@ class AcaiaGeneric (Scale):
         # >8
 
         self._nominal_period = 0.1  # seconds per sample
-        self._sensor_lag = 0.69  # seconds, including all transit delays
+        self._minimum_tare_request_interval = 2.5 * self._nominal_period
+        self._sensor_lag = 0.38  # seconds, including all transit delays
+        self._tare_timeout = 1.0  # seconds until considered coincidence
+        self._tare_threshold = 0.05  # grams, within this, considered "at zero"
 
-        self._logger = pyDE1.getLogger(self.__class__.__name__)
-        self._logger_notify = self._logger.getChild('notify')
+        # logger = pyDE1.getLogger(self.__class__.__name__)
+        # logger_notify = logger.getChild('notify')
         self._packet_buffer = bytearray()
         self._packet_buffer_lock = asyncio.Lock()
 
@@ -346,12 +383,34 @@ class AcaiaGeneric (Scale):
             self._notify_cuuid = CUUID.WEIGHT
             self._notify_lock = asyncio.Lock()
 
-        if self._requires_heartbeat:
-            self._to_decommission.append('_heartbeat')
+    async def _adopt_class(self):
+        self._adopt_sync()
 
+    async def _leave_class(self):
+        try:
+            self._heartbeat.cancel()
+        except AttributeError as e:
+            logger.error(f"Unable to cancel Acaia heartbeat: {e}")
+        for attr in (
+            # Class attributes, not instance attributes
+            # '_style',
+            # '_requires_heartbeat',
+            # '_heartbeat_period',
+            '_packet_buffer',
+            '_packet_buffer_lock',
+            '_heartbeat',
+            '_control_lock',
+            '_setting_seq_number',
+            '_timer_seq_number',
+            '_command_cuuid',
+            '_notify_cuuid',
+            '_notify_lock',
+        ):
+            delattr(self, attr)
 
-    async def standard_initialization(self, hold_notification=False):
-
+    async def _initialize_after_connection(self, hold_ready=False):
+        await super(AcaiaGeneric, self)._initialize_after_connection(
+            hold_ready=True)
         # Check here to confirm "really connected"
         # Another symptom is NOT_REALLY_CONNECTED received as a packet
         if not self._bleak_client.services.get_characteristic(
@@ -362,7 +421,7 @@ class AcaiaGeneric (Scale):
             logger.info(
                 ', '.join(map(lambda c: c.uuid.removesuffix(
                     '-0000-1000-8000-00805f9b34fb'),
-                list(self._bleak_client.services.characteristics.values()))))
+                    list(self._bleak_client.services.characteristics.values()))))
             await self.disconnect(for_reconnect=True)
             return
 
@@ -373,7 +432,8 @@ class AcaiaGeneric (Scale):
                 self._send_heartbeat,
             )
             self._heartbeat.work.name=f"{self.__class__.__name__}_Heartbeat"
-        await super(AcaiaGeneric, self).standard_initialization()
+
+        self._notify_ready()
 
     async def _send_packet(self, packet: Union[bytes, bytearray]):
         async with self._control_lock:
@@ -389,7 +449,15 @@ class AcaiaGeneric (Scale):
                          bytes.fromhex('0001 0102 0205 0304')))
 
     async def _send_heartbeat(self):
-        await self._send_packet(FixedMessage.HEARTBEAT.value)
+        more = ''
+        while self.is_connected:  # would error if not connected
+            try:
+                await self._send_packet(FixedMessage.HEARTBEAT.value)
+            except bleak.exc.BleakError as e:
+                more = e
+                break
+            await asyncio.sleep(self._heartbeat_period)
+        logger.info(f"Discontinuing heartbeat {more}")
 
     async def start_sending_weight_updates(self):
         async with self._notify_lock:
@@ -490,14 +558,15 @@ class AcaiaGeneric (Scale):
         multiple messages arriving in a single packet.
 
         This passes single, "complete" messages to process_message()
+
+        Seen with Lunar and perhaps not with Lunar 2001
+            Scale.Acaia: Waiting for more bytes, 3 < 5 bytes ef:dd:0c
         """
         self._packet_buffer.extend(tsd.data)
 
         while (lpb := len(self._packet_buffer)):
 
             if lpb < 5:
-                self._logger.debug(
-                    f"Waiting for more bytes, {lpb} < 5 bytes")
                 break
 
             # Check for the troublesome 'efdd 2008 0800' 'efdd ...'
@@ -518,25 +587,25 @@ class AcaiaGeneric (Scale):
                 try:
                     len_byte = self._packet_buffer[3]
                 except IndexError:
-                    self._logger.debug(
+                    logger.debug(
                         f"Waiting for more bytes, no length byte yet")
                     break
                 if lpb >= (loa := len_byte + 5):
                     if lpb > 26:  # 26 seen with ACK and TIMER
-                        self._logger.warning(
+                        logger.warning(
                             f"Packet buffer getting long, at bytes: {lpb}")
                     await self._process_message(self._packet_buffer[0:loa],
                                                 timestamp=tsd.timestamp)
                     self._packet_buffer = self._packet_buffer[loa:]
                 else:
-                    self._logger.debug(
+                    logger.debug(
                         f"Waiting for {loa - lpb} more bytes")
                     break
             else:
                 if idx == -1:
                     if lpb == 1 \
                             and self._packet_buffer[0] == HEADER[0]:
-                        self._logger.info(
+                        logger.info(
                             "Packet buffer is just first HEADER byte")
                         break
                     if lpb >= 2:
@@ -546,7 +615,7 @@ class AcaiaGeneric (Scale):
                     discarded = self._packet_buffer[0:idx]
                     self._packet_buffer \
                         = self._packet_buffer[idx:]
-                self._logger.warning(
+                logger.warning(
                     "Packet buffer does not start with header, discarding "
                     + hex_logstr(discarded))
 
@@ -576,36 +645,36 @@ class AcaiaGeneric (Scale):
             # await self.disconnect(for_reconnect=True)
 
         if message == b'\xef\xdd\x20\x08\x08\x00':
-            self._logger_notify.info("Acaia 0x2008 = power up?")
+            logger_notify.info("Acaia 0x2008 = power up?")
             return
         elif message == b'\xef\xdd\x20\x0a\x0a\x00':
-            self._logger_notify.info("Acaia 0x200a = power down?")
+            logger_notify.info("Acaia 0x200a = power down?")
             return
         elif message == b'\xef\xdd\x20\x0c\x0c\x00':
-            self._logger_notify.info("Acaia 0x200c = power down?")
+            logger_notify.info("Acaia 0x200c = power down?")
             return
 
         try:
             length_byte = message[3]
             expected_length = 3 + length_byte + 2
             if len(message) != expected_length:
-                self._logger_notify.error(
+                logger_notify.error(
                     f"Expected {expected_length} packet, "
                     f"got {len(message)} bytes: {hex_logstr(message)}")
         except IndexError:
-            self._logger_notify.error(
+            logger_notify.error(
                 f"Very short packet, "
                 f"got {len(message)} bytes: {hex_logstr(message)}")
             return
 
         if len(message) < 7:
-            self._logger_notify.error(f"Short packet: {hex_logstr(message)}")
+            logger_notify.error(f"Short packet: {hex_logstr(message)}")
             return
 
         try:
             message_type = MessageType(message[2])
         except ValueError as e:
-            self._logger_notify.error(
+            logger_notify.error(
                 f"0x{message[2]:02x} {e}: {hex_logstr(message)}")
             return
 
@@ -613,7 +682,7 @@ class AcaiaGeneric (Scale):
             try:
                 event_type = EventType(message[4])
             except ValueError as e:
-                self._logger_notify.error(f"{e}: {hex_logstr(message)}")
+                logger_notify.error(f"{e}: {hex_logstr(message)}")
                 return
         else:
             event_type = None  # Not really needed, but keeps pyCharm happy
@@ -643,15 +712,24 @@ class AcaiaGeneric (Scale):
                 if length_byte == 0x08:
                     pass
 
+                elif length_byte == 0x0a:
+                    # Seen on Lunar but not Lunar 2021
+                    unknown11 = message[11]
+                    battery = message[12]
+                    unknown13 = message[13]
+                    other = f"{other} {battery}% {unknown11}[11] {unknown13}[13]"
+                    logger_notify.debug(
+                        f"0x0a length: {weight}g {other} {hex_logstr(message)}")
+
                 elif length_byte == 0x0c:
                     # it is a status, weight notification, "long version"
 
-                    unknown = message[11]
+                    unk11 = message[11]
                     minutes = message[12]
                     seconds = message[13]
                     tenths = message[14]  # Seemingly, though why "2" at start?
 
-                    other = f"{other} {unknown} {minutes}:{seconds:02.0f},{tenths:01.0f}"
+                    other = f"{other} {unk11} {minutes}:{seconds:02.0f},{tenths:01.0f}"
 
                 elif length_byte == 0x0e:
                     # it is a status, weight notification, "longer version"
@@ -668,33 +746,33 @@ class AcaiaGeneric (Scale):
                             f"- {unk11} {battery}%"
 
                 else:
-                    self._logger_notify.error(
+                    logger_notify.error(
                         f"{message_type.name}, {event_type.name} "
                         f"0x{len(message) - 4:02x} bytes unexpected: "
                         f"{hex_logstr(message)}")
 
-                asyncio.get_running_loop().create_task(
-                    self.event_weight_update.publish(
+                # asyncio.get_running_loop().create_task(
+                await self.event_weight_update.publish(
                         ScaleWeightUpdate(
                             arrival_time=timestamp,
                             scale_time=self._scale_time_from_latest_arrival(
                                 timestamp),
                             weight=weight
                         ))
-                )
+                # )
 
             elif event_type == EventType.REPLY_06:
-                self._logger_notify.info(
+                logger_notify.info(
                     f"{message_type.name}, {event_type.name}: "
                     f"{hex_logstr(message)}")
 
             elif event_type == EventType.TIMER:
-                self._logger_notify.info(
+                logger_notify.info(
                     f"{message_type.name}, {event_type.name}: "
                     f"{hex_logstr(message)}")
 
             elif event_type == EventType.KEY:
-                self._logger_notify.info(
+                logger_notify.info(
                     f"{message_type.name}, {event_type.name}: "
                     f"{hex_logstr(message)}")
 
@@ -718,17 +796,17 @@ class AcaiaGeneric (Scale):
                 # KEY: 0c: 0e 08 09 05 17 00 00 00 02 03 07
 
             elif event_type == EventType.ACK:
-                self._logger_notify.info(
+                logger_notify.info(
                     f"{message_type.name}, {event_type.name}: "
                     f"{hex_logstr(message)}")
 
         elif message_type == MessageType.TARE:
-            self._logger_notify.info(
+            logger_notify.info(
                 f"{message_type.name}: {hex_logstr(message)}")
 
         elif message_type == MessageType.INFO:
             # Not connected? WARNING Notify: INFO: 07: 07 02 19 01 00 01
-            self._logger_notify.info(
+            logger_notify.info(
                 f"{message_type.name}: {hex_logstr(message)}")
 
         # Clues to status-message byte assignments from
@@ -762,7 +840,7 @@ class AcaiaGeneric (Scale):
             level = logging.INFO
             if battery > 100:
                 level = logging.ERROR
-            self._logger_notify.log(level,
+            logger_notify.log(level,
                               "{}: {}% {} ({}) {} ({}) {} {}".format(
                                   message_type.name,
                                   battery,
@@ -775,34 +853,30 @@ class AcaiaGeneric (Scale):
                               ))
 
         elif message_type == MessageType.IDENTIFY:
-            self._logger_notify.info(
+            logger_notify.info(
                 f"{message_type.name}: {hex_logstr(message)}")
 
         elif message_type == MessageType.TIMER:
-            self._logger_notify.info(
+            logger_notify.info(
                 f"{message_type.name}: {hex_logstr(message)}")
 
         else:
-            self._logger_notify.warning(
+            logger_notify.warning(
                 f"Unrecognized message type: {hex_logstr(message)}")
 
 
+# Register later to not conflict with ACAIAL1
+@register_scale_class
 class AcaiaAcaia (AcaiaGeneric):
-
+    _supports_prefixes = ['ACAIA', 'ACAIAL1']
     _requires_heartbeat = False
     _style = InteractionStyle.CLASSIC
 
 
-class AcaiaProch (AcaiaGeneric):
-
-    _requires_heartbeat = False
-    _style = InteractionStyle.CLASSIC
-
-
-class AcaiaLunar (AcaiaGeneric):
-    """
-    TODO: Confirm that original Lunar works like Lunar 2021
-    """
+@register_scale_class
+class AcaiaLunar(AcaiaGeneric):
+    # Original Lunar seems to be CLASSIC
+    _supports_prefixes = ['LUNAR']
     _requires_heartbeat = False
     _style = InteractionStyle.LUNAR
 
@@ -813,20 +887,22 @@ class AcaiaLunar (AcaiaGeneric):
         self._sensor_lag = 0.38
 
 
+@register_scale_class
+class AcaiaProch (AcaiaGeneric):
+    _supports_prefixes = ['PROCH']
+    _requires_heartbeat = False
+    _style = InteractionStyle.CLASSIC
+
+
+@register_scale_class
 class AcaiaPearlS (AcaiaGeneric):
-
+    _supports_prefixes = ['PEARLS']
     _requires_heartbeat = False
     _style = InteractionStyle.LUNAR
 
 
+@register_scale_class
 class AcaiaPyxis (AcaiaGeneric):
-
+    _supports_prefixes = ['PYXIS']
     _requires_heartbeat = False
     _style = InteractionStyle.LUNAR
-
-
-Scale.register_constructor(AcaiaAcaia, 'ACAIA')
-Scale.register_constructor(AcaiaProch, 'PROCH')
-Scale.register_constructor(AcaiaLunar, 'LUNAR')
-Scale.register_constructor(AcaiaPearlS, 'PEARLS')
-Scale.register_constructor(AcaiaPyxis, 'PYXIS')
