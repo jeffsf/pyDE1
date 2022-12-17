@@ -6,7 +6,8 @@ GNU General Public License v3.0 only
 SPDX-License-Identifier: GPL-3.0-only
 """
 
-from .scale import (
-    Scale, scale_factory, recognized_scale_prefixes
-)
-from .atomax_skale_ii import AtomaxSkaleII
+# These need to be here (or somewhere)
+# to get the implementations added to the lists
+import pyDE1.scale.atomax_skale_ii_gs
+import pyDE1.scale.acaia
+

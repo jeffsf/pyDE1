@@ -102,6 +102,7 @@ class Config (ConfigYAML):
         self.http = _HTTP(self)    # Calculating timeout needs bluetooth
         self.logging = _Logging()
         self.mqtt = _MQTT()
+        self.acaia = _Acaia()  # For development, will be deprecated
 
 
 # This craziness is so pyCharm autocompletes
@@ -235,6 +236,16 @@ class _BumpResist (ConfigLoadable):
         self.SUB_MEDIAN_WEIGHT = True  # when excessive flow
         self.USE_MEDIAN_WEIGHT_ALWAYS = False
         self.USE_MEDIAN_FLOW_ALWAYS = False
+
+
+class _Acaia (ConfigLoadable):
+    def __init__(self):
+        # For development, allow in-field overrides if not None
+        # Will be deprecated once models are working solidly
+        self.INTERACTION_STYLE = None   # 'classic' or 'lunar'
+        self.REQUIRES_HEARTBEAT = None  # True or False
+        self.HEARTBEAT_PERIOD = None    # Float seconds
+
 
 
 config = Config()

@@ -24,8 +24,6 @@ from pyDE1.exceptions import DE1NoAddressError, DE1APIValueError
 from pyDE1.scale.generic_scale import (
     GenericScale, recognized_scale_prefixes, prefix_to_class,
 )
-# This needs to be here (or somewhere) to get it added to the lists
-from pyDE1.scale.atomax_skale_ii_gs import AtomaxSkaleII
 
 from pyDE1.scale.events import (
     ScaleWeightUpdate, ScaleTareSeen, WeightAndFlowUpdate

@@ -29,7 +29,7 @@ from pyDE1.exceptions import (
     DE1UnsupportedDeviceError,
 )
 from pyDE1.scale.events import ScaleWeightUpdate, ScaleTareSeen
-from pyDE1.scanner import _registered_ble_prefixes, find_first_matching
+from pyDE1.scanner import _registered_ble_prefixes
 
 logger = pyDE1.getLogger('Scale')
 
@@ -436,7 +436,7 @@ class GenericScale (ClassChanger, ManagedBleakDevice):
 
 class ScaleChange(ConnectivityChange):
     """
-    Gets set when the address of the scale changes "behind the scenes"
+    Gets sent when the address of the scale changes "behind the scenes"
     such as with a call to scale.take_over_from()
 
     Not sent on initialization at this time
