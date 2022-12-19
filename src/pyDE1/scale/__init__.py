@@ -8,6 +8,6 @@ SPDX-License-Identifier: GPL-3.0-only
 
 # These need to be here (or somewhere)
 # to get the implementations added to the lists
-import pyDE1.scale.atomax_skale_ii_gs
 import pyDE1.scale.acaia
+import pyDE1.scale.atomax_skale_ii
 
