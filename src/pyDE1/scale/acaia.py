@@ -215,6 +215,16 @@ class ConfigBeep (enum.IntEnum):
     ON  = 0x01
 
 
+class Info (NamedTuple):
+    battery: int
+    units: ConfigUnits
+    unk2: int
+    auto_off: ConfigAutoOff
+    unk4: int
+    beep: ConfigBeep
+    range: ConfigRange
+
+
 # message[4]
 class EventType (enum.IntEnum):
     WEIGHT      = 0x05
@@ -281,7 +291,8 @@ def pack_config(setting_type: ConfigType,
                      ConfigRange,
                      ConfigBeep
                  ]) -> bytearray:
-    # TODO: Why is this a tuple that is raising "unexpected type"?
+    # Why is this a tuple that is raising "unexpected type"?
+    # Probably because it is two int values that aren't seen that way
     payload = bytes((setting_type.value, setting_enum_instance.value))
     return pack_request(MessageType.CONFIG, sequence_number, payload)
 
@@ -363,6 +374,8 @@ class AcaiaGeneric (GenericScale):
         self._tare_timeout = 1.0  # seconds until considered coincidence
         self._tare_threshold = 0.05  # grams, within this, considered "at zero"
 
+        self._info: Optional[Info] = None
+
         # logger = pyDE1.getLogger(self.__class__.__name__)
         # logger_notify = logger.getChild('notify')
         self._packet_buffer = bytearray()
@@ -396,6 +409,7 @@ class AcaiaGeneric (GenericScale):
             # '_style',
             # '_requires_heartbeat',
             # '_heartbeat_period',
+            '_info',
             '_packet_buffer',
             '_packet_buffer_lock',
             '_heartbeat',
@@ -534,6 +548,14 @@ class AcaiaGeneric (GenericScale):
         await self._send_packet(pack_config(ConfigType.UNITS,
                                             seq,
                                             ConfigUnits.OZ))
+
+    async def set_beep(self, audible: bool):
+        seq = self._setting_seq_number
+        self._setting_seq_number = (self._setting_seq_number + 1) & 0xff
+        await self._send_packet(pack_config(ConfigType.BEEP,
+                                            seq,
+                                            ConfigBeep.ON if audible else
+                                                ConfigBeep.OFF))
 
     def _create_notification_handler(self) -> Coroutine:
 
@@ -815,41 +837,55 @@ class AcaiaGeneric (GenericScale):
             payload = message[4:-2]
             battery = payload[0]
             try:
-                units = ConfigUnits(payload[1]).name
+                units = ConfigUnits(payload[1])
             except ValueError as e:
                 logger.error(f"In processing STATUS, {e}")
                 units = '?'
             unk2 = payload[2]
             try:
-                auto_off = ConfigAutoOff(payload[3]).name
+                auto_off = ConfigAutoOff(payload[3])
             except ValueError as e:
                 logger.error(f"In processing STATUS, {e}")
                 auto_off = '?'
             unk4 = payload[4]
             try:
-                beep = ConfigBeep(payload[5]).name
+                beep = ConfigBeep(payload[5])
             except ValueError as e:
                 logger.error(f"In processing STATUS, {e}")
                 beep = '?'
             try:
-                range = ConfigRange(payload[7]).name
+                range = ConfigRange(payload[7])
             except ValueError as e:
                 logger.error(f"In processing STATUS, {e}")
                 range = '?'
 
             level = logging.INFO
+            try:
+                self._info = Info(
+                    battery=battery,
+                    units=units,
+                    unk2=unk2,
+                    auto_off=auto_off,
+                    unk4=unk4,
+                    beep=beep,
+                    range=ConfigRange(range),
+                )
+            except ValueError as e:
+                level = logging.INFO
+                logger_notify.error(f"Error saving info data {e}")
+
             if battery > 100:
                 level = logging.ERROR
             logger_notify.log(level,
                               "{}: {}% {} ({}) {} ({}) {} {}".format(
                                   message_type.name,
                                   battery,
-                                  units,
+                                  units.name,
                                   unk2,
-                                  auto_off,
+                                  auto_off.name,
                                   unk4,
-                                  beep,
-                                  range,
+                                  beep.name,
+                                  range.name,
                               ))
 
         elif message_type == MessageType.IDENTIFY:

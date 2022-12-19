@@ -507,7 +507,7 @@ class FlowSequencerImpl (Singleton, FlowSequencer):
             return
         if self.active_state not in self.autotare_states:
             scale.hold_at_tare = False
-            logger.debug(f"Scale: release - {self.active_state.name}")
+            logger.debug(f"Scale: release hold at tare - {self.active_state.name}")
             await self.auto_tare_notify(AutoTareNotificationAction.DISABLED)
             return
         try:
@@ -518,13 +518,13 @@ class FlowSequencerImpl (Singleton, FlowSequencer):
 
             await self._gate_expect_drops.wait()
             scale.hold_at_tare = False
-            logger.debug("Scale: release")
+            logger.debug("Scale: release hold at tare")
             await self.auto_tare_notify(AutoTareNotificationAction.DISABLED)
 
         except asyncio.CancelledError:
             scale = self._scale_processor.scale
             scale.hold_at_tare = False
-            logger.info("Scale: release - on cancel")
+            logger.info("Scale: release hold at tare - on cancel")
             await self.auto_tare_notify(AutoTareNotificationAction.DISABLED)
             raise
 
