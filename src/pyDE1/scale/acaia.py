@@ -535,6 +535,14 @@ class AcaiaGeneric (GenericScale):
                                             seq,
                                             ConfigUnits.OZ))
 
+    async def set_beep(self, audible: bool):
+        seq = self._setting_seq_number
+        self._setting_seq_number = (self._setting_seq_number + 1) & 0xff
+        await self._send_packet(pack_config(ConfigType.BEEP,
+                                            seq,
+                                            ConfigBeep.ON if audible else
+                                                ConfigBeep.OFF))
+
     def _create_notification_handler(self) -> Coroutine:
 
         acaia_scale = self
