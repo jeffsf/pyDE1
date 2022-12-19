@@ -7,6 +7,7 @@ SPDX-License-Identifier: GPL-3.0-only
 """
 import asyncio
 import logging
+import pprint
 from asyncio import iscoroutinefunction
 
 import pytest
@@ -18,9 +19,10 @@ from pyDE1.dispatcher.resource import ConnectivityEnum
 from pyDE1.event_manager.events import ConnectivityState, DeviceRole
 from pyDE1.exceptions import DE1NotConnectedError, DE1UnsupportedDeviceError, \
     DE1RuntimeError
+from pyDE1.scale.acaia import AcaiaAcaia
 
 from pyDE1.scale.generic_scale import GenericScale, register_scale_class
-from pyDE1.scale.atomax_skale_ii_gs import AtomaxSkaleII
+from pyDE1.scale.atomax_skale_ii import AtomaxSkaleII
 
 
 @pytest.mark.asyncio
@@ -205,6 +207,36 @@ async def test_simple_address_change():
     assert gs.connectivity == ConnectivityEnum.NOT_CONNECTED
     assert gs.connectivity_state == ConnectivityState.INITIAL
 
+
+@pytest.mark.asyncio
+async def test_no_class_cruft():
+
+    def save_pointers (scale: GenericScale):
+        return [getattr(scale, a) for a in [
+            '_event_weight_update',
+            '_event_button_press',
+            '_event_tare_seen',
+            '_event_scale_changed',
+            '_period_estimator',
+        ]]
+
+    generic = GenericScale()
+    atomax = AtomaxSkaleII()
+    await atomax._change_class(GenericScale)
+    assert generic.__dict__.keys() == atomax.__dict__.keys()
+    acaia = AcaiaAcaia()
+    await acaia._change_class(GenericScale)
+    assert generic.__dict__.keys() == acaia.__dict__.keys()
+    generic_pointers = save_pointers(generic)
+    await generic._change_class(AtomaxSkaleII)
+    atomax_pointers = save_pointers(generic)
+    assert atomax_pointers == generic_pointers
+    await generic._change_class(AcaiaAcaia)
+    acaia_pointers = save_pointers(generic)
+    assert acaia_pointers == generic_pointers
+
+
+
 @pytest.mark.skip
 @pytest.mark.live
 @pytest.mark.asyncio
@@ -232,3 +264,5 @@ async def test_skaleII_connect(caplog):
 
     print()
     print(caplog.text)
+
+

@@ -9,6 +9,7 @@ Common events for scales
 """
 
 from pyDE1.event_manager import EventPayload
+from pyDE1.event_manager.events import ConnectivityChange
 
 
 class ScaleWeightUpdate(EventPayload):
@@ -70,3 +71,13 @@ class WeightAndFlowUpdate(EventPayload):
         self.median_weight_time: float = median_weight_time
         self.median_flow: float = median_flow
         self.median_flow_time: float = median_flow_time
+
+
+class ScaleChange(ConnectivityChange):
+    """
+    Gets set when the address of the scale changes "behind the scenes"
+    such as with a call to scale.take_over_from()
+
+    Not sent on initialization at this time
+    """
+    pass
