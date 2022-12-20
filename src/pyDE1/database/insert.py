@@ -253,6 +253,30 @@ async def connectivity_change(notification: dict,
     await cur.execute(sql, notification)
 
 
+async def device_availability(notification: dict,
+                              sequence_id: str,
+                              cur: aiosqlite.Cursor):
+    sql = "INSERT INTO device_availability " \
+          "(sequence_id, version, sender, arrival_time, create_time, " \
+          "event_time, state, id, name, role) VALUES " \
+          "(:sequence_id, :version, :sender, :arrival_time, :create_time, " \
+          ":event_time, :state, :id, :name, :role)"
+    notification['sequence_id'] = sequence_id
+    await cur.execute(sql, notification)
+
+
+async def scale_change(notification: dict,
+                       sequence_id: str,
+                       cur: aiosqlite.Cursor):
+    sql = "INSERT INTO scale_change " \
+          "(sequence_id, version, sender, arrival_time, create_time, " \
+          "event_time, state, id, name) VALUES " \
+          "(:sequence_id, :version, :sender, :arrival_time, :create_time, " \
+          ":event_time, :state, :id, :name)"
+    notification['sequence_id'] = sequence_id
+    await cur.execute(sql, notification)
+
+
 CLASS_NAME_TO_METHOD = {
     'ShotSampleWithVolumesUpdate': shot_sample_with_volume_update,
     'WeightAndFlowUpdate': weight_and_flow_update,
@@ -264,4 +288,6 @@ CLASS_NAME_TO_METHOD = {
     'AutoTareNotification': auto_tare_notification,
     'ScaleButtonPress': scale_button_press,
     'ConnectivityChange': connectivity_change,
+    'DeviceAvailability': device_availability,
+    'ScaleChange': scale_change,
 }

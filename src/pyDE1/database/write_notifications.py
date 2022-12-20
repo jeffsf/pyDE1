@@ -90,6 +90,8 @@ ROLLING_BUFFER_SIZE = {
     'AutoTareNotification': 3,
     'ScaleButtonPress': 3,
     'ConnectivityChange': 8,            # 2 * 4 from disconnected to ready
+    'DeviceAvailability': 12,           # 3 * 4 from disconnected to ready
+    'ScaleChange': 12,                  # in case something is wonky TODO: trim
 }
 # Total, 59 potential
 

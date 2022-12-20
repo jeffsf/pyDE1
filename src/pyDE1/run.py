@@ -119,6 +119,8 @@ def run():
     # This should raise on failure
     check_schema(loop)
 
+    logger.info("Schema check complete")
+
     inbound_pipe_controller, inbound_pipe_server = multiprocessing.Pipe()
 
     # read, write, for simplex

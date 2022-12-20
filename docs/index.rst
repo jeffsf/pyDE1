@@ -26,6 +26,7 @@ Welcome to pyDE1's Documentation!
    mosquitto
    installing
    updating
+   database_backup
    CHANGELOG
 
 

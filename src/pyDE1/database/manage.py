@@ -7,8 +7,10 @@ SPDX-License-Identifier: GPL-3.0-only
 """
 import asyncio
 import logging
+import multiprocessing
 import sqlite3
 import subprocess
+import time
 from datetime import datetime
 from multiprocessing import cpu_count
 from pathlib import Path
@@ -20,8 +22,18 @@ from pyDE1.exceptions import DE1DBError
 
 logger = pyDE1.getLogger('Database.Manage')
 
-CURRENT_USER_VERSION = 2
-CURRENT_SCHEMA_RELPATH = 'schema/schema.002.sql'
+CURRENT_USER_VERSION = 3
+CURRENT_SCHEMA_RELPATH = 'schema/schema.003.sql'
+UPGRADE_2_3_RELPATH = 'schema/upgrade.002.003.sql'
+
+
+def create_backup_filename () -> str:
+    return (
+        '{}.{}.backup'.format(
+            config.database.FILENAME,
+            datetime.now().strftime('%Y-%m-%d_%H%M%S'),
+        )
+    )
 
 
 def check_schema(loop: Optional[asyncio.AbstractEventLoop] = None):
@@ -35,6 +47,26 @@ def check_schema(loop: Optional[asyncio.AbstractEventLoop] = None):
             user_version = cur.fetchone()[0]
             if user_version == CURRENT_USER_VERSION:
                 logger.debug(f"Confirmed user_version {user_version}")
+            elif user_version == 2 and CURRENT_USER_VERSION == 3:
+                # One-off implementation for now
+                bu_fname = create_backup_filename()
+                logger.warning(
+                    "Upgrading schema from version 2 to 3. "
+                    f"Database will be backed up to {bu_fname}.")
+                # Will raise on failure
+                backup_db(config.database.FILENAME, bu_fname)
+                upgrade_sql_path = Path(__file__).resolve().parent.joinpath(
+                    # UPGRADE_2_3_RELPATH).resolve()
+                    CURRENT_SCHEMA_RELPATH).resolve()
+                logger.info(
+                    f"Updating schema using {upgrade_sql_path}")
+                upgrade_sql = sql_commands_from_file(upgrade_sql_path)
+                logger.debug(
+                    f"Read {len(upgrade_sql)} commands from {upgrade_sql_path}")
+                for sql in upgrade_sql:
+                    db.execute(sql)
+                db.commit()
+                logger.info("Upgrade completed")
             elif user_version:
                 msg = (f"Database needs upgrade from {user_version} "
                        f"to {CURRENT_USER_VERSION}. Exiting.")
@@ -42,11 +74,8 @@ def check_schema(loop: Optional[asyncio.AbstractEventLoop] = None):
                 raise DE1DBError(msg)
             else:
                 if db_file_existed:
-                    bu_fname = '{}.{}.backup'.format(
-                        config.database.FILENAME,
-                        datetime.now().isoformat(timespec='seconds'),
-                    )
-                    backup_db(config.database.FILENAME, bu_fname,  loop)
+                    bu_fname = create_backup_filename()
+                    backup_db(config.database.FILENAME, bu_fname)
                 schema_path = Path(__file__).resolve().parent.joinpath(
                     CURRENT_SCHEMA_RELPATH).resolve()
                 logger.info(
@@ -112,8 +141,7 @@ def sql_commands_from_file(filename: Union[Path, str]) -> list:
     return (' '.join(uncommented)).split('; ')
 
 
-def backup_db(db_filename: str, backup_filename: str,
-              loop: Optional[asyncio.AbstractEventLoop] = None):
+def backup_db(db_filename: str, backup_filename: str):
     if Path(backup_filename).exists():
         msg = (f"Destination exists {backup_filename}, "
                f"aborting backup of {db_filename}")
@@ -149,32 +177,6 @@ def backup_db(db_filename: str, backup_filename: str,
 
     logger.info(f"Backed up to {backup_filename}")
 
-    if loop is not None:
-        cpu_min = 2
-        if cpu_count() >= cpu_min:
-            logger.info(f"Scheduling compression of {backup_filename}")
-            t_compress = loop.run_in_executor(
-                None,
-                subprocess.run,
-                [config.database.BACKUP_COMPRESSION_EXECUTABLE,
-                 backup_filename],
-            )
-
-            def tdc(fut: asyncio.Future):
-                if fut.exception():
-                    logger.warning("Compression task failed")
-                else:
-                    res: subprocess.CompletedProcess = fut.result()
-                    if res.returncode:
-                        logger.warning(
-                            f"Compression execution error: {res.returncode}")
-
-            t_compress.add_done_callback(tdc)
-        else:
-            logger.warning(
-                f"NOT scheduling compression of {backup_filename} "
-                f"with less than {cpu_min} CPU(s)")
-
 
 if __name__ == '__main__':
     format_string = "%(asctime)s %(levelname)s %(name)s: %(message)s"
@@ -190,5 +192,4 @@ if __name__ == '__main__':
 
     config.load_from_yaml('/usr/local/etc/pyde1/pyde1.config')
 
-    backup_db('/var/lib/pyde1/pyde1.sqlite3', '/home/ble-remote/bu.backup',
-              asyncio.get_event_loop())
+    backup_db('/var/lib/pyde1/pyde1.sqlite3', '/home/ble-remote/bu.backup')

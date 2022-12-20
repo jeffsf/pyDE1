@@ -209,8 +209,7 @@ class _Bluetooth (ConfigLoadable):
 class _Database (ConfigLoadable):
     def __init__(self):
         self.FILENAME = '/var/lib/pyde1/pyde1.sqlite3'
-        self.BACKUP_TIMEOUT = 60  # seconds
-        self.BACKUP_COMPRESSION_EXECUTABLE = 'xz'
+        self.BACKUP_TIMEOUT = 120  # seconds (500 MB taking nearly 60 seconds)
 
 
 class _DE1 (ConfigLoadable):
