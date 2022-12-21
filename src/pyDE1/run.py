@@ -1,5 +1,5 @@
 """
-Copyright © 2021, 2022 Jeff Kletsky. All Rights Reserved.
+Copyright © 2021-2022 Jeff Kletsky. All Rights Reserved.
 
 License for this software, part of the pyDE1 package, is granted under
 GNU General Public License v3.0 only
@@ -76,36 +76,31 @@ def run():
 
     signal.signal(signal.SIGCHLD, _sigchild_handler)
 
-    # Add as defined, to prevent NameError from a static list
-    # and an early termination
-    supervised_process_set = set()
+    # Add to the set of processes as they are defined
+    # to prevent NameError from a static list and an early termination
 
-    def on_shutdown_underway_cleanup():
-        sm.shutdown_underway.wait()
+    supervised_process_set = set()  # the empty set of processes
 
-        # This is intentional as the .do_not_restart setter
-        # modifies the loop's readers
-        def _the_rest_sync():
-            logger.info("Setting do_not_restart")
-            for sp in supervised_process_set:
-                try:
-                    sp.do_not_restart = True
-                except AttributeError:
-                    pass
+    async def cleanup_on_shutdown():
+        await sm.wait_for_shutdown_underway()
+        logger.info("Shutdown underway, cleanup, setting do_not_restart")
+        for sp in supervised_process_set:
+            try:
+                sp.do_not_restart = True
+            except AttributeError:
+                pass
 
-            if sm.signal_rcvd is None:
-                sig = signal.SIGTERM
-            else:
-                sig = sm.signal_rcvd
-            for child in multiprocessing.active_children():
-                # sp.terminate() would work, but pass the signal received
-                logger.debug(f"os.kill {sig.name} {child.name}")
-                os.kill(child.pid, sig)
+        if sm.signal_rcvd is None:
+            sig = signal.SIGTERM
+        else:
+            sig = sm.signal_rcvd
+        logger.info("Shutdown underway, terminating child processes")
+        for child in multiprocessing.active_children():
+            # sp.terminate() would work, but pass the signal received
+            logger.debug(f"os.kill {sig.name} {child.name}")
+            os.kill(child.pid, sig)
 
-        loop.call_soon_threadsafe(_the_rest_sync)
-
-    on_shutdown_wait_task = loop.run_in_executor(
-        None, on_shutdown_underway_cleanup)
+    loop.create_task(cleanup_on_shutdown())
 
     sm.attach_signal_handler_to_loop(sm.shutdown, loop)
 
@@ -121,6 +116,7 @@ def run():
                 p.kill()
             print("buh-bye!")
 
+    # This should raise on failure
     check_schema(loop)
 
     inbound_pipe_controller, inbound_pipe_server = multiprocessing.Pipe()
@@ -211,9 +207,7 @@ def run():
 
     logger.debug("After loop.run_forever()")
     # explicit TPE (thread pool executor) shutdown hangs
-    # print("shutdown TPE")
-    # logging_tpe.shutdown(cancel_futures=True)
-    # print("after shutdown TPE")
+    # unless all the threads have exited
     ac = multiprocessing.active_children()
     if len(ac):
         level = logging.ERROR

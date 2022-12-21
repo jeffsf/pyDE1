@@ -42,24 +42,20 @@ def run_database_recorder(master_config: pyDE1.config.Config,
     loop = asyncio.get_event_loop()
     loop.set_debug(True)
 
-    def on_shutdown_underway_cleanup():
+    async def cleanup_on_shutdown():
         logger.info("Watching for shutdown event")
-        sm.shutdown_underway.wait()
+        await sm.wait_for_shutdown_underway()
         logger.info("Shutdown cleanup start")
         logger.info(f"Threads: {threading.enumerate()}")
 
-        async def _the_rest():
-            t = 1.1
-            logger.info(f"Trying a {t} second sleep")
-            await asyncio.sleep(t)
-            logger.info(f"Threads: {threading.enumerate()}")
-            logger.info("Setting cleanup_complete")
-            sm.cleanup_complete.set()
+        t = 1.1
+        logger.info(f"Trying a {t} second sleep")
+        await asyncio.sleep(t)
+        logger.info(f"Threads: {threading.enumerate()}")
+        logger.info("Setting cleanup_complete")
+        sm.cleanup_complete.set()
 
-        asyncio.run_coroutine_threadsafe(_the_rest(), loop)
-
-    on_shutdown_wait_task = loop.run_in_executor(
-        None, on_shutdown_underway_cleanup)
+    loop.create_task(cleanup_on_shutdown())
 
     sm.attach_signal_handler_to_loop(sm.shutdown, loop)
 

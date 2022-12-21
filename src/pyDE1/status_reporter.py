@@ -122,10 +122,10 @@ def attach(subtopic: str,
                             tls_version=config.mqtt.TLS_VERSION,
                             ciphers=config.mqtt.TLS_CIPHERS)
 
-    def on_shutdown_underway_stop_mqtt():
+    async def cleanup_on_shutdown():
         # "Independent" shutdown for potential extraction
         client_logger.info("Watching for shutdown event")
-        sm.shutdown_underway.wait()
+        await sm.wait_for_shutdown_underway()
         client_logger.info("Shutting down MQTT client")
         if mqtt_client.is_connected():
             mqtt_client.disconnect()
@@ -133,8 +133,7 @@ def attach(subtopic: str,
         client_logger.info("MQTT loop stopped")
         # This is a secondary process, don't set "done"
 
-    on_shutdown_underway_stop_mqtt_task = loop.run_in_executor(
-        None, on_shutdown_underway_stop_mqtt)
+    loop.create_task(cleanup_on_shutdown())
 
     mqtt_client.connect(host=config.mqtt.BROKER_HOSTNAME,
                         port=config.mqtt.BROKER_PORT,

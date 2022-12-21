@@ -1,5 +1,5 @@
 """
-Copyright © 2021 Jeff Kletsky. All Rights Reserved.
+Copyright © 2021-2022 Jeff Kletsky. All Rights Reserved.
 
 License for this software, part of the pyDE1 package, is granted under
 GNU General Public License v3.0 only
@@ -18,7 +18,7 @@ See further:
 Example cleanup routine:
 
 async def wait_then_cleanup(client: mqtt.Client):
-    await loop.run_in_executor(None, shutdown_underway.wait)
+    await wait_for_shutdown_underway()
     client.disconnect()
     client.loop_stop()
     cleanup_complete.set()
@@ -34,10 +34,16 @@ import traceback
 from typing import Callable, Optional, Coroutine, Iterable, Union
 
 import pyDE1
+from pyDE1.utils import mp_event_wait
 
 # Set when a shutdown is requested
 # Does not start a shutdown when set
 shutdown_underway = multiprocessing.Event()
+
+async def wait_for_shutdown_underway():
+    return await mp_event_wait(shutdown_underway,
+                               None,
+                               shutdown_underway)
 
 # Should be set by app-specific clean-up routines
 cleanup_complete = multiprocessing.Event()

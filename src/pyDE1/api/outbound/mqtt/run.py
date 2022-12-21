@@ -85,9 +85,9 @@ def run_mqtt_outbound(master_config: pyDE1.config.Config,
     loop = asyncio.get_event_loop()
     loop.set_debug(True)
 
-    def on_shutdown_underway_cleanup():
+    async def cleanup_on_shutdown():
         logger.info("Watching for shutdown event")
-        sm.shutdown_underway.wait()
+        await sm.wait_for_shutdown_underway()
         logger.info("Shutting down MQTT client")
         if mqtt_client.is_connected():
             mqtt_client.disconnect()
@@ -95,8 +95,7 @@ def run_mqtt_outbound(master_config: pyDE1.config.Config,
         logger.info("Setting cleanup_complete")
         sm.cleanup_complete.set()
 
-    on_shutdown_wait_task = loop.run_in_executor(
-        None, on_shutdown_underway_cleanup)
+    loop.create_task(cleanup_on_shutdown())
 
     sm.attach_signal_handler_to_loop(sm.shutdown, loop)
 

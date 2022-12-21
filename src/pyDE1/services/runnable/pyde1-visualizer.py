@@ -339,7 +339,7 @@ def run_mqtt_client_sync(mqtt_client: mqtt.Client):
 
 async def wait_then_cleanup(client: mqtt.Client):
     logger.debug("Waiting for shutdown_underway to shutdown MQTT")
-    await loop.run_in_executor(None, sm.shutdown_underway.wait)
+    await sm.wait_for_shutdown_underway()
     logger.info("shutdown_underway seen as set")
     client.disconnect()
     logger.info("mqtt.Client.disconnect returned")
