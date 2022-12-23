@@ -301,7 +301,7 @@ def configure_mqtt() -> mqtt.Client:
                             ciphers=config.mqtt.TLS_CIPHERS)
 
     if config.mqtt.USERNAME is not None:
-        logger.info(f"Connecting with username '{config.mqtt.USERNAME}'")
+        logger.info(f"Connecting MQTT with username '{config.mqtt.USERNAME}'")
         mqtt_client.username_pw_set(
             username=config.mqtt.USERNAME,
             password=config.mqtt.PASSWORD

@@ -496,7 +496,7 @@ class ManagedBleakClient (BleakClient):
         self.__capture_queue = new_cq
         if new_cq != old_cq and self._on_change_callback is not None:
             logger = self.logger.getChild('CQ')
-            logger.info(
+            logger.debug(
                 'Calling {} with {} => {}'.format(
                     self._on_change_callback.__name__,
                     cq_to_code(old_cq),
@@ -600,7 +600,7 @@ class ManagedBleakClient (BleakClient):
 
     def _start_capture_with_lock(self):
         # TODO: build this out
-        self.logger.info("Start capture")
+        self.logger.debug("Start capture")
         self._retry_set_timer()
         t = asyncio.create_task(self._backend_connect_after_retry_wait_event())
         self._pending_task = t
@@ -609,7 +609,6 @@ class ManagedBleakClient (BleakClient):
         return t
 
     def _start_release_with_lock(self):
-        # TODO: build this out
         self.logger.info("Start release")
         t = asyncio.create_task(self._backend.disconnect())
         self._pending_task = t
@@ -618,7 +617,6 @@ class ManagedBleakClient (BleakClient):
         return t
 
     def _start_cancel_with_lock(self):
-        # TODO: build this out
         self.logger.info("Start cancel")
         if (pt := self._pending_task) is not None:
             self.logger.debug(f"Cancel request: {task_for_log(pt)}")
@@ -662,7 +660,7 @@ class ManagedBleakClient (BleakClient):
         return self._retry_since is not None
 
     def _retry_reset(self):
-        self.logger.info("Resetting retry timer")
+        self.logger.debug("Resetting retry timer")
         if self._retry_wait_task is not None:
             self._retry_wait_task.cancel()
             self._retry_wait_task = None
@@ -671,7 +669,7 @@ class ManagedBleakClient (BleakClient):
 
     def _retry_start(self):
         self._retry_reset()
-        self.logger.info("Starting retry timer")
+        self.logger.debug("Starting retry timer")
         self._retry_since = time.time()
 
     def _retry_delay(self) -> float:
@@ -732,7 +730,7 @@ class ManagedBleakClient (BleakClient):
         logger = self.logger.getChild('DoneCB')
 
         def capture_release_done_callback(fut: asyncio.Future):
-            logger.info(f"Entering done callback {task_for_log(fut)}")
+            logger.debug(f"Entering done callback {task_for_log(fut)}")
 
             try:
                 fut.result()
@@ -758,10 +756,10 @@ class ManagedBleakClient (BleakClient):
     async def _capture_release_done_callback_async(self,
             done_callback_from: asyncio.Future):
         logger = self.logger.getChild('DoneCB.A')
-        logger.info(
+        logger.debug(
             f"Entering async done callback {task_for_log(done_callback_from)}")
         if done_callback_from.cancelled():
-            logger.info(
+            logger.debug(
                 f"Done callback reports cancelled {task_for_log(done_callback_from)}")
 
         ll = LockLogger(lock=self._capture_queue_lock,
@@ -816,7 +814,7 @@ class ManagedBleakClient (BleakClient):
         self._capture_queue = CaptureQueue(connected=current,
                                            pending=cq_on_entry.pending,
                                            target=cq_on_entry.target)
-        logger.info(
+        logger.debug(
             "As {}connected, updated from {} to {} ".format(
                 '' if self.is_connected else 'dis',
                 cq_to_code(cq_on_entry),
@@ -825,7 +823,7 @@ class ManagedBleakClient (BleakClient):
 
         self._maybe_initiate_action_have_lock(request=cq_on_entry.target)
 
-        logger.info(
+        logger.debug(
             'After _maybe_initiate: was {} now {}'.format(
                 cq_to_code(cq_on_entry),
                 cq_to_code(self._capture_queue)
@@ -847,7 +845,7 @@ class ManagedBleakClient (BleakClient):
             else:
                 self._event_captured.clear()
                 self._event_no_pending.clear()
-            logger.info("Events set/cleared for CaptureRequest.CAPTURE")
+            logger.debug("Events set/cleared for CaptureRequest.CAPTURE")
 
         elif cq.connected == CaptureRequest.RELEASE:
             self._event_connected.clear()
@@ -859,7 +857,7 @@ class ManagedBleakClient (BleakClient):
             else:
                 self._event_released.clear()
                 self._event_no_pending.clear()
-            logger.info("Events set/cleared for CaptureRequest.RELEASE")
+            logger.debug("Events set/cleared for CaptureRequest.RELEASE")
 
         elif cq.connected is None:
             pass
@@ -876,7 +874,7 @@ class ManagedBleakClient (BleakClient):
 
         # TODO: Python 3.11 introduces typing.Self
         def disconnected_callback(client: 'ManagedBleakClient'):
-            logger.info(f"Disconnected callback, create async task {client}")
+            logger.debug(f"Disconnected callback, create async task {client}")
             asyncio.create_task(
                 self._disconnected_callback_async(disconnected_from=client))
             # logger.info(f"Leaving callback {client}")
@@ -886,7 +884,7 @@ class ManagedBleakClient (BleakClient):
     async def _disconnected_callback_async(self,
                                 disconnected_from: 'ManagedBleakClient'):
         logger = self.logger.getChild('DiscCB.A')
-        logger.info(
+        logger.debug(
             f"Entering async disconnected callback {disconnected_from}")
 
         ll = LockLogger(lock=self._capture_queue_lock,

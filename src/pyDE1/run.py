@@ -262,6 +262,8 @@ if __name__ == "__main__":
     ap.add_argument('-c', type=str, help='Use as alternate config file')
     ap.add_argument('--console', action='store_true',
                     help='Timestamped, DEBUG level on stderr logging')
+    ap.add_argument('--level',
+                    help='Timestamped logging on STDERR at specified level')
 
     args = ap.parse_args()
 
@@ -269,6 +271,12 @@ if __name__ == "__main__":
 
     if args.console:
         config.logging.handlers.STDERR = 'DEBUG'
+        config.logging.formatters.STDERR = config.logging.formatters.LOGFILE
+
+    if (level := args.level) is not None:
+        if isinstance(level, str):
+            level = level.upper()
+        config.logging.handlers.STDERR = level
         config.logging.formatters.STDERR = config.logging.formatters.LOGFILE
 
     run()

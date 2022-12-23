@@ -607,7 +607,7 @@ async def _patch_dict_to_mapping_inner(partial_value_dict: dict,
 
 
 async def generate_mqtt_push(req: APIRequest):
-    logger.info(f"Generating readback for {req}")
+    logger.debug(f"Generating readback for {req}")
     resource_path_changed = req.resource.value
     resource_area = None
     for res in (Resource.DE1_PROFILE_ID,

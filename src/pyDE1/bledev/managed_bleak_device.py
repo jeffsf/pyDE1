@@ -275,7 +275,7 @@ class ManagedBleakDevice:
         css = current_cs if current_cs not in (
             ConnectivityState.UNKNOWN, None) else f"({cq_to_code(current)})"
 
-        self.logger.info(f"Change from {pss} to {css}")
+        self.logger.debug(f"Change from {pss} to {css}")
 
         # NB: Even though the CaptureQueue may have changed,
         # the ConnectivityState may not have changed

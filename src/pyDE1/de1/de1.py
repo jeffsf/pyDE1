@@ -67,7 +67,7 @@ class DE1 (Singleton, ManagedBleakDevice):
 
     def _singleton_init(self):
 
-        self._logger = pyDE1.getLogger('DE1')
+        self.logger = pyDE1.getLogger('DE1')
         self._role = DeviceRole.DE1
         self._name = ''
         ManagedBleakDevice.__init__(self)
@@ -124,7 +124,7 @@ class DE1 (Singleton, ManagedBleakDevice):
         self._sleep_watcher_task = asyncio.create_task(self._sleep_if_bored())
         self._sleep_watcher_task.add_done_callback(
             lambda s: (not sm.shutdown_underway
-                       and self._logger.error(f"SIB: Task exited {s}")))
+                       and self.logger.error(f"SIB: Task exited {s}")))
         self._sleep_watcher_task.set_name('SIB')
 
     def __del__(self):
@@ -143,7 +143,7 @@ class DE1 (Singleton, ManagedBleakDevice):
             raise DE1IsConnectedError(
                 "Can't prepare_for_connection() while connected.")
 
-        self._logger.info(
+        self.logger.info(
             f"prepare_for_connection()")
 
         # This covers cases where DE1() is called before the loop is running
@@ -151,7 +151,7 @@ class DE1 (Singleton, ManagedBleakDevice):
         if loop is not None and loop.is_running():
             self._notify_not_ready()
         else:
-            self._logger.debug(f"No running loop to _notify_not_ready(): {loop}")
+            self.logger.debug(f"No running loop to _notify_not_ready(): {loop}")
 
         self._cuuid_dict: Dict[CUUID, NotificationState] = dict()
         self._mmr_dict: Dict[Union[MMR0x80LowAddr, int], MMR0x80Data] = dict()
@@ -186,7 +186,7 @@ class DE1 (Singleton, ManagedBleakDevice):
 
     async def _initialize_after_connection(self, hold_ready=False):
 
-        self._logger.info("initialize_after_connection()")
+        self.logger.info("initialize_after_connection()")
 
         await asyncio.gather(
             self.start_standard_read_write_notifiers(),
@@ -206,16 +206,16 @@ class DE1 (Singleton, ManagedBleakDevice):
 
         gather_list = [event.wait() for event in event_list]
 
-        self._logger.info(f"Waiting for {len(event_list)} responses")
+        self.logger.info(f"Waiting for {len(event_list)} responses")
         try:
             results = await asyncio.wait_for(asyncio.gather(*gather_list),
                              config.de1.MAX_WAIT_FOR_READY_EVENTS)
             t1 = time.time()
-            self._logger.info(
+            self.logger.info(
                 f"{len(event_list)} responses received in "
                 f"{t1 - t0:.3f} seconds")
         except asyncio.TimeoutError:
-            self._logger.warning("Timeout waiting for responses.")
+            self.logger.warning("Timeout waiting for responses.")
             idx = 0
             for event in event_list:
                 event: asyncio.Event
@@ -224,7 +224,7 @@ class DE1 (Singleton, ManagedBleakDevice):
                         addr_low = addr_low_list[idx]
                         failed = MMR0x80LowAddr.for_logging(addr_low,
                                                             return_as_hex=True)
-                        self._logger.warning(
+                        self.logger.warning(
                             f"No response from #{idx + 1} "
                             f"of {len(event_list)}, "
                             f"{failed} (0x{addr_low:04x})"
@@ -232,12 +232,12 @@ class DE1 (Singleton, ManagedBleakDevice):
                         # Retry
                         await self.read_one_mmr0x80(addr_low)
                     else:
-                        self._logger.warning(
+                        self.logger.warning(
                             "No response from CUUID.StateInfo"
                         )
                         await self.read_cuuid(CUUID.StateInfo)
                 idx += 1
-            self._logger.error("Stupidly continuing anyway after re-requesting")
+            self.logger.error("Stupidly continuing anyway after re-requesting")
 
         # "By definition" this version understands UserNotPresent substate
         # it is de1app that is broken and the reason the toggle exists
@@ -266,7 +266,7 @@ class DE1 (Singleton, ManagedBleakDevice):
     def _patch_on_connect(self):
         poc = config.de1.PATCH_ON_CONNECT
         if isinstance(poc, dict) and len(poc.keys()):
-            self._logger.info(f"Requesting PATCH_ON_CONNECT {poc}")
+            self.logger.info(f"Requesting PATCH_ON_CONNECT {poc}")
             host = config.http.SERVER_HOST
             if len(host) == 0:
                 host = 'localhost'
@@ -275,7 +275,7 @@ class DE1 (Singleton, ManagedBleakDevice):
                 config.http.SERVER_PORT,
                 config.http.SERVER_ROOT
             )
-            self._logger.info(f"Making request to {de1_url}")
+            self.logger.info(f"Making request to {de1_url}")
             # This ends up blocking as it doesn't release the thread
             req = requests.patch(
                 url=de1_url,
@@ -285,10 +285,10 @@ class DE1 (Singleton, ManagedBleakDevice):
                 level = logging.INFO
             else:
                 level = logging.ERROR
-            self._logger.log(level, "Response from PATCH_ON_CONNECT: "
+            self.logger.log(level, "Response from PATCH_ON_CONNECT: "
                               f"{req.status_code} {req.reason} {req.content}")
         else:
-            self._logger.info(f"PATCH_ON_CONNECT not a populated dict {poc}")
+            self.logger.info(f"PATCH_ON_CONNECT not a populated dict {poc}")
 
     @classmethod
     def device_adv_is_recognized_by(cls, device: BLEDevice,
@@ -331,7 +331,7 @@ class DE1 (Singleton, ManagedBleakDevice):
 
     async def connect_to_first_if_found(self):
         if self.is_connected:
-            self._logger.warning(
+            self.logger.warning(
                 "'scan' requested, but already connected. "
                 "No action taken.")
         else:
@@ -345,7 +345,7 @@ class DE1 (Singleton, ManagedBleakDevice):
         For now, this won't return until connected or fails to connect
         As a result, will trigger the timeout on API calls
         """
-        self._logger.info(f"Address change requested for DE1 from {self.address} "
+        self.logger.info(f"Address change requested for DE1 from {self.address} "
                     f"to {ble_device_id}")
 
         de1 = DE1()
@@ -357,7 +357,7 @@ class DE1 (Singleton, ManagedBleakDevice):
         # TODO: Need to make distasteful assumption that the id is the address
         try:
             if self.address == ble_device_id:
-                self._logger.info(f"Already using {ble_device_id}. No action taken")
+                self.logger.info(f"Already using {ble_device_id}. No action taken")
                 return
         except AttributeError:
             pass
@@ -369,7 +369,7 @@ class DE1 (Singleton, ManagedBleakDevice):
         else:
             ble_device = DiscoveredDevices().ble_device_from_id(ble_device_id)
             if ble_device is None:
-                self._logger.warning(f"No record of {ble_device_id}, initiating scan")
+                self.logger.warning(f"No record of {ble_device_id}, initiating scan")
                 # NB: find_device_by_filter doesn't add to DiscoveredDevices
                 ble_device = await BleakScannerWrapped.find_device_by_address(
                     ble_device_id, timeout=config.bluetooth.CONNECT_TIMEOUT)
@@ -778,7 +778,7 @@ class DE1 (Singleton, ManagedBleakDevice):
 
         if task_name_exists('upload_profile'):
             if force:
-                self._logger.warning('Profile upload in progress being canceled')
+                self.logger.warning('Profile upload in progress being canceled')
                 await self.cancel_profile_upload()
             else:
                 raise DE1OperationInProgressError(
@@ -792,7 +792,7 @@ class DE1 (Singleton, ManagedBleakDevice):
         )
         await profile_upload_stopped.wait()
         if (e := upload_task.exception()) is not None:
-            self._logger.info(f"Upload task exception: {upload_task.exception()}")
+            self.logger.info(f"Upload task exception: {upload_task.exception()}")
             raise e
 
 
@@ -843,7 +843,7 @@ class DE1 (Singleton, ManagedBleakDevice):
 
                 async with aiosqlite.connect(config.database.FILENAME) as db:
                     await db_insert.persist_last_profile(profile, db)
-                self._logger.info(f"Selected profile ID: {profile.id}")
+                self.logger.info(f"Selected profile ID: {profile.id}")
 
                 if profile.number_of_preinfuse_frames is not None:
                     self._number_of_preinfuse_frames = \
@@ -851,7 +851,7 @@ class DE1 (Singleton, ManagedBleakDevice):
 
                 if profile.tank_temperature is not None \
                     and override_tank_temperature:
-                    self._logger.info(
+                    self.logger.info(
                         f"Setting tank temp to {profile.tank_temperature}")
                     await self.write_and_read_back_mmr0x80(
                         addr_low=MMR0x80LowAddr.TANK_TEMP,
@@ -880,7 +880,7 @@ class DE1 (Singleton, ManagedBleakDevice):
                     = profile.move_on_weight_list
                 if profile.move_on_weight_list is not None:
                     if not self.feature_flag.skip_to_next:
-                        self._logger.warning(
+                        self.logger.warning(
                             "DE1 does not support skip to next as requested by "
                             f"profile {profile.title}: {profile.move_on_weight_list}"
                         )
@@ -930,7 +930,7 @@ class DE1 (Singleton, ManagedBleakDevice):
         if mmr_record.last_requested is None:
             await self.read_one_mmr0x80(addr_low)
         if not mmr_record.ready_event.is_set():
-            self._logger.info(f"About to wait for {addr_low.__repr__()}")
+            self.logger.info(f"About to wait for {addr_low.__repr__()}")
         await mmr_record.ready_event.wait()
 
         # old = mmr_record.data_decoded
@@ -975,14 +975,14 @@ class DE1 (Singleton, ManagedBleakDevice):
     async def upload_firmware(self, fw: FirmwareFile, force=False, wait=False):
         if self.uploading_firmware:
             if force:
-                self._logger.warning('Firmware upload in progress being canceled')
+                self.logger.warning('Firmware upload in progress being canceled')
                 await self.cancel_firmware_upload()
             else:
                 raise DE1OperationInProgressError
         t = asyncio.create_task(self._upload_firmware(fw),
                                 name='upload_firmware')
         # t.add_done_callback()
-        self._logger.info(f"Firmware upload started for {fw.filename}")
+        self.logger.info(f"Firmware upload started for {fw.filename}")
         if wait:
             await t
         return t
@@ -1069,7 +1069,7 @@ class DE1 (Singleton, ManagedBleakDevice):
             result = FirmwareUploadState.COMPLETED
         else:
             result = FirmwareUploadState.FAILED
-            self._logger.error(
+            self.logger.error(
                 "Error(s) in firmware upload. "
                 f"First at 0x{fw_map_result.FirstError:06x}"
             )
@@ -1239,14 +1239,14 @@ class DE1 (Singleton, ManagedBleakDevice):
                 use_this = True
             elif 49 < t_inc < 51:
                 use_this = True
-                self._logger.warning(
+                self.logger.warning(
                     f"Skipped update at {t_inc} samples? {ssu}"
                 )
             else:
                 use_this = False
                 # Changed to warning (from error) here as seems to happen
                 # around state change reports and heavy BLE traffic
-                self._logger.warning(
+                self.logger.warning(
                     f"Unexpected update period {t_inc} from {ssu}"
                 )
 
@@ -1302,14 +1302,14 @@ class DE1 (Singleton, ManagedBleakDevice):
         if self.feature_flag.skip_to_next:
             if self.current_state == API_MachineStates.Espresso:
                 await self._request_state(API_MachineStates.SkipToNext)
-                self._logger.info(
+                self.logger.info(
                     f"Skip to next request made from frame {self.current_frame}")
             else:
-                self._logger.warning(
+                self.logger.warning(
                     "Skip to next request ignored while in "
                     f"{self.current_state.name}")
         else:
-            self._logger.warning("Skip to next not supported, request ignored.")
+            self.logger.warning("Skip to next not supported, request ignored.")
 
     async def stop_flow(self):
         """
@@ -1317,7 +1317,7 @@ class DE1 (Singleton, ManagedBleakDevice):
         Replaces legacy "go to Idle"
         """
         # TODO Can the logic around "already asked, wait a bit" be cleaned up?
-        self._logger.info("stop_flow() called")
+        self.logger.info("stop_flow() called")
         reasonable_stop_time = 0.25  # seconds after request
         if self.current_state.is_flow_state \
                 and self.current_substate.flow_phase in ['before', 'during'] \
@@ -1330,7 +1330,7 @@ class DE1 (Singleton, ManagedBleakDevice):
         """
         If steaming active, put into "puff" mode
         """
-        self._logger.info("end_steam() called")
+        self.logger.info("end_steam() called")
         log_level = None
         cs = self.current_state
         css = self.current_substate
@@ -1342,17 +1342,17 @@ class DE1 (Singleton, ManagedBleakDevice):
                         current_shot_settings)
                     temp_shot_settings.TargetSteamLength = 0
                     await self.write_packed_attr(temp_shot_settings)
-                    self._logger.debug("Wrote zero-time to steam length")
+                    self.logger.debug("Wrote zero-time to steam length")
                     await self.write_packed_attr(current_shot_settings)
                     tsl = current_shot_settings.TargetSteamLength
-                    self._logger.debug(f"Restored {tsl} to steam length")
+                    self.logger.debug(f"Restored {tsl} to steam length")
                 else:
                     log_level = logging.WARNING
         else:
             log_level = logging.ERROR
 
         if log_level is not None:
-            self._logger.log(
+            self.logger.log(
                 log_level,
                 f"end_steam() called during {cs},{css}, no action taken")
 
@@ -1363,15 +1363,15 @@ class DE1 (Singleton, ManagedBleakDevice):
 
         de1.stop_flow() is probably more appropriate in many cases
         """
-        self._logger.info("idle() called")
+        self.logger.info("idle() called")
         await self._request_state(API_MachineStates.Idle)
 
     async def sleep(self):
-        self._logger.info("sleep() called")
+        self.logger.info("sleep() called")
         if self.current_state not in (API_MachineStates.Idle,
                                       API_MachineStates.GoingToSleep,
                                       API_MachineStates.Refill):
-            self._logger.warning(
+            self.logger.warning(
                 "Sleep requested while in {}, {}. Calling idle() first.".format(
                     self.current_state.name, self.current_substate.name
                 ))
@@ -1435,23 +1435,23 @@ class DE1 (Singleton, ManagedBleakDevice):
 
         # Ensure GHC data has been read
         if self._mmr_dict[MMR0x80LowAddr.GHC_INFO].data_decoded is None:
-            self._logger.info("GHC_INFO not present, reading now.")
+            self.logger.info("GHC_INFO not present, reading now.")
             await self.read_one_mmr0x80_and_wait(MMR0x80LowAddr.GHC_INFO)
 
         cs = self.current_state
         if cs == API_MachineStates.NoRequest:
-            self._logger.warning(f"Refreshing current state as is NoRequest")
+            self.logger.warning(f"Refreshing current state as is NoRequest")
             await self.read_cuuid(CUUID.StateInfo)
             cs = self.current_state
         css = self.current_substate
-        self._logger.debug(f"Request to change mode to {mode} "
+        self.logger.debug(f"Request to change mode to {mode} "
                      f"while in {API_MachineStates(cs).name}")
 
         if mode is DE1ModeEnum.SLEEP:
-            self._logger.debug(f"current state: {cs}, {type(cs)}")
+            self.logger.debug(f"current state: {cs}, {type(cs)}")
             if cs in (API_MachineStates.Idle,
                       API_MachineStates.Refill):
-                self._logger.debug("API triggered sleep()")
+                self.logger.debug("API triggered sleep()")
                 await self.sleep()
             elif self.current_state in (API_MachineStates.Sleep,
                                         API_MachineStates.GoingToSleep):
@@ -1462,7 +1462,7 @@ class DE1 (Singleton, ManagedBleakDevice):
         elif mode is DE1ModeEnum.WAKE:
             if cs in (API_MachineStates.Sleep,
                       API_MachineStates.GoingToSleep):
-                self._logger.debug("API triggered idle()")
+                self.logger.debug("API triggered idle()")
                 await self.idle()
             else:
                 pass
@@ -1491,10 +1491,10 @@ class DE1 (Singleton, ManagedBleakDevice):
                 else:
                     raise DE1APIUnsupportedStateTransitionError(mode, cs, css)
             else:
-                self._logger.debug("API triggered idle()")
+                self.logger.debug("API triggered idle()")
                 await self.idle()
             if override_checks:
-                self._logger.warning(
+                self.logger.warning(
                     "API_STOP_IGNORES_CHECKS triggered idle() during "
                     f"{cs},{css}")
                 await self.idle()
@@ -1503,7 +1503,7 @@ class DE1 (Singleton, ManagedBleakDevice):
             if cs == API_MachineStates.Espresso \
                 and self.current_substate in (API_Substates.PreInfuse,
                                               API_Substates.Pour):
-                self._logger.debug("API triggered skip_to_next()")
+                self.logger.debug("API triggered skip_to_next()")
                 await self.skip_to_next()
             else:
                 raise DE1APIUnsupportedStateTransitionError(mode, cs, css)
@@ -1511,10 +1511,10 @@ class DE1 (Singleton, ManagedBleakDevice):
         elif mode is DE1ModeEnum.END_STEAM:
             if cs == API_MachineStates.Steam:
                 if self.current_substate in (API_Substates.Pour,):
-                    self._logger.debug("API triggered end_steam() for END_STEAM")
+                    self.logger.debug("API triggered end_steam() for END_STEAM")
                     await self.end_steam()
                 else:
-                    self._logger.debug("API triggered stop_flow() for END_STEAM")
+                    self.logger.debug("API triggered stop_flow() for END_STEAM")
                     await self.stop_flow()
 
 
@@ -1533,19 +1533,19 @@ class DE1 (Singleton, ManagedBleakDevice):
                 raise DE1APIUnsupportedStateTransitionError(mode, cs, css)
 
             if mode is DE1ModeEnum.ESPRESSO:
-                self._logger.debug("API triggered _flow_start_espresso()")
+                self.logger.debug("API triggered _flow_start_espresso()")
                 await self._flow_start_espresso()
 
             elif mode is DE1ModeEnum.HOT_WATER_RINSE:
-                self._logger.debug("API triggered _flow_start_hot_water_rinse()")
+                self.logger.debug("API triggered _flow_start_hot_water_rinse()")
                 await self._flow_start_hot_water_rinse()
 
             elif mode is DE1ModeEnum.STEAM:
-                self._logger.debug("API triggered _flow_start_steam()")
+                self.logger.debug("API triggered _flow_start_steam()")
                 await self._flow_start_steam()
 
             elif mode is DE1ModeEnum.HOT_WATER:
-                self._logger.debug("API triggered _flow_start_hot_water()")
+                self.logger.debug("API triggered _flow_start_hot_water()")
                 await self._flow_start_hot_water()
 
         elif mode in (DE1ModeEnum.CLEAN,
@@ -1565,11 +1565,11 @@ class DE1 (Singleton, ManagedBleakDevice):
                 raise DE1APIValueError(
                     f"Logic error in recognizing {mode.name}"
                 )
-            self._logger.debug(f"API triggered state change for {mode.name}")
+            self.logger.debug(f"API triggered state change for {mode.name}")
             await self.write_packed_attr(RequestedState(State=next_state))
 
         elif mode is DE1ModeEnum.NO_REQUEST:
-            self._logger.debug("API triggered NoRequest state change")
+            self.logger.debug("API triggered NoRequest state change")
             await self.write_packed_attr(
                 RequestedState(State=API_MachineStates.NoRequest))
 

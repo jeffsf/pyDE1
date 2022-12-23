@@ -108,6 +108,7 @@ class GenericScale (ClassChanger, ManagedBleakDevice):
     def __init__(self):
 
         self._role = DeviceRole.SCALE
+        self.logger = pyDE1.getLogger('Scale.Generic')
         super(GenericScale, self).__init__()
 
         self._event_weight_update: SubscribedEvent = SubscribedEvent(self)
@@ -116,7 +117,8 @@ class GenericScale (ClassChanger, ManagedBleakDevice):
         self._event_scale_changed: SubscribedEvent = SubscribedEvent(self)
 
         self._adopt_sync()
-
+        config.logging.handlers.STDERR = 'DEBUG'
+        config.logging.formatters.STDERR = config.logging.formatters.LOGFILE
         self._period_estimator = PeriodEstimator(self)
 
         # Don't need to await this on instantiation

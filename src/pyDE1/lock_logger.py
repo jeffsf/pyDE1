@@ -50,14 +50,14 @@ class LockLogger:
             self._logger.warning(
                 f"Acquired lock after {dt:.0f} ms {call_str(full_trace)}")
         else:
-            self._logger.info(
-                f"Acquired lock {call_str()}")
+            self._logger.debug(
+                f"Acquired lock {call_str(full_trace)}")
 
     def released(self, full_trace=False):
         dt = (time.time() - self._acquired) * 1000
         if self._lock.locked():
             self._logger.error(
-                f"NOT RELEASED after {dt:.0f} ms {call_str()}")
+                f"NOT RELEASED after {dt:.0f} ms {call_str(full_trace)}")
         else:
             self._logger.info(
                 f"Released lock after {dt:.0f} ms {call_str(full_trace)}")

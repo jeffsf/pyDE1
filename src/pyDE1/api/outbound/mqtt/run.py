@@ -208,7 +208,7 @@ def run_mqtt_outbound(master_config: pyDE1.config.Config,
     mqtt_client.enable_logger(client_logger)
 
     if config.mqtt.USERNAME is not None:
-        logger.info(f"Connecting with username '{config.mqtt.USERNAME}'")
+        logger.info(f"Connecting MQTT with username '{config.mqtt.USERNAME}'")
         mqtt_client.username_pw_set(
             username=config.mqtt.USERNAME,
             password=config.mqtt.PASSWORD
