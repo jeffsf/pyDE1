@@ -477,7 +477,7 @@ class AcaiaGeneric (GenericScale):
         async with self._notify_lock:
             await self._bleak_client.start_notify(
                 self._notify_cuuid.value,
-                self._create_notification_handler())
+                self._notification_handler)
 
     async def stop_sending_weight_updates(self):
         async with self._notify_lock:
@@ -557,20 +557,12 @@ class AcaiaGeneric (GenericScale):
                                             ConfigBeep.ON if audible else
                                                 ConfigBeep.OFF))
 
-    def _create_notification_handler(self) -> Coroutine:
-
-        acaia_scale = self
-
-        async def notification_handler(sender: int, data: bytearray):
-            """Callback for arriving BLE packets"""
-            nonlocal acaia_scale
-
-            tsd = TimestampedData(timestamp=time.time(), data=data)
-            async with acaia_scale._packet_buffer_lock:
-                # TODO: Watchdog this
-                await acaia_scale._process_data_under_lock(tsd)
-
-        return notification_handler
+    async def _notification_handler(self, sender: int, data: bytearray):
+        """Callback for arriving BLE packets"""
+        tsd = TimestampedData(timestamp=time.time(), data=data)
+        async with self._packet_buffer_lock:
+            # TODO: Watchdog this
+            await self._process_data_under_lock(tsd)
 
     async def _process_data_under_lock(self, tsd: TimestampedData):
         """
