@@ -36,7 +36,7 @@ try:
 except ImportError:
     source_data = None
 
-MAPPING_VERSION = "5.4.0"
+MAPPING_VERSION = "6.0.0"
 
 logger = pyDE1.getLogger('Inbound.Mapping')
 
@@ -56,6 +56,7 @@ class TO (Enum):
     FlowSequencer = auto()
     Scale = auto()
     ScaleProcessor = auto()
+    Thermometer = auto()
     
 
 class IsAt(NamedTuple):
@@ -598,4 +599,32 @@ MAPPING[Resource.FLOW_SEQUENCER_PARAMETER_SET] = {}
 MAPPING[Resource.FLOW_SEQUENCER] = {
     'setting': MAPPING[Resource.FLOW_SEQUENCER_SETTING],
     'parameter_set': MAPPING[Resource.FLOW_SEQUENCER_PARAMETER_SET],
+}
+
+MAPPING[Resource.THERMOMETER_ID] = {
+    'name': IsAt(target=TO.Thermometer, attr_path='name',
+                 v_type=Optional[str],
+                 read_only=True,
+                 if_not_ready=True),
+    # The ID value 'scan' will perform a scan and capture the first found
+    'id': IsAt(target=TO.Thermometer, attr_path='address',
+               v_type=Optional[str],
+               setter_path='change_to_id',
+               if_not_ready=True),
+}
+
+MAPPING[Resource.THERMOMETER_AVAILABILITY] = {
+    'mode': IsAt(target=TO.Thermometer,
+                 attr_path='availability_state',
+                 setter_path="availability_setter", v_type=str,
+                 internal_type=CaptureRequest,
+                 if_not_ready=True),
+    'mqtt': IsAt(target=TO.Thermometer,
+                 attr_path='device_availability_last_sent',
+                 read_only=True, if_not_ready=True, v_type=str),
+}
+
+MAPPING[Resource.THERMOMETER] = {
+    'id': MAPPING[Resource.THERMOMETER_ID],
+    'availability': MAPPING[Resource.THERMOMETER_AVAILABILITY],
 }

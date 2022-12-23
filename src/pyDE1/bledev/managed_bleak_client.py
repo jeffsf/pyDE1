@@ -22,6 +22,7 @@ from bleak import BleakClient
 from bleak.backends.device import BLEDevice
 
 from pyDE1.exceptions import DE1NoAddressError
+from pyDE1.utils import EventReadOnly
 
 try:
     from pyDE1.utils import call_str
@@ -109,20 +110,6 @@ def task_for_log(t: asyncio.Task) -> str:
     except Exception:
         retval = str(t)
     return retval
-
-
-class EventReadOnly:
-    """
-    Like an asyncio.Event, but can only wait() and check is_set()
-    """
-    def __init__(self, backing_event: asyncio.Event):
-        self._backing_event = backing_event
-
-    def is_set(self):
-        return self._backing_event.is_set()
-
-    async def wait(self):
-        return await self._backing_event.wait()
 
 
 class ManagedBleakClient (BleakClient):

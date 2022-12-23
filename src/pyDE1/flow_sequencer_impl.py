@@ -50,6 +50,8 @@ from pyDE1.flow_sequencer import (
 from pyDE1.scale.events import WeightAndFlowUpdate
 from pyDE1.scale.processor import ScaleProcessor
 from pyDE1.singleton import Singleton
+from pyDE1.thermometer.bluedot import BlueDOT
+from pyDE1.thermometer.steam_to_temperature import SteamTempController
 from pyDE1.utils import cancel_tasks_by_name
 
 logger = pyDE1.getLogger('FlowSequencer')
@@ -70,6 +72,7 @@ class FlowSequencerImpl (Singleton, FlowSequencer):
         # Singletons now
         self._de1 = DE1()
         self._scale_processor = ScaleProcessor()
+        self._steam_temp_controller = SteamTempController(BlueDOT())
 
         # self._event_de1_present = asyncio.Event()
         # self._event_scale_processor_present = asyncio.Event()
@@ -150,6 +153,12 @@ class FlowSequencerImpl (Singleton, FlowSequencer):
         self.stop_at_time_states = [
             API_MachineStates.HotWaterRinse,
             # API_MachineStates.Steam,  # Handled through ShotSettings
+        ]
+
+        self._steam_to_temperature_states = [
+            API_MachineStates.Steam,
+            # API_MachineStates.SteamRinse,  # what is this?
+            # NB: See also BlueDOT._initialize_after_connection()
         ]
 
         # Recorder gets managed by the recorder itself
@@ -396,6 +405,9 @@ class FlowSequencerImpl (Singleton, FlowSequencer):
                             name=self._sequence_task_name)
 
         asyncio.create_task(self._sequence_stop_at_time(),
+                            name=self._sequence_task_name)
+
+        asyncio.create_task(self._sequence_steam_to_temperature(),
                             name=self._sequence_task_name)
 
         asyncio.create_task(self._sequence_recorder(),
@@ -651,7 +663,7 @@ class FlowSequencerImpl (Singleton, FlowSequencer):
         """
         if self.active_state not in self.move_on_weight_states:
             self._move_on_weight_active = False
-            logger.info(f"StopAtWeight: disable - {self.active_state.name}")
+            logger.info(f"MoveOnWeight: disable - {self.active_state.name}")
             await self.stop_at_notify(
                 stop_at=StopAtType.MOW,
                 action=StopAtNotificationAction.DISABLED,
@@ -663,7 +675,7 @@ class FlowSequencerImpl (Singleton, FlowSequencer):
         try:
             await self._gate_sequence_start.wait()
             self._move_on_weight_active = False
-            logger.debug("StopAtWeight: disable")
+            logger.debug("MoveOnWeight: disable")
             await self.stop_at_notify(
                 stop_at=StopAtType.MOW,
                 action=StopAtNotificationAction.DISABLED,
@@ -674,7 +686,7 @@ class FlowSequencerImpl (Singleton, FlowSequencer):
 
             await self._gate_expect_drops.wait()
             self._move_on_weight_active = True
-            logger.debug("StopAtWeight: enable")
+            logger.debug("MoveOnWeight: enable")
             await self.stop_at_notify(
                 stop_at=StopAtType.MOW,
                 action=StopAtNotificationAction.ENABLED,
@@ -685,7 +697,7 @@ class FlowSequencerImpl (Singleton, FlowSequencer):
 
             await self._gate_flow_end.wait()
             self._move_on_weight_active = False
-            logger.debug("StopAtWeight: disable")
+            logger.debug("MoveOnWeight: disable")
             await self.stop_at_notify(
                 stop_at=StopAtType.MOW,
                 action=StopAtNotificationAction.DISABLED,
@@ -696,7 +708,7 @@ class FlowSequencerImpl (Singleton, FlowSequencer):
 
         except asyncio.CancelledError:
             self._move_on_weight_active = False
-            logger.info("StopAtWeight: disable - on cancel")
+            logger.info("MoveOnWeight: disable - on cancel")
             await self.stop_at_notify(
                 stop_at=StopAtType.MOW,
                 action=StopAtNotificationAction.DISABLED,
@@ -811,6 +823,58 @@ class FlowSequencerImpl (Singleton, FlowSequencer):
                 active_state=self.active_state,
                 current_frame=self.current_frame)
             raise
+
+    async def _sequence_steam_to_temperature(self):
+            stc = self._steam_temp_controller
+            thermo = self._steam_temp_controller._thermometer
+            if self.active_state not in self._steam_to_temperature_states:
+                await stc.control_deactivate()
+                logger.debug(
+                    f"SteamToTemperature: disable - {self.active_state.name}")
+                await self.stop_at_notify(
+                    stop_at=StopAtType.STEAM,
+                    action=StopAtNotificationAction.DISABLED,
+                    target_value=stc.target,
+                    current_value=thermo.temperature,
+                    active_state=self.active_state,
+                    current_frame=None)
+                return
+            try:
+                await self._gate_sequence_start.wait()
+                await stc.control_activate()
+                logger.info("SteamToTemperature: enabled")
+                await self.stop_at_notify(
+                    stop_at=StopAtType.STEAM,
+                    action=StopAtNotificationAction.ENABLED,
+                    target_value=stc.target,
+                    current_value=thermo.temperature,
+                    active_state=self.active_state,
+                    current_frame=None)
+
+                # Keep recording temperature until the end
+                # It will likely only be a dozen or two samples
+                await self._gate_sequence_complete.wait()
+                await stc.control_deactivate()
+                logger.debug("SteamToTemperature: disable")
+                await self.stop_at_notify(
+                    stop_at=StopAtType.STEAM,
+                    action=StopAtNotificationAction.DISABLED,
+                    target_value=stc.target,
+                    current_value=thermo.temperature,
+                    active_state=self.active_state,
+                    current_frame=None)
+
+            except asyncio.CancelledError:
+                await stc.control_deactivate()
+                logger.info("SteamToTemperature: disable - on cancel")
+                await self.stop_at_notify(
+                    stop_at=StopAtType.STEAM,
+                    action=StopAtNotificationAction.DISABLED,
+                    target_value=stc.target,
+                    current_value=thermo.temperature,
+                    active_state=self.active_state,
+                    current_frame=None)
+                raise
 
     async def _sequence_recorder(self):
         # Always enable recording, let the recorder decide

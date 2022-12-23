@@ -102,6 +102,7 @@ class Config (ConfigYAML):
         self.http = _HTTP(self)    # Calculating timeout needs bluetooth
         self.logging = _Logging()
         self.mqtt = _MQTT()
+        self.steam = _Steam()
         self.acaia = _Acaia()  # For development, will be deprecated
 
 
@@ -235,6 +236,14 @@ class _BumpResist (ConfigLoadable):
         self.SUB_MEDIAN_WEIGHT = True  # when excessive flow
         self.USE_MEDIAN_WEIGHT_ALWAYS = False
         self.USE_MEDIAN_FLOW_ALWAYS = False
+
+
+class _Steam(ConfigLoadable):
+    def __init__(self):
+        self.STOP_LAG = 1.0   # 0.530 is from API call on localhost
+        self.SKIP_INITIAL_SECONDS = 4.0
+        self.MAX_SAMPLES_FOR_ESTIMATE = 5
+        self.IDLE_SECONDS_PER_SAMPLE = 10  # When connected but not steaming
 
 
 class _Acaia (ConfigLoadable):

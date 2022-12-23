@@ -10,7 +10,7 @@ Enum that defines the recognized resources that the Dispatcher can access
 
 import enum
 
-RESOURCE_VERSION = '3.9.0'
+RESOURCE_VERSION = '4.0.0'
 
 
 class Resource (enum.Enum):
@@ -76,7 +76,6 @@ class Resource (enum.Enum):
     DE1_PRESENCE = 'de1/presence'
 
     SCALE = 'scale'
-
     SCALE_ID = 'scale/id'
 
     SCALE_TARE = 'scale/tare'
@@ -88,6 +87,11 @@ class Resource (enum.Enum):
     FLOW_SEQUENCER = 'flow_sequencer'
     FLOW_SEQUENCER_SETTING = 'flow_sequencer/settings'
     FLOW_SEQUENCER_PARAMETER_SET = 'flow_sequencer/parameter_set'
+
+    THERMOMETER = 'thermometer'
+    THERMOMETER_ID = 'thermometer/id'
+    THERMOMETER_AVAILABILITY = 'thermometer/availability'
+
 
     VERSION = 'version'
 

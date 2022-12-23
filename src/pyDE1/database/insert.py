@@ -276,6 +276,22 @@ async def scale_change(notification: dict,
     await cur.execute(sql, notification)
 
 
+async def bluedot_update(notification: dict,
+                       sequence_id: str,
+                       cur: aiosqlite.Cursor):
+    sql = "INSERT INTO bluedot_update " \
+          "(sequence_id, version, sender, " \
+          "arrival_time, create_time, event_time, " \
+          "temperature, high_alarm, units, alarm_byte, name) " \
+          "VALUES " \
+          "(:sequence_id, :version, :sender, " \
+          ":arrival_time, :create_time, :event_time, " \
+          ":temperature, :high_alarm, :units, :alarm_byte, :name)"
+    notification['sequence_id'] = sequence_id
+    await cur.execute(sql, notification)
+
+
+
 CLASS_NAME_TO_METHOD = {
     'ShotSampleWithVolumesUpdate': shot_sample_with_volume_update,
     'WeightAndFlowUpdate': weight_and_flow_update,
@@ -289,4 +305,5 @@ CLASS_NAME_TO_METHOD = {
     'ConnectivityChange': connectivity_change,
     'DeviceAvailability': device_availability,
     'ScaleChange': scale_change,
+    'BlueDOTUpdate': bluedot_update,
 }

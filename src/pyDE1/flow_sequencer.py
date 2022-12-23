@@ -122,6 +122,7 @@ class StopAtType (enum.Enum):
     VOLUME = 'volume'
     WEIGHT = 'weight'
     MOW  = 'move on by weight'
+    STEAM = 'steam to temperature'
 
 
 class StopAtNotification (EventPayload):

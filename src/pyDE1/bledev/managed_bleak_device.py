@@ -17,7 +17,7 @@ from bleak import BLEDevice
 import pyDE1.task_logger
 
 from pyDE1.bledev.managed_bleak_client import CaptureQueue, CaptureRequest, \
-    ManagedBleakClient, EventReadOnly, cq_to_code
+    ManagedBleakClient, cq_to_code
 from pyDE1.btcontrack import persist_connection_file, remove_connection_file
 from pyDE1.dispatcher.resource import ConnectivityEnum
 from pyDE1.event_manager.event_manager import SubscribedEvent
@@ -31,7 +31,7 @@ from pyDE1.event_manager.events import (
 # It is assumed that there is
 from pyDE1.exceptions import DE1APIValueError, DE1ValueError
 from pyDE1.lock_logger import LockLogger
-from pyDE1.utils import call_str
+from pyDE1.utils import call_str, EventReadOnly
 
 
 class ManagedBleakDevice:

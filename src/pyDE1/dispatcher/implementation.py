@@ -79,7 +79,9 @@ def get_timeout(prop, value):
     if name == 'connectivity_setter' and value:
         timeout = config.bluetooth.CONNECT_TIMEOUT + 0.100
 
-    elif name in ('change_de1_to_id', 'change_scale_to_id'):
+    elif name in ('change_de1_to_id',
+                  'change_scale_to_id',
+                  'change_to_id',):
         if value is None:
             timeout = config.bluetooth.DISCONNECT_TIMEOUT
         elif value == 'scan':
@@ -148,6 +150,7 @@ async def _get_isat_value(isat: IsAt):
     flow_sequencer = FlowSequencer()
     scale_processor = ScaleProcessor()
     scale = scale_processor.scale
+    thermometer = flow_sequencer._steam_temp_controller._thermometer
     dd = DiscoveredDevices()
 
     retval = None
@@ -167,6 +170,9 @@ async def _get_isat_value(isat: IsAt):
 
     elif target == TO.ScaleProcessor:
         retval = rgetattr(scale_processor, attr_path)
+
+    elif target == TO.Thermometer:
+        retval = rgetattr(thermometer, attr_path)
 
     elif target == TO.DiscoveredDevices:
         # Need to wrap as devices_for_json is async
@@ -481,6 +487,7 @@ async def _patch_dict_to_mapping_inner(partial_value_dict: dict,
     flow_sequencer = FlowSequencer()
     scale_processor = ScaleProcessor()
     scale = scale_processor.scale
+    thermometer = flow_sequencer._steam_temp_controller._thermometer
 
     for key, new_value in partial_value_dict.items():
 
@@ -510,6 +517,8 @@ async def _patch_dict_to_mapping_inner(partial_value_dict: dict,
                     this_target = scale
                 elif target == TO.ScaleProcessor:
                     this_target = scale_processor
+                elif target == TO.Thermometer:
+                    this_target = thermometer
                 else:
                     raise DE1APITypeError(
                         f"Unsupported target for '{key}': {mapping_isat}")

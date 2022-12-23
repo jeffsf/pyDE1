@@ -92,10 +92,12 @@ ROLLING_BUFFER_SIZE = {
     'ConnectivityChange': 8,            # 2 * 4 from disconnected to ready
     'DeviceAvailability': 12,           # 3 * 4 from disconnected to ready
     'ScaleChange': 12,                  # in case something is wonky TODO: trim
+    'BlueDOTUpdate': 10,                # At least 10 seconds
 }
-# Total, 59 potential
+# Total, 59 potential (93 now, as of 2.0.0 development)
 
 # If present, only capture (one before and?) all after the sequence begins
+# As of 2.0.0 development, this seems unused
 ROLLING_BUFFER_TIME_LIMITED = [
     'ShotSampleWithVolumesUpdate',
     'WeightAndFlowUpdate',

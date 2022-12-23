@@ -340,6 +340,7 @@ class DE1 (Singleton, ManagedBleakDevice):
                 await self.change_de1_to_id(device.address)
         return self.address
 
+    # TODO: Simplify this when reworking scanning
     async def change_de1_to_id(self, ble_device_id: Optional[str]):
         """
         For now, this won't return until connected or fails to connect
@@ -1336,6 +1337,8 @@ class DE1 (Singleton, ManagedBleakDevice):
         css = self.current_substate
         if cs is API_MachineStates.Steam:
                 if css in (API_Substates.Pour,):
+                    # Steaming, maybe
+                    # PausedSteam and SteamPuff, probably not
                     current_shot_settings: ShotSettings = self._cuuid_dict[
                         CUUID.ShotSettings].last_value
                     temp_shot_settings: ShotSettings = deepcopy(

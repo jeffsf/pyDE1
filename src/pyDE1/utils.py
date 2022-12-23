@@ -266,3 +266,17 @@ async def mq_queue_get(mp_queue: multiprocessing.Queue,
         raise qexc
     else:
         return data
+
+
+class EventReadOnly:
+    """
+    Like an asyncio.Event, but can only wait() and check is_set()
+    """
+    def __init__(self, backing_event: asyncio.Event):
+        self._backing_event = backing_event
+
+    def is_set(self):
+        return self._backing_event.is_set()
+
+    async def wait(self):
+        return await self._backing_event.wait()
