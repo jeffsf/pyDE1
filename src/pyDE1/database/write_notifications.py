@@ -29,7 +29,7 @@ from pyDE1.database.recorder_control import RecorderControl
 # from pyDE1.dispatcher.dispatcher import QUEUE_TOO_DEEP
 QUEUE_TOO_DEEP = 1
 
-from pyDE1.event_manager import SequencerGateName
+from pyDE1.event_manager.event_manager import SequencerGateName
 from pyDE1.event_manager.payloads import EventNotificationAction
 from pyDE1.exceptions import DE1TypeError
 

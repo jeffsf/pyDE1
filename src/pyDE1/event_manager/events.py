@@ -15,7 +15,7 @@ See also:
 import enum
 from typing import Optional
 
-from pyDE1.event_manager import EventPayload
+from pyDE1.event_manager.payloads import EventPayload
 
 
 class DeviceRole (enum.Enum):

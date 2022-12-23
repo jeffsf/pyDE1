@@ -20,7 +20,7 @@ from pyDE1.bledev.managed_bleak_client import CaptureQueue, CaptureRequest, \
     ManagedBleakClient, EventReadOnly, cq_to_code
 from pyDE1.btcontrack import persist_connection_file, remove_connection_file
 from pyDE1.dispatcher.resource import ConnectivityEnum
-from pyDE1.event_manager import SubscribedEvent
+from pyDE1.event_manager.event_manager import SubscribedEvent
 from pyDE1.event_manager.events import (
     ConnectivityState, ConnectivityChange,
     DeviceAvailabilityState, DeviceAvailability, DeviceRole,

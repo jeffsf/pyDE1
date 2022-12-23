@@ -20,7 +20,7 @@ import pytest_asyncio
 
 import pyDE1
 import pyDE1.de1
-from pyDE1.event_manager import SubscribedEvent, EventPayload
+from pyDE1.event_manager.event_manager import SubscribedEvent, EventPayload
 
 from tests.test_managed_bleak_device import mock_send_to_outbound_pipes
 

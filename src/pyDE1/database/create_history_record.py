@@ -17,7 +17,7 @@ from pyDE1.config import config
 from pyDE1.de1.c_api import API_MachineStates
 from pyDE1.dispatcher.implementation import get_resource_to_dict
 from pyDE1.dispatcher.resource import Resource
-from pyDE1.event_manager import SequencerGateNotification
+from pyDE1.event_manager.payloads import SequencerGateNotification
 
 
 async def resource_to_json(resource: Resource):

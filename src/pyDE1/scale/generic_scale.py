@@ -21,7 +21,7 @@ from pyDE1.bledev.managed_bleak_device import (
 )
 from pyDE1.config import config
 from pyDE1.dispatcher.resource import ConnectivityEnum
-from pyDE1.event_manager import SubscribedEvent
+from pyDE1.event_manager.event_manager import SubscribedEvent
 from pyDE1.event_manager.events import ConnectivityChange, DeviceRole
 from pyDE1.exceptions import (
     DE1NoAddressError,

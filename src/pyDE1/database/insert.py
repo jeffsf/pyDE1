@@ -14,8 +14,7 @@ import aiosqlite
 
 import pyDE1
 from pyDE1.de1.profile import Profile
-from pyDE1.event_manager import SequencerGateName
-from pyDE1.event_manager.payloads import EventNotificationAction
+from pyDE1.event_manager.payloads import EventNotificationAction, SequencerGateName
 
 logger = pyDE1.getLogger('Database.Insert')
 

@@ -20,7 +20,8 @@ from bleak.backends.scanner import AdvertisementData
 
 import pyDE1
 from pyDE1.config import config
-from pyDE1.event_manager import EventPayload, send_to_outbound_pipes
+from pyDE1.event_manager.event_manager import send_to_outbound_pipes
+from pyDE1.event_manager.payloads import EventPayload
 from pyDE1.exceptions import *
 from pyDE1.singleton import Singleton
 from pyDE1.supervise import SupervisedTask

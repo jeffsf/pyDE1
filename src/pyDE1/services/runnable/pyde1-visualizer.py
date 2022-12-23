@@ -31,8 +31,7 @@ from pyDE1.config_load import ConfigYAML, ConfigLoadable
 
 import pyDE1.shutdown_manager as sm
 from pyDE1.de1.c_api import API_MachineStates, API_Substates
-from pyDE1.event_manager import SequencerGateName
-from pyDE1.event_manager.payloads import EventNotificationAction
+from pyDE1.event_manager.payloads import EventNotificationAction, SequencerGateName
 from pyDE1.exceptions import DE1IncompleteSequenceRecordError
 from pyDE1.shot_file.legacy import legacy_shot_file
 # from pyDE1.database.write_notifications import async_queue_get

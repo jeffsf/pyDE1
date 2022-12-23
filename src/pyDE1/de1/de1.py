@@ -38,7 +38,7 @@ from pyDE1.de1.profile import (
     Profile, ProfileByFrames, DE1ProfileValidationError, SourceFormat
 )
 from pyDE1.dispatcher.resource import ConnectivityEnum, DE1ModeEnum
-from pyDE1.event_manager import SubscribedEvent
+from pyDE1.event_manager.event_manager import SubscribedEvent
 from pyDE1.event_manager.events import (
     ConnectivityState, ConnectivityChange, FirmwareUploadState, FirmwareUpload,
     DeviceRole

@@ -8,7 +8,7 @@ SPDX-License-Identifier: GPL-3.0-only
 Common events for scales
 """
 
-from pyDE1.event_manager import EventPayload
+from pyDE1.event_manager.payloads import EventPayload
 from pyDE1.event_manager.events import ConnectivityChange
 
 

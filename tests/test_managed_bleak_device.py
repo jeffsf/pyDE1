@@ -26,7 +26,7 @@ from bleak import BLEDevice
 import pyDE1
 from pyDE1.de1 import DE1   # Needed to smooth imports
 from pyDE1.dispatcher.resource import ConnectivityEnum
-from pyDE1.event_manager import EventPayload, SubscribedEvent
+from pyDE1.event_manager.event_manager import EventPayload, SubscribedEvent
 from pyDE1.event_manager.events import (
     ConnectivityState, ConnectivityChange,
     DeviceAvailabilityState, DeviceAvailability,

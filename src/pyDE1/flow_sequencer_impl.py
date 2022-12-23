@@ -29,7 +29,7 @@ from pyDE1.de1.c_api import (
 from pyDE1.de1.events import (
     ShotSampleUpdate, StateUpdate, ShotSampleWithVolumesUpdate
 )
-from pyDE1.event_manager import (
+from pyDE1.event_manager.event_manager import (
     SequencerGate, SequencerGateName, SequencerGateNotification,
     send_to_outbound_pipes
 )

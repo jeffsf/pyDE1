@@ -35,7 +35,7 @@ def run_controller(master_config: pyDE1.config.Config,
         register_read_pipe_to_queue,
         start_request_queue_processor, start_response_queue_processor
     )
-    from pyDE1.event_manager import SubscribedEvent
+    from pyDE1.event_manager.event_manager import SubscribedEvent
     from pyDE1.flow_sequencer import FlowSequencer
     from pyDE1.scale.processor import ScaleProcessor
 

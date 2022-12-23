@@ -24,7 +24,7 @@ from pyDE1.de1.notifications import MMR0x80Data
 from pyDE1.dispatcher.mapping import MAPPING, TO, IsAt
 from pyDE1.dispatcher.payloads import APIRequest
 from pyDE1.dispatcher.resource import Resource
-from pyDE1.event_manager import SubscribedEvent
+from pyDE1.event_manager.event_manager import SubscribedEvent
 from pyDE1.exceptions import (
     DE1APITypeError, DE1APIValueError, DE1APIAttributeError, DE1APIKeyError,
     DE1NotConnectedError

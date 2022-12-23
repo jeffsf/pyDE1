@@ -17,7 +17,7 @@ from pyDE1.de1 import DE1
 from pyDE1.de1.c_api import API_MachineStates
 from pyDE1.de1.events import StateUpdate
 from pyDE1.dispatcher.resource import ConnectivityEnum
-from pyDE1.event_manager import SubscribedEvent
+from pyDE1.event_manager.event_manager import SubscribedEvent
 from pyDE1.event_manager.events import ConnectivityState, \
     DeviceAvailabilityState
 from pyDE1.exceptions import DE1NoAddressError, DE1APIValueError
