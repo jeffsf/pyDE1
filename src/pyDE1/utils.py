@@ -9,11 +9,15 @@ SPDX-License-Identifier: GPL-3.0-only
 import asyncio
 import enum
 import logging
+import multiprocessing
+import queue
 import re
 import sys
+import time
 import uuid
 
 from datetime import datetime
+from typing import Optional, Union
 
 logger_cancel_tasks = logging.getLogger('Util.CancelTasks')
 
@@ -187,3 +191,78 @@ def timestamp_to_str_with_ms(timestamp: float, show_date=True) -> str:
     return string
 
 
+def call_str(full_trace=True) -> str:
+    import inspect
+    stack = inspect.stack()[2]
+    retval = f"at {stack.function}:{stack.lineno}"
+    if full_trace:
+        idx = 3
+        while True:
+            try:
+                stack = inspect.stack()[idx]
+                next_caller = f"{stack.function}:{stack.lineno}"
+                if stack.function.startswith('_run'):
+                    break
+                retval = f"{retval} < {next_caller}"
+            except IndexError:
+                break
+            idx += 1
+    return retval
+
+
+# As run in a thread-pool executor, need a way to cleanly stop the thread
+# so require abandon_on_event
+
+async def mp_event_wait(event: multiprocessing.Event,
+                        timeout: Optional[float],
+                        abandon_on_event:
+                            Union[asyncio.Event,
+                                  multiprocessing.Event]) -> bool:
+    done = event.is_set()
+    end_time = (time.time() + timeout) if timeout else None
+    RECHECK_PERIOD = 1.0 # seconds
+    while (not done
+           and (not end_time
+                or (end_time and (now := time.time()) < end_time))
+           and (abandon_on_event and not abandon_on_event.is_set())):
+        if end_time:
+            wait_time = min(end_time - now, RECHECK_PERIOD)
+        else:
+            wait_time = RECHECK_PERIOD
+        task = asyncio.get_running_loop().run_in_executor(
+            None, event.wait, wait_time)
+        done = await task
+    return done
+
+
+async def mq_queue_get(mp_queue: multiprocessing.Queue,
+                       timeout: Optional[float],
+                       abandon_on_event:
+                       Union[asyncio.Event,
+                       multiprocessing.Event]) -> bool:
+
+    end_time = (time.time() + timeout) if timeout else None
+    RECHECK_PERIOD = 1.0  # seconds
+    done = False
+    qexc = None
+    data = None
+    while (not done
+           and (not end_time
+                or (end_time and (now := time.time()) < end_time))
+           and (abandon_on_event and not abandon_on_event.is_set())):
+        if end_time:
+            wait_time = min(end_time - now, RECHECK_PERIOD)
+        else:
+            wait_time = RECHECK_PERIOD
+        try:
+            task = asyncio.get_running_loop().run_in_executor(
+                None, mp_queue.get, True, wait_time)
+            data = await task
+            done = True  # As otherwise it would have raised queue.Empty
+        except queue.Empty as e:
+            qexc = e
+            done = False
+    if qexc:
+        raise qexc
+    else:
+        return data
