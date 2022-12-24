@@ -150,10 +150,9 @@ class ManagedBleakDevice:
 
     @property
     def name(self):
-        try:
-            name = self._name if self._name is not None else repr(self)
-        except AttributeError:
-            name = repr(self)
+        name = self._name if self._name else "{}_{}".format(
+            self.__class__.__name__,
+            self.address[-8:] if self.address else 'None')
         return name
 
     @property
