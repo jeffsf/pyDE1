@@ -47,6 +47,7 @@ except ImportError:
 
 from pyDE1.lock_logger import LockLogger
 
+IN_PROGRESS_HOLDOFF = 0.2 # seconds, works, 0.1 seemed too short
 
 class CaptureRequest (enum.Enum):
     CAPTURE = 'C'
@@ -636,6 +637,17 @@ class ManagedBleakClient (BleakClient):
             self.logger.info(f"Seemingly stale device, resetting: {e}")
             self._backend._device_path = None
             await self._backend_connect_after_retry_wait_event()
+        except bleak.exc.BleakDBusError as e:
+            # Here we go again, parsing messages to determine *which* exception
+            if e.args[0] == 'org.bluez.Error.InProgress':
+                self.logger.info(
+                    f"connect retry caught {e}, delaying this one a bit")
+                await asyncio.sleep(IN_PROGRESS_HOLDOFF)
+                await self._backend_connect_after_retry_wait_event()
+            else:
+                self.logger.exception(
+                    'Failed to connect(), unrecognized exception.')
+                raise
         except Exception:
             self.logger.exception(
                 'Failed to connect(), unrecognized exception.')
