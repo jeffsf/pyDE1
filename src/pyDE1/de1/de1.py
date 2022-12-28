@@ -245,23 +245,20 @@ class DE1 (Singleton, ManagedBleakDevice):
             await self.write_and_read_back_mmr0x80(
                 MMR0x80LowAddr.APP_FEATURE_FLAGS, AppFeatureFlag.USER_PRESENT)
 
-        await FlowSequencer().on_de1_nearly_ready()
-
-        # NB: This gets sent if all there or not
-        self._notify_ready()
-
-        # TODO: How can this be handled to defer "ready"?
-        #       Probably can't "await" as it needs this thread to execute
-        #       Also needs "ready" to make the call theough the API
-        asyncio.get_running_loop().run_in_executor(None,
-                                                   self._patch_on_connect)
-
-        # Don't need to wait on these
-        # asyncio.create_task(self.fetch_calibration())
-        # See if this resolves the start-up timeout problem
+        # Although generally not needed "immediately", deferring to "ready"
+        # can result in timeouts as ready can trigger multiple API requests
         await self.fetch_calibration()
 
+        await FlowSequencer().on_de1_nearly_ready()
+
+        self._notify_ready()
+
+        # There's a Catch-22 here as the API needs is_ready
+        # but then this becomes yet another competitor for cycles
+        asyncio.get_running_loop().run_in_executor(None,
+                                                   self._patch_on_connect)
         return
+
 
     def _patch_on_connect(self):
         poc = config.de1.PATCH_ON_CONNECT
