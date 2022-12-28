@@ -329,18 +329,6 @@ class DE1 (Singleton, ManagedBleakDevice):
     # Self-contained calls for API
     #
 
-    async def connect_to_first_if_found(self):
-        if self.is_connected:
-            self.logger.warning(
-                "'scan' requested, but already connected. "
-                "No action taken.")
-        else:
-            device = await find_first_matching(('DE1',))
-            if device:
-                await self.change_de1_to_id(device.address)
-        return self.address
-
-    # TODO: Simplify this when reworking scanning
     async def change_de1_to_id(self, ble_device_id: Optional[str]):
         """
         For now, this won't return until connected or fails to connect
@@ -349,36 +337,24 @@ class DE1 (Singleton, ManagedBleakDevice):
         self.logger.info(f"Address change requested for DE1 from {self.address} "
                     f"to {ble_device_id}")
 
-        de1 = DE1()
-
         if ble_device_id == 'scan':
             await self.connect_to_first_if_found()
-            return
-
-        # TODO: Need to make distasteful assumption that the id is the address
-        try:
-            if self.address == ble_device_id:
-                self.logger.info(f"Already using {ble_device_id}. No action taken")
-                return
-        except AttributeError:
-            pass
-
-        if ble_device_id is None:
-            # Straightforward request to disconnect and not replace
-            await self.change_address(None)
-
         else:
-            ble_device = DiscoveredDevices().ble_device_from_id(ble_device_id)
-            if ble_device is None:
-                self.logger.warning(f"No record of {ble_device_id}, initiating scan")
-                # NB: find_device_by_filter doesn't add to DiscoveredDevices
-                ble_device = await BleakScannerWrapped.find_device_by_address(
-                    ble_device_id, timeout=config.bluetooth.CONNECT_TIMEOUT)
-            if ble_device is None:
-                raise DE1NoAddressError(
-                    f"Unable to find device with id: '{ble_device_id}'")
-            await self.change_address(ble_device)
-            await self.capture()
+            await self.change_address(ble_device_id)
+
+        return self.address
+
+    async def connect_to_first_if_found(self):
+        if self.is_connected:
+            self.logger.warning(
+                "'scan' requested, but already connected. "
+                "No action taken.")
+        else:
+            device = await find_first_matching(('DE1',))
+            if device:
+                await self.change_address(device)
+                await self.capture()
+        return self.address
 
     @property
     def latest_profile(self):
