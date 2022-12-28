@@ -1130,7 +1130,12 @@ class DE1 (Singleton, ManagedBleakDevice):
 
     @property
     def current_state(self) -> API_MachineStates:
-        return self._cuuid_dict[CUUID.StateInfo].last_value.State
+        try:
+            last_state = self._cuuid_dict[CUUID.StateInfo].last_value.State
+        except KeyError:
+            self.logger.warning("Current state requested before known")
+            last_state = API_MachineStates.UNKNOWN
+        return last_state
 
     @property
     def state_last_updated(self) -> Optional[float]:
