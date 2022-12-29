@@ -24,14 +24,16 @@ from pyDE1.scale.acaia import AcaiaAcaia
 from pyDE1.scale.generic_scale import GenericScale, register_scale_class
 from pyDE1.scale.atomax_skale_ii import AtomaxSkaleII
 
+from pyDE1.scanner import RegisteredPrefixes
+
 
 @pytest.mark.asyncio
 async def test_initialize_and_registration():
 
     not_connected_error = DE1NotConnectedError
 
-    assert isinstance(pyDE1.scale.generic_scale._registered_scale_prefixes,
-                      set)
+    assert isinstance(RegisteredPrefixes.get_for_role(DeviceRole.SCALE),
+                      frozenset)
     assert pyDE1.scale.generic_scale._prefix_to_class[''] == GenericScale
 
     gs: GenericScale = GenericScale()

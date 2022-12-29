@@ -20,8 +20,7 @@ from bleak.backends.scanner import AdvertisementData
 
 import pyDE1.database.insert as db_insert
 import pyDE1.de1.handlers
-from pyDE1.bledev.managed_bleak_client import ManagedBleakClient, CaptureQueue
-from pyDE1.bledev.managed_bleak_device import ManagedBleakDevice, cq_to_cs
+from pyDE1.bledev.managed_bleak_device import ManagedBleakDevice
 from pyDE1.config import config
 from pyDE1.de1.ble import UnsupportedBLEActionError, CUUID
 from pyDE1.de1.c_api import (
@@ -40,18 +39,18 @@ from pyDE1.de1.profile import (
 from pyDE1.dispatcher.resource import ConnectivityEnum, DE1ModeEnum
 from pyDE1.event_manager.event_manager import SubscribedEvent
 from pyDE1.event_manager.events import (
-    ConnectivityState, ConnectivityChange, FirmwareUploadState, FirmwareUpload,
-    DeviceRole
+    FirmwareUploadState, FirmwareUpload, DeviceRole,
 )
 from pyDE1.exceptions import *
 from pyDE1.flow_sequencer import FlowSequencer
-from pyDE1.scanner import (
-    DiscoveredDevices, BleakScannerWrapped, find_first_matching
-)
+from pyDE1.scanner import RegisteredPrefixes, find_first_matching
+
 from pyDE1.singleton import Singleton
 from pyDE1.utils import task_name_exists, cancel_tasks_by_name
 
 import pyDE1.shutdown_manager as sm
+
+RegisteredPrefixes.add_to_role('DE1', DeviceRole.DE1)
 
 
 class DE1 (Singleton, ManagedBleakDevice):
@@ -347,7 +346,7 @@ class DE1 (Singleton, ManagedBleakDevice):
                 "'scan' requested, but already connected. "
                 "No action taken.")
         else:
-            device = await find_first_matching(('DE1',))
+            device = await find_first_matching(DeviceRole.DE1)
             if device:
                 await self.change_address(device)
                 await self.capture()

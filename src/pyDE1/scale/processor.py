@@ -18,18 +18,18 @@ from pyDE1.de1.c_api import API_MachineStates
 from pyDE1.de1.events import StateUpdate
 from pyDE1.dispatcher.resource import ConnectivityEnum
 from pyDE1.event_manager.event_manager import SubscribedEvent
-from pyDE1.event_manager.events import ConnectivityState, \
-    DeviceAvailabilityState
-from pyDE1.exceptions import DE1NoAddressError, DE1APIValueError
-from pyDE1.scale.generic_scale import (
-    GenericScale, recognized_scale_prefixes, prefix_to_class,
+from pyDE1.event_manager.events import (
+    DeviceAvailabilityState, DeviceRole,
 )
+from pyDE1.exceptions import DE1NoAddressError, DE1APIValueError
+from pyDE1.scale.generic_scale import GenericScale
 
 from pyDE1.scale.events import (
     ScaleWeightUpdate, ScaleTareSeen, WeightAndFlowUpdate
 )
 from pyDE1.scanner import (
-    BleakScannerWrapped, DiscoveredDevices, find_first_matching
+    find_first_matching,
+    RegisteredPrefixes,
 )
 from pyDE1.singleton import Singleton
 
@@ -182,8 +182,7 @@ class ScaleProcessor (Singleton):
                 "'scan' requested, but already connected. "
                 "No action taken.")
         else:
-            device = await find_first_matching(
-                recognized_scale_prefixes())
+            device = await find_first_matching(DeviceRole.SCALE)
             if device:
                 await self.scale.change_address(device)
                 await self.scale.capture()

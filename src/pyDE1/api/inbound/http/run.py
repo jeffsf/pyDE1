@@ -475,7 +475,8 @@ def run_api_inbound(master_config: pyDE1.config.Config,
                                 Resource.DE1_PROFILE_ID,
                                 Resource.DE1_PROFILE_STORE,
                                 Resource.DE1_FIRMWARE,
-                                Resource.DE1_FIRMWARE_CANCEL):
+                                Resource.DE1_FIRMWARE_CANCEL,
+                                Resource.SCAN,):
                 self.send_error_response(
                     HTTPStatus.NOT_IMPLEMENTED,
                     f"PUT not yet supported for {resource}"
@@ -498,6 +499,8 @@ def run_api_inbound(master_config: pyDE1.config.Config,
                                 Resource.DE1_FIRMWARE_CANCEL,
                                 ):
                     patch = content
+                elif resource in (Resource.SCAN,):
+                    patch = content.decode('utf-8')
                 else:
                     patch = json.loads(content)
                 targets = validate_patch_return_targets(resource=resource,

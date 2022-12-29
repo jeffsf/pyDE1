@@ -6,310 +6,247 @@ GNU General Public License v3.0 only
 SPDX-License-Identifier: GPL-3.0-only
 """
 
-import asyncio
-import enum
-import inspect
-import time
-from typing import (
-    Optional, Iterable, NamedTuple, Dict, Set, Tuple, Union,
-)
+# Only one scan can be running at the same time, at least with bleak 0.19
+# on BlueZ. Using an exclusive lock can lead to pileups. Should be able
+# to support a use case where the user finishes with a choose operation
+# and then moves on to the next before the timeout expires.
+#
+# In a multi-client situation, one user canceling another user's activity
+# isn't a great experience, but seems a reasonable compromise here.
+#
+# Intended behavior is that any new scan cancels any currently running one.
+# The cancelled scan sends its scanning:false packet and the new scan sends
+# an empty packet to "reset" clients.
 
-from bleak import BleakScanner
+import asyncio
+import queue
+import time
+
+from typing import Iterable, Tuple, Optional
+
+import bleak
 from bleak.backends.device import BLEDevice
 from bleak.backends.scanner import AdvertisementData
 
+from pyDE1.event_manager.event_manager import SubscribedEvent
+from pyDE1.event_manager.events import DeviceRole
+
 import pyDE1
 from pyDE1.config import config
-from pyDE1.event_manager.event_manager import send_to_outbound_pipes
 from pyDE1.event_manager.payloads import EventPayload
 from pyDE1.exceptions import *
-from pyDE1.singleton import Singleton
-from pyDE1.supervise import SupervisedTask
+
 
 logger = pyDE1.getLogger('Bluetooth.Scanner')
 
-# Otherwise will iterate over D,E,1
-_registered_ble_prefixes = set()
-_registered_ble_prefixes.add('DE1')
+# Need an object with a class for the SubscribedEvent
+class BluetoothScanner:
+    pass
+
+_scan_results_event = SubscribedEvent(BluetoothScanner())
+scan_complete = asyncio.Event()
 
 
-class BleakScannerWrapped (BleakScanner):
+class _RegisteredPrefixes:
 
-    def __init__(self, **kwargs):
-        super(BleakScannerWrapped, self).__init__(**kwargs)
-        self._run_ref = 0
+    def __init__(self):
+        self._prefixes = dict()
+        for role in DeviceRole:
+            self._prefixes[role]: set[str] = set()
+        self.add_to_role('', DeviceRole.UNKNOWN)
 
-    @property
-    def run_id(self):
-        """
-        This should be considered as opaque by consumers
-        """
-        return f"{self.__class__.__qualname__}_0x{id(self):x}_{self._run_ref}"
+    def get_for_role(self, role: DeviceRole):
+        if role is None:
+            return frozenset()
+        else:
+            return frozenset(self._prefixes[role])
 
-    async def start(self):
-        self._run_ref += 1
-        logger.debug("Starting scanner")
-        ep = ScannerNotification(action=ScannerNotificationAction.STARTED,
-                                 run_id=self.run_id)
-        await send_to_outbound_pipes(ep)
-        await super(BleakScannerWrapped, self).start()
-
-    async def stop(self):
-        await super(BleakScannerWrapped, self).stop()
-        ep = ScannerNotification(action=ScannerNotificationAction.ENDED,
-                                 run_id=self.run_id)
-        await send_to_outbound_pipes(ep)
-        logger.debug("Stopped scanner")
+    def add_to_role(self, prefix: str, role: DeviceRole):
+        self._prefixes[role].add(prefix)
 
 
-class ScannerNotificationAction (enum.Enum):
-    STARTED = 'started'
-    ENDED = 'ended'
-    FOUND = 'found'
+RegisteredPrefixes = _RegisteredPrefixes()
 
 
-class ScannerNotification (EventPayload):
-    """
-    As these don't go through a normal "publish" but are only over MQTT,
-    supply a unique ID for this scanning run in run_id so the recipient
-    can associate started, found, and ended with a single "run"
-    """
-    def __init__(self, action: ScannerNotificationAction,
-                 run_id: Optional[str] = None,
-                 id: Optional[str] = None,
-                 name: Optional[str] = None,
-                 arrival_time: Optional[float] = None,
-                 create_time: Optional[float] = None):
-        """
-        STARTED and ENDED require None for id and name
-        FOUND requires both id and name, though name potentially could be ''
-        """
-        if arrival_time is None:
-            arrival_time = time.time()
-        if action in (
-                ScannerNotificationAction.STARTED,
-                ScannerNotificationAction.ENDED) \
-                and (id is not None or name is not None):
-            raise DE1TypeError (
-                "STARTED and ENDED require None for both id and name")
-        if action is ScannerNotificationAction.FOUND \
-                and (id is None or name is None):
-            raise DE1TypeError (
-                "FOUND requires id and name")
-        super(ScannerNotification, self).__init__(arrival_time, create_time)
-        self._version = '1.0.0'
-        self.run_id = run_id
-        self.action = action
-        self.id = id
-        self.name = name
+# Can't just use nonlocal as it has to be bound in an outer function
+# Getting "this module" is reasonably ugly
+#   sys.modules[__name__]
+#   __import__(__name__)
 
+class _Wrapper:
 
-async def notify_bledevice(device: BLEDevice, run_id: Optional[str] = None):
-    for prefix in _registered_ble_prefixes:
-        if device.name.startswith(prefix):
-            ep = ScannerNotification(action=ScannerNotificationAction.FOUND,
-                                     id=device.address,
-                                     name=device.name,
-                                     run_id=run_id)
-            asyncio.create_task(send_to_outbound_pipes(ep))
-            break
+    def __init__(self):
+        self.scanner: Optional[bleak.BleakScanner] = None
+        self.role: Optional[DeviceRole] = None
+        self.found: list[BLEDevice] = list()
+        self.timeout_task: Optional[asyncio.Task] = None
 
+    async def new_run(self,
+                scanner: bleak.BleakScanner,
+                role: Optional[DeviceRole]=None,
+                timeout: Optional[float]=None):
+        if timeout is None:
+            timeout = config.bluetooth.SCAN_TIME
+        self.scanner = None
+        self.role = None
+        self.found = list()
+        self.timeout_task = None
+        scan_complete.clear()
+        self.scanner = scanner
+        self.role = role
+        await _scan_results_event.publish(
+                    ScanResults(_wrapper.found, role))
+        await self.scanner.start()
+        self.timeout_task = asyncio.create_task(self._stop_later(timeout))
+        self.timeout_task.add_done_callback(
+            lambda t: logger.info(
+                f"Timeout task done: {t.get_name()}"
+                + (" (cancelled)" if t.cancelled() else '')))
+        logger.info(f"Scan beginning for {role} {self.timeout_task.get_name()}")
 
-class DiscoveredDeviceEntry (NamedTuple):
-    last_seen: float
-    device: BLEDevice
-
-
-class DiscoveredDevices (Singleton):
-
-    def _singleton_init(self, *args, **kwds):
-        self._devices_seen: Dict[str, DiscoveredDeviceEntry] = dict()
-        self._lock = asyncio.Lock()
-        self._queue = asyncio.Queue()
-        self._worker = SupervisedTask(self._device_add_queue_worker)
-
-    def add(self, device: BLEDevice, run_id: Optional['str'] = None):
-        self._queue.put_nowait(self.AddThis(device=device,
-                                            seen_at=time.time(),
-                                            run_id=run_id))
-
-    async def devices_seen(self,
-                           starts_with_set: Optional[Iterable[str]] = None,
-                           bledevice_only=False) \
-            -> Set[Union[DiscoveredDeviceEntry, BLEDevice]]:
-        # This is going to "lose" active devices as they time out
-        async with self._lock:
-            retval = set()
-            now = time.time()
-            pruned = dict()
-            for addr, entry in self._devices_seen.items():
-                if config.bluetooth.SCAN_CACHE_EXPIRY is not None \
-                        and (now - entry.last_seen) \
-                            > config.bluetooth.SCAN_CACHE_EXPIRY:
-                    pass  # Can't delete in place during iteration
-                else:
-                    pruned[addr] = entry
-            self._devices_seen = pruned
-
-            for addr, entry in self._devices_seen.items():
-                include = False
-                if starts_with_set is not None:
-                    for prefix in starts_with_set:
-                        if entry.device.name.startswith(prefix):
-                            include = True
-                            break
-                else:
-                    include = True
-
-                if include:
-                    if bledevice_only:
-                        retval.add(entry.device)
-                    else:
-                        retval.add(entry)
-        return retval
-
-    async def devices_for_json(self):
-        retval = list()
-        for entry in await self.devices_seen(
-                starts_with_set=_registered_ble_prefixes,
-                bledevice_only=False):
-            retval.append({
-                'id': entry.device.address,
-                'name': entry.device.name,
-                'discovered': entry.last_seen
-            })
-        return retval
-
-    def ble_device_from_id(self, id: str) -> Optional[BLEDevice]:
+    async def end_run(self):
+        # Cancel first, as was not seeming to cancel when done second.
         try:
-            ble_device = self._devices_seen[id].device
-        except KeyError:
-            ble_device = None
-        return ble_device
+            self.timeout_task.cancel()
+            logger.info(f"Cancelled timeout: {self.timeout_task.get_name()}")
+        except AttributeError:
+            pass
+        try:
+            await self.scanner.stop()
+            self.scanner = None
+            await _scan_results_event.publish(
+                ScanResults(self.found, self.role, scanning=False))
+            scan_complete.set()
+            logger.info(
+                f"Scan ended for {self.role}, {len(self.found)} found")
+        except AttributeError:
+            pass
 
-    async def clear(self):
-        async with self._lock:
-            self._devices_seen.clear()
-
-    async def _device_add_queue_worker(self):
-        while True:
-            add_this = await self._queue.get()
-            # Filtering is done in notify_bledevice
-            asyncio.create_task(notify_bledevice(device=add_this.device,
-                                                 run_id=add_this.run_id))
-            async with self._lock:
-                self._devices_seen[add_this.device.address] \
-                    = DiscoveredDeviceEntry(last_seen=add_this.seen_at,
-                                            device=add_this.device)
-
-    class AddThis (NamedTuple):
-        device: BLEDevice
-        seen_at: float
-        run_id: str
-
-
-async def stop_scanner_if_running(scanner: BleakScanner):
-    logger = pyDE1.getLogger('Bluetooth.Scanner')
-    logger.debug(f"Stopping {scanner}")
-    await scanner.stop()
-    logger.debug(f"Stopped {scanner}")
-    # try:
-    #     scanning = scanner.is_scanning
-    # except AttributeError:  # On Linux
-    #     scanning = None
-    # if scanning:
-    #     logger.info(f"Is scanning")
-    #     await scanner.stop()
-    # elif scanning is None:
-    #     logger.info(f"is_scanning returned None")
-    #     try:
-    #         await scanner.stop()
-    #         logger.info(f"Scanner stopped")
-    #     except KeyError:
-    #         logger.info("Ignoring KeyError on scanner stop")
-    # else:
-    #     logger.info(f"NOT scanning")
+    async def _stop_later(self, after: float):
+        my_scanner = self.scanner
+        await asyncio.sleep(after)
+        logger.info(
+            f"Timeout, stopping scanner: {asyncio.current_task().get_name()}")
+        if self.scanner == my_scanner:
+            # This is a little dance as calling end_run() will cancel this task
+            _wrapper.timeout_task = None
+            await self.end_run()
+        else:
+            logger.warning(
+                "Timeout, _stop_later: Stale task "
+                + asyncio.current_task().get_name())
 
 
-async def find_first_matching(prefix_set: Iterable[str],
-                              timeout=None) -> BLEDevice:
+_wrapper = _Wrapper()
+
+
+async def scan_until_timeout(role: DeviceRole = None,
+                             timeout = None):
 
     if timeout is None:
         timeout = config.bluetooth.SCAN_TIME
 
-    if isinstance(prefix_set, str):
-        raise DE1TypeError(
-            "Prefix set of type str will iterate the characters. "
-            "('DE1',) is better")
+    loop = asyncio.get_running_loop()
 
-    scanner = BleakScannerWrapped()
-    run_id = scanner.run_id
-    dd = DiscoveredDevices()
+    prefix_set = RegisteredPrefixes.get_for_role(role)
 
-    def is_match(device: BLEDevice, adv: AdvertisementData) -> bool:
-        nonlocal run_id, dd
-
-        dd.add(device=device, run_id=run_id)
-        retval = False
+    def check_match(device: BLEDevice, adv: AdvertisementData):
         for prefix in prefix_set:
             if adv.local_name and adv.local_name.startswith(prefix):
                 logger.info(
-                    f"'{prefix}' matched at {device.address} "
-                    f"by {adv}")
-                retval = True
-        return retval
+                    f"'{prefix}' matched at {device.address} by {adv}")
+                # Can get called more than once if the device data changes
+                if device.address not in [d.address
+                                          for d in _wrapper.found]:
+                    _wrapper.found.append(device)
+                loop.create_task(_scan_results_event.publish(
+                    ScanResults(_wrapper.found, role)))
 
-    fdbf = await scanner.find_device_by_filter(filterfunc=is_match)
-    return fdbf
+    # Cancel any already running
+    await _wrapper.end_run()
+
+    scanner = bleak.BleakScanner(detection_callback=check_match)
+
+    try:
+        await _wrapper.new_run(scanner, role, timeout)
+    except bleak.exc.BleakDBusError as e:
+        if e.args[0] == 'org.bluez.Error.InProgress':
+            raise DE1OperationInProgressError(e)
+        else:
+            raise e
 
 
-async def scan_until_timeout(timeout=None) -> Tuple[BleakScannerWrapped,
-                                                    float,
-                                                    asyncio.Event]:
-    """
-    Returns (scanner, timeout, event) where event will be set
-    once timeout expires and scanner stops
-    """
+async def find_first_matching(role: DeviceRole,
+                              timeout=None) -> BLEDevice:
+
+    # Can't use .find_device_by_filter as it is a class method
+    # and creates its own
 
     if timeout is None:
         timeout = config.bluetooth.SCAN_TIME
 
-    def add_to_dd(device: BLEDevice, adv: AdvertisementData) -> None:
-        nonlocal dd, scanner
-        dd.add(device=device, run_id=scanner.run_id)
+    loop = asyncio.get_running_loop()
 
-    scanner = BleakScannerWrapped(detection_callback=add_to_dd)
-    event = asyncio.Event()
-    dd = DiscoveredDevices()
+    prefix_set = RegisteredPrefixes.get_for_role(role)
 
-    async def stop_later(after: float):
-        nonlocal scanner, event
-        await asyncio.sleep(after)
-        await scanner.stop()
-        event.set()
+    found_event = asyncio.Event()
 
-    await scanner.start()
-    asyncio.create_task(stop_later(timeout))
+    def check_match(device: BLEDevice, adv: AdvertisementData):
+        for prefix in prefix_set:
+            if adv.local_name and adv.local_name.startswith(prefix):
+                logger.info(
+                    f"'{prefix}' matched at {device.address} by {adv}")
+                _wrapper.found = [device]
+                found_event.set()
 
-    return scanner, timeout, event
+    async def found_waiter():
+        await found_event.wait()
+        await _wrapper.end_run()
 
+    # Cancel any already running
+    await _wrapper.end_run()
 
-async def scan_from_api(timeout: Optional[Union[int, float, bool]]=None):
-    if timeout is True:
-        logger.warning(
-            "Passing true for 'begin' is deprecated. "
-            "Pass a timeout in seconds or null to accept the default")
-    elif timeout is False:
-        logger.warning(
-            "Passing false for 'begin' is deprecated. "
-            "Pass a timeout in seconds or null to accept the default.")
+    scanner = bleak.BleakScanner(detection_callback=check_match)
+
+    task_found = asyncio.create_task(found_waiter())
+
+    try:
+        await _wrapper.new_run(scanner, role, timeout)
+    except bleak.exc.BleakDBusError as e:
+        if e.args[0] == 'org.bluez.Error.InProgress':
+            raise DE1OperationInProgressError(e)
+        else:
+            raise e
+
+    # Either found_water or timeout will set scan_complete
+    await scan_complete.wait()
+    task_found.cancel()
+    try:
+        return _wrapper.found[-1]
+    except IndexError:
         return None
-    elif timeout is not None and timeout <= 0:
-        raise DE1ValueError(
-            f"Timeout must be greater than zero {timeout}")
 
-    (scanner, timeout, event) = await scan_until_timeout(timeout=timeout)
-    return {
-        'run_id': scanner.run_id,
-        'timeout': timeout
-    }
+
+
+async def scan_from_api(role: DeviceRole):
+    await scan_until_timeout(role)
+
+
+class ScanResults (EventPayload):
+
+    def __init__(self,
+                 ble_device_list: list[BLEDevice],
+                 role: DeviceRole,
+                 scanning: bool = True):
+        arrival_time = time.time()
+        create_time = arrival_time
+        super().__init__(arrival_time, create_time)
+        self._version = "1.0.0"
+        self.role: DeviceRole = role
+        self.scanning = scanning
+        if ble_device_list is not None:
+            self.devices = [
+                {'address': d.address, 'name': d.name, 'rssi': d.rssi}
+                for d in ble_device_list ]
+        else:
+            self.devices = []

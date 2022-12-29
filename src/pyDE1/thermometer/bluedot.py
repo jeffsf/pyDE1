@@ -22,11 +22,13 @@ from pyDE1.event_manager.event_manager import SubscribedEvent
 from pyDE1.event_manager.events import DeviceRole
 from pyDE1.event_manager.payloads import EventPayload
 from pyDE1.lock_logger import LockLogger
-from pyDE1.scanner import find_first_matching
+from pyDE1.scanner import find_first_matching, RegisteredPrefixes
 
-# config-ize these
 
 TIMEOUT_FIRST_UPDATE = 2.5 # seconds after connect
+
+
+RegisteredPrefixes.add_to_role('BlueDOT', DeviceRole.THERMOMETER)
 
 
 class BlueDOTUpdate (EventPayload):
@@ -198,7 +200,7 @@ class BlueDOT (ManagedBleakDevice):
                 "'scan' requested, but already connected. "
                 "No action taken.")
         else:
-            device = await find_first_matching(('BlueDOT',))
+            device = await find_first_matching(DeviceRole.THERMOMETER)
             if device:
                 await self.change_address(device)
                 await self.capture()

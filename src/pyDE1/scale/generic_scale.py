@@ -29,13 +29,12 @@ from pyDE1.exceptions import (
     DE1UnsupportedDeviceError,
 )
 from pyDE1.scale.events import ScaleWeightUpdate, ScaleTareSeen
-from pyDE1.scanner import _registered_ble_prefixes
+from pyDE1.scanner import RegisteredPrefixes
 
 logger = pyDE1.getLogger('Scale')
 
 # Used for class selection and for BLE detection and filtering
 _prefix_to_class = dict()
-_registered_scale_prefixes = set()
 
 
 def register_scale_class(cls: 'GenericScale'):
@@ -55,13 +54,8 @@ def register_scale_class(cls: 'GenericScale'):
     for prefix in cls._supports_prefixes:
         _prefix_to_class[prefix] = cls
         if prefix not in (None, ''):
-            _registered_scale_prefixes.add(prefix)
-            _registered_ble_prefixes.add(prefix)
+            RegisteredPrefixes.add_to_role(prefix, DeviceRole.SCALE)
     return cls
-
-
-def recognized_scale_prefixes() -> set:
-    return _registered_scale_prefixes.copy()
 
 
 def prefix_to_class(prefix: Optional[str]):

@@ -23,6 +23,8 @@ from pyDE1.exceptions import (
     DE1APIAttributeError, DE1APITypeError, DE1APIValueError
 )
 
+import pyDE1
+logger = pyDE1.getLogger('Validate')
 
 # t = Union[int, float]
 # isinstance(2, t)
@@ -44,14 +46,15 @@ def validate_patch_return_targets(resource: Resource,
     #        IsAt with byte, bytearray (profile or firmware)
     if isinstance(mapping, dict) and isinstance(patch, dict):
         pass
-    elif isinstance(mapping, IsAt) \
-        and isinstance(patch, (bytes, bytearray)):
+    elif (isinstance(mapping, IsAt)
+        and isinstance(patch, (bytes, bytearray, str))):
         # coerce into "standard form"
+        logger.debug(f"Converting to dict form for {mapping}")
         patch = { None: patch }
     else:
         raise DE1APITypeError(
             "Validate: Mapping and patch inconsistent, "
-            "dict with dict, IsAt with raw value "
+            "dict with dict, IsAt with bytes/str value "
             f"not {type(mapping)} with {type(patch)}"
         )
 
@@ -131,7 +134,9 @@ def _validate_patch_inner(patch: dict, mapping: dict, path: str, targets: dict):
                 targets['Scale'] = True
 
             # Not really "validate", but this is a good place to do it
-
+            # TODO: Unify this with repetition implementation.py
+            #       This does not modify the overall patch
+            #       Also many other repetitions of special cases there
             if (t := mapping_value.internal_type) is not None:
                 try:
                     patch[key] = t(new_value)

@@ -8,6 +8,7 @@ SPDX-License-Identifier: GPL-3.0-only
 
 import asyncio
 import copy
+import enum
 import inspect
 import json
 
@@ -17,6 +18,7 @@ from functools import reduce
 from typing import Union, Dict, Set
 
 import pyDE1.scanner
+from pyDE1 import scanner
 from pyDE1.config import config
 from pyDE1.de1 import DE1
 from pyDE1.de1.c_api import PackedAttr, MMR0x80LowAddr, pack_one_mmr0x80_write
@@ -31,7 +33,7 @@ from pyDE1.exceptions import (
 )
 from pyDE1.flow_sequencer import FlowSequencer
 from pyDE1.scale.processor import ScaleProcessor
-from pyDE1.scanner import DiscoveredDevices, scan_from_api
+from pyDE1.scanner import scan_from_api
 from pyDE1.utils import prep_for_json
 from pyDE1.utils_public import rgetattr, rsetattr
 
@@ -156,7 +158,6 @@ async def _get_isat_value(isat: IsAt):
     scale_processor = ScaleProcessor()
     scale = scale_processor.scale
     thermometer = flow_sequencer._steam_temp_controller._thermometer
-    dd = DiscoveredDevices()
 
     retval = None
 
@@ -178,10 +179,6 @@ async def _get_isat_value(isat: IsAt):
 
     elif target == TO.Thermometer:
         retval = rgetattr(thermometer, attr_path)
-
-    elif target == TO.DiscoveredDevices:
-        # Need to wrap as devices_for_json is async
-        retval = await _prop_value_getter(rgetattr(dd, attr_path))
 
     elif isinstance(target, MMR0x80LowAddr):
         # NB: This assumes that the MMR and CUUID are kept up to date
@@ -426,14 +423,17 @@ async def patch_resource_from_dict(resource: Resource, values_dict: dict):
             and isinstance(values_dict, dict):
         pass
     elif isinstance(mapping, IsAt) \
-        and isinstance(values_dict, (bytes, bytearray)):
+        and isinstance(values_dict, (bytes, bytearray, str)):
+        # TODO: Unify this with validate.py
+        if issubclass((t := mapping.internal_type), enum.Enum):
+            values_dict = t(values_dict)
         # coerce into "standard form"
         mapping = { None: mapping }
         values_dict = { None: values_dict }
     else:
         raise DE1APITypeError(
             "Implementation: Mapping and patch inconsistent, "
-            "dict with dict, IsAt with raw value "
+            "dict with dict, IsAt with raw/str value "
             f"not {type(mapping)} with {type(values_dict)}"
         )
 
@@ -513,7 +513,7 @@ async def _patch_dict_to_mapping_inner(partial_value_dict: dict,
                     f"Mapping for '{key}': {mapping_isat} is not writable"
                 )
 
-            if isinstance(target, TO) and target != TO.DiscoveredDevices:
+            if isinstance(target, TO):
                 if target == TO.DE1:
                     this_target = de1
                 elif target == TO.FlowSequencer:
@@ -524,6 +524,8 @@ async def _patch_dict_to_mapping_inner(partial_value_dict: dict,
                     this_target = scale_processor
                 elif target == TO.Thermometer:
                     this_target = thermometer
+                elif target == TO.Scanner:
+                    this_target = scanner
                 else:
                     raise DE1APITypeError(
                         f"Unsupported target for '{key}': {mapping_isat}")

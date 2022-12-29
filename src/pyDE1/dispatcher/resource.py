@@ -10,7 +10,7 @@ Enum that defines the recognized resources that the Dispatcher can access
 
 import enum
 
-RESOURCE_VERSION = '4.0.0'
+RESOURCE_VERSION = '5.0.0'
 
 
 class Resource (enum.Enum):
@@ -150,6 +150,7 @@ class Resource (enum.Enum):
                 self.DE1_PROFILE,
                 self.DE1_PROFILE_ID,
                 self.DE1_PROFILE_STORE,
+                self.SCAN,
         ):
             retval = False
 

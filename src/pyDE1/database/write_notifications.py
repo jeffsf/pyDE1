@@ -104,6 +104,10 @@ ROLLING_BUFFER_TIME_LIMITED = [
     'SequencerGateNotification',
 ]
 
+DO_NOT_PERSIST = (
+    'ScanResults',
+)
+
 # This is probably superfluous, but safer
 rolling_buffers_lock = threading.Lock()
 
@@ -191,8 +195,9 @@ async def record_data(incoming: multiprocessing.Queue):
                             rolling_buffers[data_dict['class']].append(
                                 data_dict)
                     except KeyError:
-                        logger.info("No rolling buffer for "
-                                    f"{data_dict['class']}")
+                        if data_dict['class'] not in DO_NOT_PERSIST:
+                            logger.info("No rolling buffer for "
+                                        f"{data_dict['class']}")
                     pass
 
                     if recording or not consider_sequence_complete.is_set():

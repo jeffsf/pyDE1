@@ -193,7 +193,8 @@ async def _request_queue_processor(request_queue: asyncio.Queue,
                 if got.resource not in (Resource.DE1_PROFILE,
                                         Resource.DE1_PROFILE_ID,
                                         Resource.DE1_PROFILE_STORE,
-                                        Resource.DE1_FIRMWARE):
+                                        Resource.DE1_FIRMWARE,
+                                        Resource.SCAN):
                     raise NotImplementedError(
                         "Only profile and firmware PUT supported at this time")
                     # As there's no validation that a different PUT target

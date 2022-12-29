@@ -29,14 +29,16 @@ from pyDE1.dispatcher.resource import (
     Resource, RESOURCE_VERSION, DE1ModeEnum, ConnectivityEnum
 )
 
+from pyDE1.event_manager.events import DeviceRole
 from pyDE1.bledev.managed_bleak_device import CaptureRequest
+
 
 try:
     from pyDE1.source_data import source_data
 except ImportError:
     source_data = None
 
-MAPPING_VERSION = "6.0.0"
+MAPPING_VERSION = "7.0.0"
 
 logger = pyDE1.getLogger('Inbound.Mapping')
 
@@ -52,11 +54,11 @@ logger = pyDE1.getLogger('Inbound.Mapping')
 
 class TO (Enum):
     DE1 = auto()
-    DiscoveredDevices = auto()
     FlowSequencer = auto()
     Scale = auto()
     ScaleProcessor = auto()
     Thermometer = auto()
+    Scanner = auto()
     
 
 class IsAt(NamedTuple):
@@ -216,19 +218,17 @@ MAPPING[Resource.DE1_FIRMWARE_CANCEL] = IsAt(target=TO.DE1, attr_path=None,
 
 # TODO: How to reference a module-level subroutine? Use module as target?
 
-MAPPING[Resource.SCAN] = {
-    # Passing a number sets the timeout. Passing null takes the default.
-    'begin': IsAt(target=None, attr_path=None,
-                  setter_path='scan_from_api',
-                  v_type=Optional[Union[int, float]])
-}
+MAPPING[Resource.SCAN] = IsAt(target=TO.Scanner, attr_path=None,
+                              setter_path='scan_from_api',
+                              v_type=str,
+                              internal_type=DeviceRole)
 
 # Note: This is an async getter because of the lock
-MAPPING[Resource.SCAN_DEVICES] = {
-    'devices': IsAt(target=TO.DiscoveredDevices, attr_path='devices_for_json',
-                    read_only=True,
-                    v_type=dict)
-}
+# MAPPING[Resource.SCAN_DEVICES] = {
+#     'devices': IsAt(target=TO.DiscoveredDevices, attr_path='devices_for_json',
+#                     read_only=True,
+#                     v_type=dict)
+# }
 
 # Work from leaves back, so can be "included" by reference
 
