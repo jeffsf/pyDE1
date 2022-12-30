@@ -72,25 +72,30 @@ may not be available or may not represent current state.
 
 
 def get_timeout(prop, value):
-    bound_class = prop.__self__.__class__
+
     name = prop.__name__
     timeout = config.http.ASYNC_TIMEOUT
 
     if name == 'connectivity_setter' and value:
-        timeout = config.bluetooth.CONNECT_TIMEOUT + 0.100
+        timeout = config.bluetooth.CONNECT_TIMEOUT + 0.100 \
+                  + config.http.ASYNC_TIMEOUT + 0.100
 
     elif name in ('change_de1_to_id',
                   'change_scale_to_id',
                   'change_to_id',):
         if value is None:
-            timeout = config.bluetooth.DISCONNECT_TIMEOUT
+            timeout = config.bluetooth.DISCONNECT_TIMEOUT \
+                      + config.http.ASYNC_TIMEOUT + 0.100
         elif value == 'scan':
             timeout = config.bluetooth.SCAN_TIME \
+                      + config.bluetooth.DISCONNECT_TIMEOUT \
                       + config.bluetooth.CONNECT_TIMEOUT \
                       + config.http.ASYNC_TIMEOUT + 0.100
         else:
-            timeout = config.bluetooth.CONNECT_TIMEOUT \
+            timeout = config.bluetooth.DISCONNECT_TIMEOUT \
+                      + config.bluetooth.CONNECT_TIMEOUT \
                       + config.http.ASYNC_TIMEOUT + 0.100
+
     elif name in ('set_profile_by_id', 'upload_json_v2_profile'):
         timeout = config.http.PROFILE_TIMEOUT
 
