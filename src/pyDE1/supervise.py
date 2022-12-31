@@ -16,7 +16,8 @@ from typing import Union, Awaitable, Callable, Optional, Mapping
 
 import pyDE1
 import pyDE1.shutdown_manager as sm
-
+from pyDE1.api.outbound.mqtt.run import MQTTStatusText
+from pyDE1.send_single_message import send_single_message
 
 re_us_char = re.compile('_\w')
 
@@ -197,13 +198,15 @@ class SupervisedProcess:
     def __init__(self, target: Callable, name: Optional[str] = None,
                  args: Optional[tuple] = (), kwargs: Optional[Mapping] = None,
                  daemon: Optional[bool] = None,
-                 do_not_restart=False):
+                 do_not_restart=False,
+                 will_subtopic: Optional[str] = None):
         self._target = target
         self._name = name
         self._args = args
         self._kwargs = kwargs
         self._daemon = daemon
         self._do_not_restart = do_not_restart
+        self._will_subtopic = will_subtopic
         self._logger = pyDE1.getLogger(f"Supervised.Process.{self._name}")
         self._process: Optional[multiprocessing.Process] = None
         self._start_time_list = []
@@ -297,6 +300,10 @@ class SupervisedProcess:
             self._logger.info("Process exited, do-not-restart set")
         else:
             self._logger.error("Process exited")
+            if self._will_subtopic:
+                send_single_message('status/controller',
+                                    MQTTStatusText.on_will.value,
+                                    self._logger)
             self.start()
 
     @property

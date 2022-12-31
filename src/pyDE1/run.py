@@ -19,7 +19,6 @@ SPDX-License-Identifier: GPL-3.0-only
 import pyDE1
 import pyDE1.config
 import pyDE1.pyde1_logging as pyde1_logging
-
 from pyDE1.config import config
 
 
@@ -198,6 +197,7 @@ def run():
             'database_queue': database_queue,
         },
         name="Controller",
+        will_subtopic='status/controller',
         daemon=False
     )
     supervised_process_set.add(supervised_controller_process)

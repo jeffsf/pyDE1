@@ -144,3 +144,5 @@ def attach(subtopic: str,
                         properties=None)
 
     mqtt_client.loop_start()
+
+
