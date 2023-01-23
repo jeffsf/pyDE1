@@ -1316,16 +1316,28 @@ class DE1 (Singleton, ManagedBleakDevice):
                 if css in (API_Substates.Pour,):
                     # Steaming, maybe
                     # PausedSteam and SteamPuff, probably not
-                    current_shot_settings: ShotSettings = self._cuuid_dict[
-                        CUUID.ShotSettings].last_value
-                    temp_shot_settings: ShotSettings = deepcopy(
-                        current_shot_settings)
-                    temp_shot_settings.TargetSteamLength = 0
-                    await self.write_packed_attr(temp_shot_settings)
-                    self.logger.debug("Wrote zero-time to steam length")
-                    await self.write_packed_attr(current_shot_settings)
-                    tsl = current_shot_settings.TargetSteamLength
-                    self.logger.debug(f"Restored {tsl} to steam length")
+                    try:
+                        purge_mode_active = (
+                            self.feature_flag.steam_purge_mode
+                            and self._mmr_dict[
+                               MMR0x80LowAddr.STEAM_PURGE_MODE].data_decoded
+                        )
+                    except AttributeError:
+                        purge_mode_active = False
+                    if purge_mode_active:
+                        await self._request_state(API_MachineStates.Idle)
+                        self.logger.debug("Requested Idle for end_steam()")
+                    else:
+                        current_shot_settings: ShotSettings = self._cuuid_dict[
+                            CUUID.ShotSettings].last_value
+                        temp_shot_settings: ShotSettings = deepcopy(
+                            current_shot_settings)
+                        temp_shot_settings.TargetSteamLength = 0
+                        await self.write_packed_attr(temp_shot_settings)
+                        self.logger.debug("Wrote zero-time to steam length")
+                        await self.write_packed_attr(current_shot_settings)
+                        tsl = current_shot_settings.TargetSteamLength
+                        self.logger.debug(f"Restored {tsl} to steam length")
                 else:
                     log_level = logging.WARNING
         else:
