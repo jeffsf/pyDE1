@@ -38,7 +38,6 @@ class SteamTempController:
 
         self._thermometer = thermometer
         self._tat_estimator = TimeAtTargetEstimator()
-        self._target: Optional[float] = None
         self._trigger_time = 0  # Cache between temperature updates
 
         self._de1 = DE1()
@@ -59,8 +58,12 @@ class SteamTempController:
 
     @target.setter
     def target(self, value):
-        self.logger.info(f"Target set: {value}")
-        self._tat_estimator.target = value
+        if value <= self._thermometer.units.freezing:
+            # Used to "beep" BlueDOT on connect
+            return
+        if self._tat_estimator.target != value:
+            self.logger.info(f"Target set: {value}")
+            self._tat_estimator.target = value
 
     @property
     def has_triggered(self):
@@ -86,7 +89,7 @@ class SteamTempController:
                     now >= self._trigger_time - config.steam.STOP_LAG):
                 self._on_trigger_event.set()
                 self.logger.info("Stopping steam with {} {} target".format(
-                    self._target, self._thermometer.units.name))
+                    self.target, self._thermometer.units.name))
                 # TODO: Is this call up-to-date with firmware changes
                 await self._de1.end_steam()
             else:
@@ -96,7 +99,7 @@ class SteamTempController:
         if not self._on_trigger_event.set():
             self.logger.warning(
                 "Trigger exited early for target {}, {},{}".format(
-                    self._target,
+                    self.target,
                     self._de1.current_state, self._de1.current_substate
                 ))
         self._trigger_checker_task = None
@@ -139,7 +142,7 @@ class SteamTempController:
 
         # Use the BlueDOT high-alarm as the steam-to target
 
-        self._target = update.high_alarm
+        self.target = update.high_alarm
 
         if self._trigger_checker_task is not None:
             self._trigger_time = await self._tat_estimator.new_sample(
