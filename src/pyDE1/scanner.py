@@ -98,17 +98,17 @@ class _Wrapper:
                     ScanResults(_wrapper.found, role))
         await self.scanner.start()
         self.timeout_task = asyncio.create_task(self._stop_later(timeout))
-        self.timeout_task.add_done_callback(
-            lambda t: logger.info(
-                f"Timeout task done: {t.get_name()}"
-                + (" (cancelled)" if t.cancelled() else '')))
-        logger.info(f"Scan beginning for {role} {self.timeout_task.get_name()}")
+        # self.timeout_task.add_done_callback(
+        #     lambda t: not t.cancelled()
+        #               and logger.info(f"Scan timeout: {t.get_name()}"))
+        logger.info("Scanning for {} with {} sec timeout: {}".format(
+            role, timeout, self.timeout_task.get_name()
+        ))
 
     async def end_run(self):
         # Cancel first, as was not seeming to cancel when done second.
         try:
             self.timeout_task.cancel()
-            logger.info(f"Cancelled timeout: {self.timeout_task.get_name()}")
         except AttributeError:
             pass
         try:

@@ -17,6 +17,7 @@ Typical usage:
 """
 
 import asyncio
+import logging
 import time
 
 import pyDE1
@@ -25,12 +26,14 @@ from pyDE1.utils import call_str
 
 class LockLogger:
 
-    def __init__(self, lock: asyncio.Lock, name: str):
+    def __init__(self, lock: asyncio.Lock, name: str,
+                 log_threshold = 0.050):
         self._lock = lock
         self._name = name
         self._logger = pyDE1.getLogger(f'Lock.{self._name}')
         self._checked = None
         self._acquired = None
+        self.log_threshold = log_threshold
 
     def check(self) -> 'LockLogger':
         if self._lock.locked():
@@ -59,7 +62,13 @@ class LockLogger:
             self._logger.error(
                 f"NOT RELEASED after {dt:.0f} ms {call_str(full_trace)}")
         else:
-            self._logger.info(
+            if dt < self.log_threshold * 1000:
+                level = logging.DEBUG
+            elif dt < 2 * self.log_threshold * 1000:
+                level = logging.INFO
+            else:
+                level = logging.WARNING
+            self._logger.log(level,
                 f"Released lock after {dt:.0f} ms {call_str(full_trace)}")
 
 

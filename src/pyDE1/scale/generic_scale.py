@@ -111,8 +111,6 @@ class GenericScale (ClassChanger, ManagedBleakDevice):
         self._event_scale_changed: SubscribedEvent = SubscribedEvent(self)
 
         self._adopt_sync()
-        config.logging.handlers.STDERR = 'DEBUG'
-        config.logging.formatters.STDERR = config.logging.formatters.LOGFILE
         self._period_estimator = PeriodEstimator(self)
 
         # Don't need to await this on instantiation
@@ -126,7 +124,6 @@ class GenericScale (ClassChanger, ManagedBleakDevice):
         self._name: Optional[str] = None
 
         self._adjust_name_send_scale_change()
-        self.logger = pyDE1.getLogger('Scale.Generic')
 
         # These are often model-specific, override in subclass init
         self._nominal_period = 0.1  # seconds per sample
@@ -170,7 +167,10 @@ class GenericScale (ClassChanger, ManagedBleakDevice):
             ble_name = self._bleak_client._backend._device_info['Name']
         except (KeyError, AttributeError, TypeError) as e:
             ble_name = '(unknown)'
-        self._name = f"{self.__class__.__name__}: {ble_name}"
+        class_name = self.__class__.__name__
+        self._name = f"{class_name}: {ble_name}"
+        self.logger = pyDE1.getLogger(f'Scale.{class_name}')
+        self._bleak_client.logger = self.logger.getChild('Client')
         sc = ScaleChange(arrival_time=time.time(),
                          state=self.connectivity_state,
                          id=self.address,

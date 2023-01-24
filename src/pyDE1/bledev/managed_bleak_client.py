@@ -208,6 +208,9 @@ class ManagedBleakClient (BleakClient):
 
         self._reset_all_unsafe()
 
+        self._last_retry_delay_notified: Optional[float] = None
+
+
     ###
     ### Public API
     ###
@@ -457,7 +460,7 @@ class ManagedBleakClient (BleakClient):
 
     def _reset_all_unsafe(self):
         # self.logger.info(f'_reset_all_unsafe()')
-        self.logger.debug(f'_reset_all_unsafe() {call_str()}')
+        # self.logger.debug(f'_reset_all_unsafe() {call_str()}')
         self._event_captured.clear()
         self._event_released.clear()
         self._event_no_pending.set()
@@ -474,6 +477,7 @@ class ManagedBleakClient (BleakClient):
             self._on_change_callback(self,
                                      self._capture_queue,
                                      self._capture_queue)
+        self._last_retry_delay_notified = None
 
     @property
     def _capture_queue(self):
@@ -603,7 +607,7 @@ class ManagedBleakClient (BleakClient):
         return t
 
     def _start_cancel_with_lock(self):
-        self.logger.info("Start cancel")
+        self.logger.info(f"Start cancel ({cq_to_code(self._capture_queue)})")
         self._retry_reset()
         if (pt := self._pending_task) is not None:
             self.logger.debug(f"Cancel request: {task_for_log(pt)}")
@@ -628,7 +632,7 @@ class ManagedBleakClient (BleakClient):
             self.logger.info("connect retry CancelledError caught, pass")
             pass
         except asyncio.TimeoutError:
-            self.logger.info("connect retry TimeoutError caught, pass")
+            self.logger.debug("connect retry TimeoutError caught, pass")
             pass
         except bleak.exc.BleakDeviceNotFoundError as e:
             # bleak 0.19.0 and later
@@ -664,6 +668,7 @@ class ManagedBleakClient (BleakClient):
             self._retry_wait_task = None
         self._retry_since = None
         self._retry_wait_event.clear()
+        self._last_retry_delay_notified = None
 
     def _retry_start(self):
         self._retry_reset()
@@ -685,6 +690,11 @@ class ManagedBleakClient (BleakClient):
 
     def _retry_set_timer(self):
         how_long = self._retry_delay()
+
+        if self._last_retry_delay_notified != how_long:
+            self.logger.info(f"Connect hold-off set to {how_long} seconds ")
+            self._last_retry_delay_notified = how_long
+
         if how_long == 0:
             self._retry_wait_event.set()
         else:
@@ -692,9 +702,6 @@ class ManagedBleakClient (BleakClient):
             self._retry_wait_task = asyncio.create_task(
                 self._retry_waiter(how_long),
                 name=f"_retry_waiter({how_long})")
-            self.logger.info(
-                f"Connect holdoff of {how_long} seconds "
-                + task_for_log(self._retry_wait_task))
 
     # Potentially use loop.call_later
     # returns an asyncio.TimerHandle
@@ -764,7 +771,6 @@ class ManagedBleakClient (BleakClient):
                         name='CaptureQueue').check()
         async with self._capture_queue_lock:
             ll.acquired()
-
             # Sanity checks
             if self._capture_queue.pending is None:
                 logger.warning(
@@ -843,6 +849,7 @@ class ManagedBleakClient (BleakClient):
             else:
                 self._event_captured.clear()
                 self._event_no_pending.clear()
+            self._retry_reset()
             logger.debug("Events set/cleared for CaptureRequest.CAPTURE")
 
         elif cq.connected == CaptureRequest.RELEASE:
@@ -884,6 +891,9 @@ class ManagedBleakClient (BleakClient):
         logger = self.logger.getChild('DiscCB.A')
         logger.debug(
             f"Entering async disconnected callback {disconnected_from}")
+
+        if (tgt := self._capture_queue.target) == CaptureRequest.CAPTURE:
+            self.logger.warning( f"Bluetooth disconnected with target of {tgt}")
 
         ll = LockLogger(lock=self._capture_queue_lock,
                         name='CaptureQueue').check()

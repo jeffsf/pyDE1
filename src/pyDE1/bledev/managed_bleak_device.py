@@ -235,13 +235,13 @@ class ManagedBleakDevice:
                                current: CaptureQueue) -> None:
             arrival_time = time.time()
 
-            self.logger.debug(
-                "[{:05.3f}] on_change_callback(<MBC>, {}, {}) {}".format(
-                    arrival_time % 10,
-                    cq_to_code(previous),
-                    cq_to_code(current),
-                    call_str()
-                ))
+            # self.logger.debug(
+            #     "[{:05.3f}] on_change_callback(<MBC>, {}, {}) {}".format(
+            #         arrival_time % 10,
+            #         cq_to_code(previous),
+            #         cq_to_code(current),
+            #         call_str()
+            #     ))
 
 
             asyncio.create_task(self._on_change_callback_async(
