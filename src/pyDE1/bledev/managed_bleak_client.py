@@ -333,6 +333,7 @@ class ManagedBleakClient (BleakClient):
         """
         if not self.address:
             raise DE1NoAddressError(f"{self}.address: '{self.address}'")
+        self._retry_reset()
         ll = LockLogger(self._change_address_lock, "ChangeAddress").check()
         async with self._change_address_lock:
             ll.acquired()
@@ -565,30 +566,26 @@ class ManagedBleakClient (BleakClient):
             target=request,
         )
 
-        if next_cq_action== CaptureRequest.CAPTURE:
-            if not self._retry_is_active:
-                self._retry_start()
-            else:
-                pass
-            self._retry_set_timer()
-        else:
-            self._retry_reset()
-
         return new_action_taken
 
     def _start_request_with_lock(self, req: CaptureRequest):
         if req == CaptureRequest.CAPTURE:
             self._start_capture_with_lock()
+
         elif req == CaptureRequest.RELEASE:
             self._start_release_with_lock()
+
         elif req == CaptureRequest.CANCEL:
             self._start_cancel_with_lock()
+
         else:
             raise ValueError(f"Unrecognized request: {req}")
 
     def _start_capture_with_lock(self):
         # TODO: build this out
         self.logger.debug("Start capture")
+        if not self._retry_is_active:
+            self._retry_start()
         self._retry_set_timer()
         t = asyncio.create_task(self._backend_connect_after_retry_wait_event())
         self._pending_task = t
@@ -598,6 +595,7 @@ class ManagedBleakClient (BleakClient):
 
     def _start_release_with_lock(self):
         self.logger.info("Start release")
+        self._retry_reset()
         t = asyncio.create_task(self._backend.disconnect())
         self._pending_task = t
         t.add_done_callback(self._capture_release_done_callback)
@@ -606,6 +604,7 @@ class ManagedBleakClient (BleakClient):
 
     def _start_cancel_with_lock(self):
         self.logger.info("Start cancel")
+        self._retry_reset()
         if (pt := self._pending_task) is not None:
             self.logger.debug(f"Cancel request: {task_for_log(pt)}")
             pt.cancel()
