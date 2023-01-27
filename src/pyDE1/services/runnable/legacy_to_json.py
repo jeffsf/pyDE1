@@ -16,7 +16,7 @@ Known limitations include:
 """
 
 VERSION = {
-    'app': '0.0.1',
+    'app': '0.0.2',
     'format': '2.1',
 }
 
@@ -43,19 +43,18 @@ TIMESTAMP = datetime.datetime.now().astimezone().isoformat(timespec='seconds')
 def pr_as_list(toks: pyparsing.results.ParseResults):
     return pyparsing.ParseResults.List(toks.as_list())
 
-# This won't handle braces in the words
-
-word_nb = Word(printables, exclude_chars='{}')
-
-
 # Tcl dumps often leave representational errors
-# A p16 data element is 1/16 scaled, 0.0625
+# A p4 data element is 1/16 scaled, 0.0625
 def round2four(toks):
     val = toks[0] if isinstance(toks, pyparsing.ParseResults) else toks
     val = round(val, 4)
     ival = int(val)
     return ival if val == ival else val
 
+### Start of Grammar ###
+
+# This won't handle braces in the words
+word_nb = Word(printables, exclude_chars='{}')
 
 rounded_number = common.number.copy().add_parse_action(round2four)
 
@@ -100,175 +99,7 @@ valid_profile_value = (
 
 profile_dict = dict_of(valid_key, valid_profile_value)
 
-
-def show_test_result(result):
-    if result[0]:
-        print("\n------\n  OK  \n------\n")
-    else:
-        print("\n======\nFAILED\n======\n")
-
-
-def braced_string_test():
-    result = braced_string.run_tests(
-        tests="""
-        {}
-        {one}
-        {two words}    
-        { one }
-        { two words }
-        """
-    )
-    show_test_result(result)
-
-    result = braced_string.run_tests(
-        failure_tests=True,
-        tests="""
-        { word {with internal brace} mess }
-        # Embedded {one} word
-        """
-    )
-    show_test_result(result)
-
-
-def valid_key_test():
-    result = valid_key.run_tests(
-        tests="""
-        word
-        advanced_shot
-        maximum_pressure_range_advanced
-        """
-    )
-    show_test_result(result)
-
-    result = valid_key.run_tests(
-        failure_tests=True,
-        tests="""
-        two words
-        {word}
-        0
-        3.4
-        [foo]
-        Downloaded from Visualizer}
-        """
-    )
-    show_test_result(result)
-
-
-def valid_simple_value_test():
-    result = valid_simple_value.run_tests(
-        tests="""
-        word
-        {}
-        {one}
-        {two words}
-        {Extractamundo Tres!}  
-        0
-        -1
-        1.2
-        {0}
-        {1.2}
-        { 1.2 }
-        {-3}
-        { -4.5}
-        """
-    )
-    show_test_result(result)
-
-    result = valid_simple_value.run_tests(
-        failure_tests=True,
-        tests="""
-        two words
-        { word {with internal brace} mess }
-        Embedded {one} word
-        """
-    )
-    show_test_result(result)
-
-
-def valid_shot_frame_test():
-    test_data = [
-        "{simple frame number 1}",
-        "{simple frame number 2}",
-
-        "{exit_if 1 flow 8.0 volume 100 max_flow_or_pressure_range 3.0 "
-        "transition fast exit_flow_under 0 temperature 85.5 name {temp comp} "
-        "pressure 8.0 sensor coffee pump pressure exit_type pressure_over "
-        "exit_flow_over 6 exit_pressure_over 5.00 max_flow_or_pressure 0 "
-        "exit_pressure_under 0 seconds 2.00}",
-
-        "{exit_if 1 flow 8.0 volume 100 max_flow_or_pressure_range 3.0 "
-        "transition fast exit_flow_under 0 temperature 80.5 weight 10.00 name "
-        "preinfusion pressure 8.0 pump pressure sensor coffee exit_type "
-        "pressure_over exit_flow_over 6 exit_pressure_over 5.00 "
-        "max_flow_or_pressure 0 exit_pressure_under 0 seconds 20.00}",
-    ]
-    result = shot_frame.run_tests(
-        full_dump=False,
-        tests=test_data,
-    )
-    show_test_result(result)
-
-    result = shot_frame.run_tests(
-        failure_tests=True,
-        full_dump=False,
-        tests=[
-            ' '.join(test_data[0:2]),
-            ' '.join(test_data[2:4]),
-        ],
-    )
-    show_test_result(result)
-
-
-def valid_shot_frame_list_test():
-    test_data = [
-        "{{simple frame number 1}}",
-        "{{simple frame number 1}{simple frame number 2}}",
-        "{{simple frame number 1} {simple frame number 2}}",
-
-        " {{exit_if 1 flow 8.0 volume 100 max_flow_or_pressure_range 3.0 "
-        "transition fast exit_flow_under 0 temperature 85.5 name {temp comp} "
-        "pressure 8.0 sensor coffee pump pressure exit_type pressure_over "
-        "exit_flow_over 6 exit_pressure_over 5.00 max_flow_or_pressure 0 "
-        "exit_pressure_under 0 seconds 2.00} {exit_if 1 flow 8.0 volume 100 "
-        "max_flow_or_pressure_range 3.0 transition fast exit_flow_under 0 "
-        "temperature 80.5 weight 10.00 name preinfusion pressure 8.0 pump "
-        "pressure sensor coffee exit_type pressure_over exit_flow_over 6 "
-        "exit_pressure_over 5.00 max_flow_or_pressure 0 exit_pressure_under "
-        "0 seconds 20.00} {exit_if 1 flow 0 volume 100 "
-        "max_flow_or_pressure_range 5.0 transition fast exit_flow_under 0 "
-        "temperature 60.5 name {dynamic bloom} pressure 6.0 sensor coffee pump "
-        "flow exit_type pressure_under exit_flow_over 6 max_flow_or_pressure 0 "
-        "exit_pressure_over 11 exit_pressure_under 2.20 seconds 40.00} "
-        "{exit_if 0 flow 6.0 volume 100 max_flow_or_pressure_range 5.0 "
-        "transition fast exit_flow_under 0 temperature 60.5 name {6 mlps} "
-        "pressure 6.0000000000000036 sensor coffee pump flow exit_type "
-        "flow_under exit_flow_over 6 max_flow_or_pressure 2.0 "
-        "exit_pressure_over 11 exit_pressure_under 0 seconds 60.00}}",
-    ]
-    test_data_fail = [
-        "{}",
-        "{{}}",
-
-        "{exit_if 1 flow 8.0 volume 100 max_flow_or_pressure_range 3.0 "
-        "transition fast exit_flow_under 0 temperature 85.5 name {temp comp} "
-        "pressure 8.0 sensor coffee pump pressure exit_type pressure_over "
-        "exit_flow_over 6 exit_pressure_over 5.00 max_flow_or_pressure 0 "
-        "exit_pressure_under 0 seconds 2.00}",
-    ]
-    result = shot_frame_list.run_tests(
-        # full_dump=False,
-        tests=test_data,
-    )
-    show_test_result(result)
-
-    result = shot_frame_list.run_tests(
-        failure_tests=True,
-        full_dump=False,
-        tests=test_data_fail,
-    )
-    show_test_result(result)
-
-
+### End of Grammar ###
 
 def parsed_step_to_dict_v2(p_step: dict) -> dict:
 
@@ -337,7 +168,6 @@ def parsed_step_to_dict_v2(p_step: dict) -> dict:
                 f"Unrecognized 'exit_type' {exit_type}")
 
         if exit_dict:
-            exit_dict['value'] = exit_dict['value']
             step_v2['exit'] = exit_dict
 
     try:
@@ -594,7 +424,7 @@ if __name__ == '__main__':
     from os.path import basename
     from pathlib import PurePath
 
-    # import requests
+    import requests
 
     ap = argparse.ArgumentParser(
         description="Executable to open a Tcl profile file "
@@ -605,7 +435,8 @@ if __name__ == '__main__':
                     help='Replace author')
     input_group = ap.add_mutually_exclusive_group()
     input_group.add_argument('-i', '--input', help='Input file')
-    input_group.add_argument('-v', '--visualizer', help='Visualizer URL')
+    input_group.add_argument('-v', '--visualizer',
+                             help='Visualizer short code or profile URL')
     ap.add_argument('-o', '--output', help='Output file')
     ap.add_argument('-d', '--dir', help='Output directory')
     ap.add_argument('-f', '--force', action='store_true',
@@ -625,6 +456,7 @@ if __name__ == '__main__':
     logger.addHandler(initial_handler)
     logger.setLevel(logging.DEBUG)
 
+
     ref_file = None
 
     if args.input is not None:
@@ -633,17 +465,26 @@ if __name__ == '__main__':
             source_data = fh.read()
 
     elif args.visualizer is not None:
-        ref_file = args.visualizer
-        import requests
-        logger.info(f"Getting {args.visualizer}")
-        req = requests.get(url=args.visualizer)
+        if len(args.visualizer) == 4:
+            code = args.visualizer
+            # short code, get the JSON, then get the profile_url
+            logger.info(f"Getting shotdescription for {code}")
+            req_by_code = requests.get(
+                f'https://visualizer.coffee/api/shots/shared?code={code}')
+            req_by_code.raise_for_status()
+            shot_json = req_by_code.json()
+            profile_url = shot_json['profile_url']
+        else:
+            profile_url = args.visualizer
+        ref_file = profile_url
+        logger.info(f"Getting {profile_url}")
+        req = requests.get(url=profile_url)
         req.raise_for_status()
         source_data = req.text
 
     else:
         ref_file = None
         source_data = sys.stdin.read()
-
 
     pd_result = profile_dict.search_string(source_data)
 
