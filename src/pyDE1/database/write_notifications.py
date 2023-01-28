@@ -105,6 +105,7 @@ ROLLING_BUFFER_TIME_LIMITED = [
 ]
 
 DO_NOT_PERSIST = (
+    'FirmwareUpload',
     'ScanResults',
 )
 

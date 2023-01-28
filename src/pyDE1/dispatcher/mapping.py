@@ -73,9 +73,8 @@ class IsAt(NamedTuple):
                                         # path of setter relative to target
     read_only: Optional[bool] = False
     # write_only: attr_path=None and setter_path=setter_attribute_name
-    # internal_type used for conversion to enum
-    internal_type: Optional[Union[type(DE1ModeEnum),
-                                  type(ConnectivityEnum)]] = None
+    # internal_type for conversion to specified enum from JSON value
+    internal_type: Optional[type(Enum)] = None
     # A handful of things, such as connectivity, don't need "ready"
     if_not_ready: bool = False
 
@@ -253,7 +252,7 @@ MAPPING[Resource.DE1_MODE] = {
 MAPPING[Resource.DE1_STATE] = {
     'state': IsAt(target=TO.DE1, attr_path='state_getter',
                   read_only=True,
-                  v_type=str, internal_type=str),
+                  v_type=str),
     'mqtt':  IsAt(target=TO.DE1, attr_path='state_update_last_sent',
                   read_only=True,
                   v_type=str)

@@ -194,6 +194,7 @@ async def _request_queue_processor(request_queue: asyncio.Queue,
                                         Resource.DE1_PROFILE_ID,
                                         Resource.DE1_PROFILE_STORE,
                                         Resource.DE1_FIRMWARE,
+                                        Resource.DE1_FIRMWARE_CANCEL,
                                         Resource.SCAN):
                     raise NotImplementedError(
                         "Only profile and firmware PUT supported at this time")

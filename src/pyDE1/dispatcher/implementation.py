@@ -425,7 +425,9 @@ async def patch_resource_from_dict(resource: Resource, values_dict: dict):
     elif isinstance(mapping, IsAt) \
         and isinstance(values_dict, (bytes, bytearray, str)):
         # TODO: Unify this with validate.py
-        if issubclass((t := mapping.internal_type), enum.Enum):
+        # This can be None (firmware, profile,...)
+        if ((t := mapping.internal_type) is not None
+                and issubclass(t, enum.Enum)):
             values_dict = t(values_dict)
         # coerce into "standard form"
         mapping = { None: mapping }
