@@ -8,18 +8,8 @@ After=syslog.target mosquitto.service
 User=pyde1
 Group=pyde1
 
-Environment="PYDE1_PATH=/home/pyde1/deploy/pyde1-devel/src/pyDE1"
-
-# PYTHONPATH is likely only needed for development
-Environment="PYTHONPATH=/home/pyde1/deploy/pyde1-devel/src"
-
-# Can be used as $PROGRAM_ARG_LIST at the end of ExecStart to specify an alternate
-# Environment="PROGRAM_ARG_LIST=-c /usr/local/etc/pyde1-visualizer.conf"
-
-# If needed, change the path to that of the venv's Python
 # The executable name can't be a variable
-ExecStart=/home/pyde1/venv/pyde1/bin/python3 \
-    ${PYDE1_PATH}/services/runnable/pyde1-visualizer.py
+ExecStart=/home/pyde1/venv/pyde1/bin/pyde1-run-visualizer
 
 Restart=always
 StandardError=journal

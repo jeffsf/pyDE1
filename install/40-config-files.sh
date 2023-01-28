@@ -1,6 +1,6 @@
 #!/usr/bin/sh -e
 
-# Copyright © 2021 Jeff Kletsky. All Rights Reserved.
+# Copyright © 2021, 2023 Jeff Kletsky. All Rights Reserved.
 #
 # License for this software, part of the pyDE1 package, is granted under
 # GNU General Public License v3.0 only
@@ -8,18 +8,10 @@
 
 . "$(dirname $0)"/_config
 
-. $VENV_PATH/bin/activate
-
-PYDE1_ROOT=$(python -c \
-  'import importlib.resources ; print(importlib.resources.files("pyDE1"))')
-
 mkdir -p /usr/local/bin/pyde1
 mkdir -p /usr/local/etc/pyde1
 
 CP_BACKUP="cp -v --backup --suffix=$(date +'.%Y%m%d_%H%M')"
-
-$CP_BACKUP ${PYDE1_ROOT}/services/runnable/disconnect-btid.sh /usr/local/bin/pyde1-disconnect-btid.sh
-chmod +x /usr/local/bin/pyde1-disconnect-btid.sh
 
 $CP_BACKUP ${PYDE1_ROOT}/services/config/* /usr/local/etc/pyde1/
 
@@ -38,9 +30,7 @@ for f in /usr/local/etc/pyde1/*.service ; do
   sed -i'.bak'  \
     -e "s|^User=.*|User=${PYDE1_USER}|" \
     -e "s|^Group=.*|Group=${PYDE1_GROUP}|" \
-    -e "s|^Environment=\"PYDE1_PATH.*$|Environment=\"PYDE1_PATH=${PYDE1_ROOT}\"|" \
-    -e "s|^Environment=\"PYTHONPATH.*$||" \
-    -e "s|^ExecStart=/home/pyde1/venv/pyde1|ExecStart=${VENV_PATH}|" \
+    -e "s|/home/pyde1/venv/pyde1|${VENV_PATH}"
     $f
 done
 

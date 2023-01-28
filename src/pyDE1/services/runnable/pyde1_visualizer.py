@@ -12,13 +12,11 @@ import logging
 import logging.handlers
 import os
 import os.path
-import pprint
 import queue
-import time
 
 from pprint import pformat
 from socket import gethostname
-from typing import Optional, NamedTuple, Callable
+from typing import Optional, NamedTuple
 
 import aiosqlite
 import paho.mqtt.client as mqtt
@@ -27,21 +25,26 @@ from paho.mqtt.client import MQTTMessage, MQTTv5, MQTT_CLEAN_START_FIRST_ONLY
 import requests
 from requests.auth import HTTPBasicAuth, HTTPDigestAuth
 
+from pyDE1 import task_logger
 from pyDE1.config_load import ConfigYAML, ConfigLoadable
-
-import pyDE1.shutdown_manager as sm
-from pyDE1.de1.c_api import API_MachineStates, API_Substates
-from pyDE1.event_manager.payloads import EventNotificationAction, SequencerGateName
-from pyDE1.exceptions import DE1IncompleteSequenceRecordError
-from pyDE1.shot_file.legacy import legacy_shot_file
-# from pyDE1.database.write_notifications import async_queue_get
-
-# The default config file can be missing without error
-# If specified on the command line and missing is fatal
 
 import pyDE1
 import pyDE1.pyde1_logging as pyde1_logging
 from pyDE1.pyde1_logging import ConfigLogging
+from pyDE1.utils import mq_queue_get
+import pyDE1.shutdown_manager as sm
+from pyDE1.de1.c_api import API_MachineStates, API_Substates
+from pyDE1.event_manager.payloads import (
+    EventNotificationAction, SequencerGateName
+)
+from pyDE1.exceptions import DE1IncompleteSequenceRecordError
+from pyDE1.shot_file.legacy import legacy_shot_file
+
+
+# The default config file can be missing without error
+# If specified on the command line and missing is fatal
+
+
 
 
 class Config (ConfigYAML):
@@ -113,28 +116,6 @@ class _Database (ConfigLoadable):
 
 config = Config()
 
-
-#
-# "Temporarily" repeated and modified here
-#
-async def async_queue_get(from_queue: queue.Queue):
-    loop = asyncio.get_running_loop()
-    done = False
-    data = None  # For exit on shutdown
-    while not done and not sm.shutdown_underway.is_set():
-        try:
-            data = await loop.run_in_executor(
-                None,
-                from_queue.get, True, 1.0)
-                            # blocking, timeout
-            done = True
-        except queue.Empty:
-            pass
-    if sm.shutdown_underway.is_set():
-        logger.info("Shut down async_queue_get")
-    return data
-
-
 shot_complete_queue = queue.Queue()
 
 
@@ -163,7 +144,10 @@ def report_upload(sci: ShotCompleteItem,
     )
 
 
-def configure_mqtt() -> mqtt.Client:
+def configure_mqtt(logger: logging.Logger,
+                   logger_mqtt: logging.Logger,
+                   logger_paho: logging.Logger,
+                   logger_upload: logging.Logger) -> mqtt.Client:
     """
     Configure the MQTT client, start it, and return it
     so that it can be used to publish on upload result
@@ -307,9 +291,8 @@ def configure_mqtt() -> mqtt.Client:
         )
 
     if config.mqtt.DEBUG:
-        paho_logger = pyDE1.getLogger('paho')
-        paho_logger.setLevel(logging.DEBUG)
-        mqtt_client.enable_logger(paho_logger)
+        logger_paho.setLevel(logging.DEBUG)
+        mqtt_client.enable_logger(logger_paho)
 
     mqtt_client.on_connect = on_connect_callback
     mqtt_client.on_message = on_message_callback
@@ -336,7 +319,7 @@ def run_mqtt_client_sync(mqtt_client: mqtt.Client):
     mqtt_client.loop_forever()
 
 
-async def wait_then_cleanup(client: mqtt.Client):
+async def wait_then_cleanup(client: mqtt.Client, logger: logging.Logger):
     logger.debug("Waiting for shutdown_underway to shutdown MQTT")
     await sm.wait_for_shutdown_underway()
     logger.info("shutdown_underway seen as set")
@@ -348,13 +331,23 @@ async def wait_then_cleanup(client: mqtt.Client):
     sm.cleanup_complete.set()
 
 
-async def loop_on_queue(client: mqtt.Client):
+async def loop_on_queue(client: mqtt.Client, 
+                        logger: logging.Logger, 
+                        logger_upload: logging.Logger):
 
     async with aiosqlite.connect(config.database.FILENAME) as db:
         while not sm.shutdown_underway.is_set():
             logger.info("Ready and waiting")
-            got: ShotCompleteItem = await async_queue_get(
-                from_queue=shot_complete_queue)
+            t = task_logger.create_task(
+                mq_queue_get(
+                    mp_queue=shot_complete_queue,
+                    timeout=None,
+                    abandon_on_event=sm.shutdown_underway,
+                ),
+                logger=logger,
+                message="Unexpected error waiting for shot_complete_queue"
+            )
+            got: ShotCompleteItem = await t
             logger.debug(f"Queue got: {got}")
             # None gets returned on termination of async_queue_get()
             if got is None:
@@ -378,7 +371,7 @@ async def loop_on_queue(client: mqtt.Client):
             # This will result in DE1DBIncompleteSequenceRecord being raised
 
             contents = None
-            for cnt in range(0,10):
+            for cnt in range(0, 10):
                 try:
                     await asyncio.sleep(0.100)  # 100 ms
                     contents = await legacy_shot_file(sequence_id=sid, db=db)
@@ -428,21 +421,34 @@ async def loop_on_queue(client: mqtt.Client):
                               client=client)
 
 
-async def setup_and_run():
-    global client   # TODO: This is sort of hack-ish
-    client = configure_mqtt()
-    loop.create_task(wait_then_cleanup(client))
+async def setup_and_run(loop: asyncio.AbstractEventLoop):
+
+    logger = pyDE1.getLogger('Main')
+    logger_mqtt = pyDE1.getLogger('MQTT')
+    logger_paho = pyDE1.getLogger('Paho')
+    logger_upload = pyDE1.getLogger('Upload')
+
+    client = configure_mqtt(
+        logger=logger,
+        logger_mqtt=logger_mqtt,
+        logger_paho=logger_paho,
+        logger_upload=logger_upload
+    )
+
+    loop.create_task(wait_then_cleanup(client=client, logger=logger))
     mqtt_task = loop.run_in_executor(None, run_mqtt_client_sync, client)
     mqtt_task.add_done_callback(sm.shutdown_if_exception)
     logger.info(f"MQTT run_in_executor started")
     # await asyncio.gather(
     #     mqtt_task,
-    await loop_on_queue(client=client)
+    await loop_on_queue(client=client, 
+                        logger=logger, 
+                        logger_upload=logger_upload)
     #     return_exceptions=True
     # )
 
 
-if __name__ == '__main__':
+def pyde1_run_visualizer():
 
     import argparse
     ap = argparse.ArgumentParser(
@@ -457,6 +463,8 @@ if __name__ == '__main__':
         f"Default configuration file is at {config.DEFAULT_CONFIG_FILE}"
     )
     ap.add_argument('-c', type=str, help='Use as alternate config file')
+    ap.add_argument('--console', action='store_true',
+                    help='Timestamped, DEBUG level on stderr logging')
 
     args = ap.parse_args()
 
@@ -464,22 +472,23 @@ if __name__ == '__main__':
 
     config.load_from_yaml(args.c)
 
+    if args.console:
+        config.logging.handlers.STDERR = 'DEBUG'
+        config.logging.formatters.STDERR = config.logging.formatters.LOGFILE
+
     pyde1_logging.setup_direct_logging(config.logging)
     pyde1_logging.config_logger_levels(config.logging)
 
-    logger = pyDE1.getLogger('Main')
-
-    logger_mqtt = pyDE1.getLogger('MQTT')
-    logger_upload = pyDE1.getLogger('Upload')
-
-    loop = asyncio.get_event_loop()
+    loop = asyncio.new_event_loop()
     loop.set_debug(True)
     loop.set_exception_handler(sm.exception_handler)
     sm.attach_signal_handler_to_loop(sm.shutdown, loop)
 
-    t = loop.create_task(setup_and_run())
+    loop.create_task(setup_and_run(loop=loop))
 
     loop.run_forever()
     exit(sm.exit_value)
 
 
+if __name__ == '__main__':
+    pyde1_run_visualizer()

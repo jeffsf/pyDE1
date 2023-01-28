@@ -414,7 +414,7 @@ def sanitize_filename(fname: str):
     return re.sub('[^\w._-]', '_', fname)
 
 
-if __name__ == '__main__':
+def run_as_script():
 
     import argparse
     import json
@@ -551,3 +551,7 @@ if __name__ == '__main__':
         with open(fname, 'w') as fh:
             print(json.dumps(dv2, indent=2), file=fh)
         logger.info(f"Output written to {fname}")
+
+
+if __name__ == '__main__':
+    run_as_script()

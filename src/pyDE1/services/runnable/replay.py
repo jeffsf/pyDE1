@@ -480,12 +480,12 @@ def setup_client(mqtt_client_logger: logging.Logger) -> mqtt.Client:
                    bind_port=0,
                    clean_start=MQTT_CLEAN_START_FIRST_ONLY,
                    properties=None)
-    client_logger.info(f"connect returned {result}")
+    mqtt_client_logger.info(f"connect returned {result}")
 
     return mqtt_client
 
 
-if __name__ == '__main__':
+def pyde1_replay():
 
     import argparse
 
@@ -563,6 +563,8 @@ if __name__ == '__main__':
         t.cancel()
 
 
+if __name__ == '__main__':
+    pyde1_replay()
 
 
 

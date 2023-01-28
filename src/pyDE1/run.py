@@ -244,7 +244,7 @@ def run():
     exit(sm.exit_value)
 
 
-if __name__ == "__main__":
+def pyde1_run():
 
     # Complains even if set here
     # multiprocessing.set_start_method('spawn')
@@ -280,3 +280,7 @@ if __name__ == "__main__":
         config.logging.formatters.STDERR = config.logging.formatters.LOGFILE
 
     run()
+
+
+if __name__ == "__main__":
+    pyde1_run()
