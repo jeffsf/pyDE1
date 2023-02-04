@@ -1,5 +1,5 @@
 """
-Copyright © 2021-2022 Jeff Kletsky. All Rights Reserved.
+Copyright © 2021-2023 Jeff Kletsky. All Rights Reserved.
 
 Utilities that are specific to pyDE1 DE1 and scales
 
