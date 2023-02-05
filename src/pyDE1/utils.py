@@ -237,10 +237,8 @@ async def mp_event_wait(event: multiprocessing.Event,
 
 async def mq_queue_get(mp_queue: multiprocessing.Queue,
                        timeout: Optional[float],
-                       abandon_on_event:
-                       Union[asyncio.Event,
-                       multiprocessing.Event]) -> bool:
-
+                       abandon_on_event: Union[asyncio.Event,
+                                               multiprocessing.Event]):
     end_time = (time.time() + timeout) if timeout else None
     RECHECK_PERIOD = 1.0  # seconds
     done = False
@@ -250,6 +248,7 @@ async def mq_queue_get(mp_queue: multiprocessing.Queue,
            and (not end_time
                 or (end_time and (now := time.time()) < end_time))
            and (abandon_on_event and not abandon_on_event.is_set())):
+        qexc = None
         if end_time:
             wait_time = min(end_time - now, RECHECK_PERIOD)
         else:
