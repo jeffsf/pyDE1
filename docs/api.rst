@@ -35,9 +35,9 @@ backwards compatible, checking the commit logs and CHANGELOG is suggested
 for authors of applications that directly access the database.
 
 .. toctree::
-   :maxdepth: 3
+    :maxdepth: 3
 
-   api_http
-   bluetooth_scanning
-   api_mqtt
-   api_database
+    api_http
+    api_mqtt
+    api_database
+    profile_json

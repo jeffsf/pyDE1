@@ -29,6 +29,10 @@ pyDE1 Version 2 provides enhanced usability in several areas:
 
 - Incorporation of Steam-To-Temperature functionality
 
+- Script to convert profiles to JSON format, including from Visualizer
+
+- Packaging and service definitions simplified
+
 Although the DE1 and a Atomax Skale II mounted under the drip tray are
 "dedicated" devices, many other scales and Bluetooth peripherals are not.
 You might, for example, want to use your scale for pourover with a different
@@ -44,6 +48,12 @@ from multiple places. For example, you might have one UI on your phone
 and another on a tablet in the kitchen. Although this was possible with
 earlier versions, you'd have to refresh the display when you moved
 to another device to catch up with changes in the controls.
+
+.. note::
+
+    The naming of some scripts and executables have been changed to simplify
+    access to those scripts through packaging. You will need to update
+    your service scripts to reflect the new install paths.
 
 -------------------------
 Managed Bluetooth Devices
@@ -168,8 +178,9 @@ can be seen in
 - ``_leave_class()``
 
 
+--------------------------------------
 Enhancements in Client Synchronization
-======================================
+--------------------------------------
 
 With previous versions, there was nothing preventing multiple clients
 from accessing the pyDE1 APIs. It worked quite well to, for example,
@@ -194,8 +205,9 @@ Timestamps are available in the MQTT packets as well as in the HTTP response
 header ``x-pyde1-timestamp`` to assist in disambiguation of the two sources.
 
 
+----------------------------
 Rework of Bluetooth Scanning
-============================
+----------------------------
 
 The approach to Bluetooth scanning was reworked to use changes in the Bleak
 Bluetooth library as well as to simplify client code.
@@ -210,9 +222,11 @@ The scan results are reported over MQTT and consist of a boolean ``scanning``
 indicating if a scan is still underway, and ``devices``, an array of
 accumulated information about all devices matching the requested role
 seen during the scan. The packet contains
+
 - ``address``
 - ``name``
-- ``RSSI``
+- ``rssi``
+
 for each device, with updates as additional devices are found during the scan.
 
 The results are no longer retained in the ``DiscoveredDevices`` structure and the APIs
@@ -220,7 +234,7 @@ to access that structure are not available.
 
 .. note::
 
-    MAPPING 7.0.0, RESOURCE 5.0.0
+    MAPPING 7.0.0 — RESOURCE 5.0.0
 
 
 - ``Resource.SCAN`` (``scan``)
@@ -239,15 +253,16 @@ to access that structure are not available.
         UNKNOWN = 'unknown'
 
 
+--------------------
 Steam-To-Temperature
-====================
+--------------------
 
 Previously developed as a separate app, now integral with pyDE1
 
 https://github.com/jeffsf/steam-to-temperature
 
 Use
----
+===
 
 - Set the BlueDOT to either °C or °F, as desired.
 
@@ -274,3 +289,121 @@ Use
 
 - Stop the steaming with the GHC or app control. This will trigger
   the usual auto-purge sequence.
+
+
+-------------------------------------------------
+Utility to Convert Legacy Profiles to JSON format
+-------------------------------------------------
+
+``de1-profile-as-json`` is now packaged and installed in the PATH
+of the venv used to install pyDE1, such as
+``/home/pyde1/venv/pyde1/bin/de1-profile-as-json``. If the venv is active
+for the user's shell, it will be directly available without specifying
+the full path. It can also be run using the full path without activating
+the venv.
+
+This utility will accept a legacy profile, including downloading one from
+Visualizer, and output a JSON version.
+
+    As most of the profiles distributed fail to properly attribute the author,
+    the author can be overridden on the command line with the
+    ``-a`` or ``--author`` flag.
+
+    Without any arguments, the utility accepts input from STDIN and writes
+    to STDOUT.
+
+    The input can be specified from a file using the ``-i`` or ``--input`` flag
+    followed by the filename.
+
+    Alternately, a Visualizer URL for a profile or a Visualizer "share code"
+    (four characters) can be entered after the ``-v`` or ``--visualizer`` flag.
+
+    The output filename can optionally be specified using the
+    ``-o`` or ``--output`` flag.
+
+    If one specifies the ``-d`` or ``--directory`` flag followed by a directory,
+    the output will be placed in that directory.
+
+    If ``-d`` is specified, but not ``-o`` for a specific output name,
+    a reasonable guess will be made based on the input file name
+    and profile title.
+
+    If the output file already exists, ``-f`` or ``--force``
+    can be used to overwrite.
+
+::
+
+    usage: de1-profile-as-json [-h] [-a AUTHOR] [-i INPUT | -v REF] [-o OUTPUT] [-d DIR] [-f]
+
+    Executable to open a Tcl profile file and write as JSON v2.1. Input and output default to STDIN and STDOUT
+
+    optional arguments:
+      -h, --help                  show this help message and exit
+      -a AUTHOR, --author AUTHOR  Replace author
+      -i INPUT, --input INPUT     Input file
+      -v REF, --visualizer REF    Visualizer short code or profile URL
+      -o OUTPUT, --output OUTPUT  Output file
+      -d DIR, --dir DIR           Output directory
+      -f, --force                 Overwrite if output exists
+
+
+Although it is believed that the conversion is done accurately, it is always
+worthwhile to check the results prior to use.
+
+
+-------------------------------
+Profile Specification JSON v2.1
+-------------------------------
+
+This release includes a description of the JSON profile format,
+extended from Mimoja's original work. This document is structured
+as TypeScript for simplicity as well as potential reuse. However,
+it has not been validated in the context of a TypeScript app.
+
+See :doc:`profile_json`
+
+
+--------------------------------------
+Packaging / Service Definition Changes
+--------------------------------------
+
+The primary executables and scripts are now packaged in the ``bin/`` directory
+of the venv into which pyDE1 is installed. They are self-sufficient in that
+the venv does not need to be "activated" to run them in the context of that
+venv. This simplifies service scripts, as well as making utilities such as
+``pyde1-disconnect-btid.sh`` easily available. These scripts include:
+
+- ``pyde1-run`` -- the main executable of the pyDE1 controller
+- ``pyde1-run-visualizer`` -- a companion executable that uploads shots
+  to the Visualizer service
+- ``pyde1-disconnect-btid.sh`` -- a shell script to disconnect any Bluetooth
+  devices that were recorded as being connected by pyDE1 in the event of
+  a very ungraceful exit or during development
+- ``pyde1-replay`` -- a utility script to replay the packets from a previous
+  shot over MQTT
+
+New versions of the ``.service`` files are packaged. The new versions no longer
+require determining the "deep" path of the file::
+
+  [Unit]
+  Description=Main controller processes for pyDE1
+  Wants=mosquitto.service
+  After=syslog.target mosquitto.service
+
+  [Service]
+  # This needs to be the same user that "owns" the database
+  User=pyde1
+  Group=pyde1
+
+  ExecStartPre=/home/pyde1/venv/pyde1/bin/pyde1-disconnect-btid.sh
+  # The executable name can't be a variable
+  ExecStart=/home/pyde1/venv/pyde1/bin/pyde1-run
+  ExecStopPost=/home/pyde1/venv/pyde1/bin/pyde1-disconnect-btid.sh
+
+  Restart=always
+  StandardError=journal
+  # Sets the process name to that of the service
+  SyslogIdentifier=%N
+
+  [Install]
+  WantedBy=multi-user.target

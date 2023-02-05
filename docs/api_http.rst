@@ -274,7 +274,6 @@ To Specific DE1
   $ curl -X PATCH --data '{"id": "D9:B2:48:AA:BB:CC"}' http://localhost:1234/de1/id
   []
 
-For further details on scanning, see :doc:`bluetooth_scanning`
 
 Espresso Control
 ================
