@@ -6,7 +6,7 @@
  */
 
 export const VERSION = '2.1';
-export const SPEC_REVISION = '2.1a2';
+export const SPEC_REVISION = '2.1';
 
 /** This file has a primary purpose of documenting the pyDE1 profile format
  *
@@ -127,7 +127,7 @@ export interface ProfileStepBase {
      *  at the start of the frame (at run time) to the target for this frame */
     transition: TransitionType;
     /** An optional exit condition based on flow or pressure */
-    exit?: ExitCondition;
+    exit?: StepExitConditition;
     /** The volume in mL dispensed in this fram over which
      *  the frame would be exited, */
     volume: number;
