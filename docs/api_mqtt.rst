@@ -1,5 +1,5 @@
 ..
-    Copyright © 2021 Jeff Kletsky. All Rights Reserved.
+    Copyright © 2021, 2023 Jeff Kletsky. All Rights Reserved.
 
     License for this software, part of the pyDE1 package, is granted under
     GNU General Public License v3.0 only
@@ -88,6 +88,47 @@ For version 1.0.0, the attributes from the ``LogRecord`` in the JSON include
 ``thread``,
 ``threadName``.
 
+
+----------------------
+Client Synchronization
+----------------------
+
+Starting with pyDE1 v2.0, when changes are made to the pyDE1 controller
+or a DE1 connects, the resulting state of the impacted area this information
+is now sent over MQTT to its subscribers.
+
+At this time the areas include the following topics:
+
+- ``update/de1/control``
+- ``update/de1/setting``
+- ``update/de1/calibration``
+- ``update/de1/profile/id``
+
+The packets contain a JSON version similar to what a GET of the resource
+following the ``update/`` prefix would provide. For example, changing
+the stop-at-weight level over the HTTP API results in an MQTT packet like
+
+On ``update/de1/control``
+
+.. code-block::
+
+    {"espresso": {"stop_at_time": null, "stop_at_volume": null,
+                  "stop_at_weight": 34, "move_on_weight": [],
+                  "disable_auto_tare": false,
+                  "profile_can_override_stop_limits": false,
+                  "profile_can_override_tank_temperature": true,
+                  "first_drops_threshold": 0.0, "last_drops_minimum_time": 3.0},
+     "steam": {"stop_at_time": 200, "disable_auto_tare": false},
+     "hot_water": {"stop_at_time": 0, "stop_at_volume": 0,
+                   "stop_at_weight": null, "disable_auto_tare": false,
+                   "temperature": 0},
+     "hot_water_rinse": {"stop_at_time": 3.0, "disable_auto_tare": false,
+                         "temperature": 92.0, "flow": 6.0},
+     "tank_water_threshold": {"temperature": 0},
+     "timestamp": 1675628682.0626736}
+
+Timestamps are available in the MQTT packets as well as in the HTTP response
+header ``x-pyde1-timestamp`` to assist in disambiguation of the two sources.
 
 --------------
 Event Payloads
@@ -261,22 +302,70 @@ Sent to indicate when auto-tare is enabled and disabled by the ``FlowSequencer``
 ScannerNotification
 ===================
 
-Results of a Bluetooth scan are reported as they arrive. This is intended
-to allow an app to reveal devices to a user for selection.
+.. warning::
 
-Each "run" gets an ID that can be used to associate the results together.
+  Removed in pyDE1 v2.0 see :ref:`scan-results`
+
+
+.. _scan-results:
+
+ScanResults
+===========
+
+Starting with pyDE1 v2.0, accumulated scan results are provided during the scan,
+as well as an indication if the scan has completed. Scanning is done by role,
+such as DE1, scale, or thermometer. Only devices matching the Bluetooth
+advertisement filter are returned. Updates are provided as new devices
+are discovered, facilitating dynamic updating of a picker widget.
+
+In response to ``curl -X PUT --data 'thermometer' http://localhost:1234/scan``
+
+.. code-block::
+
+    {"arrival_time": 1675618617.1314912, "create_time": 1675618617.1314912,
+        "role": "thermometer", "scanning": true,
+        "devices": [],
+        "version": "1.0.0", "event_time": 1675618617.1315718,
+        "sender": "BluetoothScanner", "class": "ScanResults"}
+
+    {"arrival_time": 1675618617.3791888, "create_time": 1675618617.3791888,
+        "role": "thermometer", "scanning": true,
+        "devices": [{"address": "00:A0:50:AA:BB:CC", "name": "BlueDOT", "rssi": -72}],
+        "version": "1.0.0", "event_time": 1675618617.3816643,
+        "sender": "BluetoothScanner", "class": "ScanResults"}
+
+    {"arrival_time": 1675618617.8187141, "create_time": 1675618617.8187141,
+        "role": "thermometer", "scanning": true,
+        "devices": [{"address": "00:A0:50:AA:BB:CC", "name": "BlueDOT", "rssi": -72}],
+        "version": "1.0.0", "event_time": 1675618617.8210998,
+        "sender": "BluetoothScanner", "class": "ScanResults"}
+
+    {"arrival_time": 1675618622.35119, "create_time": 1675618622.35119,
+        "role": "thermometer", "scanning": false,
+        "devices": [{"address": "00:A0:50:AA:BB:CC", "name": "BlueDOT", "rssi": -72}],
+        "version": "1.0.0", "event_time": 1675618622.3513,
+        "sender": "BluetoothScanner", "class": "ScanResults"}
+
+If multiple devices had been found, they would have been added to the array
+of devices. ``"scanning": false`` indicates that the scan has completed
 
 .. code-block:: Python
 
-  class ScannerNotificationAction (enum.Enum):
-      STARTED = 'started'
-      ENDED = 'ended'
-      FOUND = 'found'
+    class DeviceRole (enum.Enum):
+        DE1 = 'de1'
+        SCALE = 'scale'
+        THERMOMETER = 'thermometer'
+        OTHER = 'other'
+        UNKNOWN = 'unknown'
 
-When a device is found, the report includes its ``id`` and reported ``name``.
+
 
 ConnectivityChangeNotification
 ==============================
+
+.. deprecated:: v2.0
+
+  Use :ref:`device-availability`
 
 As connectivity to a DE1 or scale progresses through various states, it is
 reported so that an app can take action when the device is "ready", as well as
@@ -296,6 +385,114 @@ unexpected disconnection.)
       DISCONNECTED = 'disconnected'
 
 Not all states are passed through by all paths.
+
+
+.. _device-availability:
+
+DeviceAvailability
+==================
+
+In pyDE1 v2.0, the way that Bluetooth devices are handles was changed
+to permit a device to be "released" for other uses, then subsequently
+"captured". Additionally, scales change class between a generic scale
+and a device-specific one when captured. Watching the ``role`` suggests
+which device is changing, especially when not associated with a physical
+device at that moment.
+
+.. code-block:: Python
+
+    class DeviceAvailabilityState (enum.Enum):
+        INITIAL = 'initial'
+        UNKNOWN = 'unknown'
+        CAPTURING = 'capturing'
+        CAPTURED = 'captured'
+        READY = 'ready'  # "Ready for use"
+        NOT_READY = 'not ready'  # Was READY, but is no longer
+        RELEASING = 'releasing'
+        RELEASED = 'released'
+
+Not all states are passed through by all paths.
+
+Here is a find/capture sequence that illustrates both the availability
+states, as well as how the details of the scale change as it moves
+from a generic to a scale that is ready for use.
+
+.. code-block::
+
+    {"arrival_time": 1675619181.4547968, "create_time": 1675619181.4813273, 
+    "state": "releasing", "role": "scale", 
+    "id": "", "name": "GenericScale: (unknown)", 
+    "version": "1.1.0", "event_time": 1675619181.4886014, 
+    "sender": "GenericScale", "class": "DeviceAvailability"}
+    
+    {"arrival_time": 1675619181.5112107, "create_time": 1675619181.523558, 
+    "state": "released", "role": "scale", 
+    "id": "", "name": "GenericScale: (unknown)", 
+    "version": "1.1.0", "event_time": 1675619181.5262911, 
+    "sender": "GenericScale", "class": "DeviceAvailability"}
+    
+    {"arrival_time": 1675619181.5937052, "create_time": 1675619181.6589596, 
+    "state": "initial", "role": "scale", 
+    "id": "FF:06:AF:AA:BB:CC", "name": "AtomaxSkaleII: (unknown)", 
+    "version": "1.1.0", "event_time": 1675619181.6753747, 
+    "sender": "AtomaxSkaleII", "class": "DeviceAvailability"}
+    
+    {"arrival_time": 1675619181.632159, "create_time": 1675619181.6696842, 
+    "state": "capturing", "role": "scale", 
+    "id": "FF:06:AF:AA:BB:CC", "name": "AtomaxSkaleII: (unknown)", 
+    "version": "1.1.0", "event_time": 1675619181.6768405, 
+    "sender": "AtomaxSkaleII", "class": "DeviceAvailability"}
+    
+    {"arrival_time": 1675619183.9847703, "create_time": 1675619184.0039356, 
+    "state": "captured", "role": "scale", 
+    "id": "FF:06:AF:AA:BB:CC", "name": "AtomaxSkaleII: (unknown)", 
+    "version": "1.1.0", "event_time": 1675619184.0151615, 
+    "sender": "AtomaxSkaleII", "class": "DeviceAvailability"}
+    
+    {"arrival_time": 1675619184.844756, "create_time": 1675619184.8448336, 
+    "state": "ready", "role": "scale", 
+    "id": "FF:06:AF:AA:BB:CC", "name": "AtomaxSkaleII: Skale", 
+    "version": "1.1.0", "event_time": 1675619184.8514688, 
+    "sender": "AtomaxSkaleII", "class": "DeviceAvailability"}
+
+
+BlueDOTUpdate
+=============
+
+Sent when a report is received from a BloeDOT thermometer.
+
+.. code-block:: Python
+
+        self.temperature: Optional[float] = None
+        self.high_alarm: Optional[float] = None
+        self.units: str = "C"
+        self.alarm_byte: Optional[Union[bytearray, int]] = None
+        self.name: Optional[str] = None
+
+The units are determined by user setting. The temperatures reported
+in those units, either ``C`` or ``F``.
+
+
+ScaleButtonPress
+================
+
+Sent when a button is pressed on scales that report such events.
+
+
+ScaleTareSeen
+=============
+
+Sent when a tare requested appears to have been fulfilled.
+This is usually if the weight is "close enough" to zero.
+
+
+ScaleChange
+===========
+
+In pyDE1 v2.0 and later, the scale can be changed. As different scales
+may have different capabilities, this provides a packet similar to
+the :ref:`device-availability` packet.
+
 
 FirmwareUpload
 ==============

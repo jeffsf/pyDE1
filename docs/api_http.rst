@@ -1,5 +1,5 @@
 ..
-    Copyright © 2021 Jeff Kletsky. All Rights Reserved.
+    Copyright © 2021, 2023 Jeff Kletsky. All Rights Reserved.
 
     License for this software, part of the pyDE1 package, is granted under
     GNU General Public License v3.0 only
@@ -90,7 +90,7 @@ its contents as an HTTP response to the caller.
 .. note::
 
   API consumers should check the response headers to determine if the request
-  was sucessful or not.
+  was successful or not.
 
 .. note::
 
@@ -106,7 +106,7 @@ its contents as an HTTP response to the caller.
 Example Responses
 -----------------
 
-A sucessful setting change
+A successful setting change
 
 .. code-block::
 
@@ -183,6 +183,31 @@ An error response with traceback
   pyDE1.exceptions.DE1NotConnectedError: DE1 not connected
 
 
+
+Client Synchronization
+======================
+
+Multiple clients can access the pyDE1 API. It works quite well to,
+for example, turn on the DE1 from one device and control it from another.
+However, in previous versions, changes made on one device weren't easily
+reflected on the other.
+
+Starting with pyDE1 v2.0, when changes are made to the pyDE1 controller
+or a DE1 connects, the resulting state of the impacted area this information
+is now sent over MQTT to its subscribers.
+
+At this time the areas include the following topics:
+
+- ``update/de1/control``
+- ``update/de1/setting``
+- ``update/de1/calibration``
+- ``update/de1/profile/id``
+
+Timestamps are available in the MQTT packets as well as in the HTTP response
+header ``x-pyde1-timestamp`` to assist in disambiguation of the two sources.
+
+
+
 Versioning
 ==========
 
@@ -195,27 +220,30 @@ The versions of the API (and other components) can be easily retrieved
 
 .. code-block::
 
-  $ curl http://localhost:1234/version
-  {
-      "mapping_version": "4.0.0",
-      "module_versions": {
-          "aiosqlite": "0.17.0",
-          "asyncio-mqtt": null,
-          "bleak": "0.13.0",
-          "paho-mqtt": "1.6.1",
-          "pyDE1": "0.9.1"
-      },
-      "platform": "linux",
-      "python": "3.9.2 (default, Feb 28 2021, 17:03:44) \n[GCC 10.2.1 20210110]",
-      "python_info": {
-          "major": 3,
-          "micro": 2,
-          "minor": 9,
-          "releaselevel": "final",
-          "serial": 0
-      },
-      "resource_version": "3.4.0"
-  }
+    $ curl http://localhost:1234/version
+    {
+        "mapping_version": "7.0.0",
+        "module_versions": {
+            "PyYAML": "6.0",
+            "aiosqlite": "0.18.0",
+            "asyncio-mqtt": null,
+            "bleak": "0.19.5",
+            "paho-mqtt": "1.6.1",
+            "pyDE1": "2.0.0b2",
+            "requests": "2.28.2"
+        },
+        "platform": "linux",
+        "python": "3.9.2 (default, Feb 28 2021, 17:03:44) \n[GCC 10.2.1 20210110]",
+        "python_info": {
+            "major": 3,
+            "micro": 2,
+            "minor": 9,
+            "releaselevel": "final",
+            "serial": 0
+        },
+        "resource_version": "5.0.0",
+        "source_data": null
+    }
 
 Feature Availability
 ====================
@@ -228,20 +256,26 @@ which features, *feature flags* are provided in an easily digested form.
 
 .. code-block::
 
-  $ curl http://localhost:1234/de1/feature_flags
-  {
-      "feature_flags": {
-          "fw_version": 1283,
-          "ghc_active": true,
-          "hot_water_flow_control": false,
-          "last_mmr0x80": 14412,
-          "max_shot_press": false,
-          "mmr_pref_ghc_mci": false,
-          "rinse_control": true,
-          "safe_to_read_mmr_continuous": true,
-          "skip_to_next": true
-      }
-  }
+    $ curl http://localhost:1234/de1/feature_flags
+    {
+        "feature_flags": {
+            "allow_usb_charging": true,
+            "app_feature_flag_user_present": true,
+            "fw_version": 1333,
+            "ghc_active": true,
+            "hot_water_flow_control": false,
+            "last_mmr0x80": 14432,
+            "mmr_max_shot_press": false,
+            "mmr_pref_ghc_mci": false,
+            "refill_kit_present": true,
+            "rinse_control": true,
+            "safe_to_read_mmr_continuous": true,
+            "sched_idle": true,
+            "skip_to_next": true,
+            "steam_purge_mode": true,
+            "user_present": true
+        }
+    }
 
 ``ghc_active`` can be used to determine if the commands to start flow
 have been disabled or not.
@@ -383,6 +417,14 @@ Fetch is by ``id``
     2021-11-16 10:48:33,043 INFO [InboundAPI] Inbound.HTTP: Request: GET /log/pyde1.log HTTP/1.1
     2021-11-16 10:48:33,044 INFO [InboundAPI] Inbound.HTTP: 2 200 "OK" - GET /log/pyde1.log HTTP/1.1 127.0.0.1
 
+
+Search for a Thermometer
+========================
+
+``curl -X PUT --data 'thermometer' http://localhost:1234/scan``
+
+.. seealso:: :ref:`scan-results`
+
 Get "Everything"
 ================
 
@@ -393,115 +435,156 @@ Get "Everything"
 
 .. code-block::
 
-  $ curl http://localhost:1234/de1
-  {
-      "calibration": {
-          "flow_multiplier": {
-              "multiplier": 1.0
-          },
-          "line_frequency": {
-              "hz": 60
-          }
-      },
-      "connectivity": {
-          "mode": "ready"
-      },
-      "control": {
-          "espresso": {
-              "disable_auto_tare": false,
-              "first_drops_threshold": 0.0,
-              "last_drops_minimum_time": 3.0,
-              "profile_can_override_stop_limits": false,
-              "profile_can_override_tank_temperature": true,
-              "stop_at_time": null,
-              "stop_at_volume": null,
-              "stop_at_weight": 51
-          },
-          "hot_water": {
-              "disable_auto_tare": true,
-              "stop_at_time": 0,
-              "stop_at_volume": 0,
-              "stop_at_weight": null,
-              "temperature": 0
-          },
-          "hot_water_rinse": {
-              "disable_auto_tare": true,
-              "flow": 6.0,
-              "stop_at_time": 20.0,
-              "stop_at_volume": null,
-              "stop_at_weight": null,
-              "temperature": 92.0
-          },
-          "steam": {
-              "disable_auto_tare": true,
-              "stop_at_time": 90,
-              "stop_at_volume": null,
-              "stop_at_weight": null
-          },
-          "tank_water_threshold": {
-              "temperature": 0
-          }
-      },
-      "id": {
-          "id": "D9:B2:48:AA:BB:CC",
-          "name": "DE1"
-      },
-      "read_once": {
-          "cpu_board_model": 1.3,
-          "firmware_build_number": 1283,
-          "firmware_model": "UNSET",
-          "ghc_info": "GHC_ACTIVE|TOUCH_CONTROLLER_PRESENT|LED_CONTROLLER_PRESENT",
-          "heater_voltage": 120,
-          "hw_config_hexstr": "ffffffff",
-          "model_hexstr": "ffffffff",
-          "serial_number_hexstr": "00000000",
-          "version_ble": {
-              "api": 4,
-              "blesha_hexstr": 1428072944,
-              "changes": 60,
-              "commits": 495,
-              "release": 1.5
-          },
-          "version_lv": {
-              "api": 0,
-              "blesha_hexstr": 0,
-              "changes": 0,
-              "commits": 0,
-              "release": 0.0
-          }
-      },
-      "setting": {
-          "auto_off_time": {
-              "time": 30.0
-          },
-          "before_flow": {
-              "heater_idle_temperature": 85.0,
-              "heater_phase1_flow": 2.0,
-              "heater_phase2_flow": 4.0,
-              "heater_phase2_timeout": 5.0
-          },
-          "fan_threshold": {
-              "temperature": 40
-          },
-          "start_fill_level": {
-              "start_fill_level": 1.0
-          },
-          "steam": {
-              "flow": 0.7,
-              "high_flow_time": 2.0,
-              "temperature": 160
-          },
-          "target_group_temp": {
-              "temperature": 0.0
-          },
-          "time": {
-              "timestamp": 0
-          }
-      },
-      "state": {
-          "state": {
-              "state": "Sleep",
-              "substate": "NoState"
-          }
-      }
-  }
+    $ curl http://localhost:1234/de1
+    {
+        "availability": {
+            "mode": "ready",
+            "mqtt": "{\"arrival_time\": 1675615807.6785038, \"create_time\": 1675615807.6785834, \"state\": \"ready\", \"role\": \"de1\", \"id\": \"D9:B2:48:AA:BB:CC\", \"name\": \"DE1\", \"version\": \"1.1.0\", \"event_time\": 1675615807.695822, \"sender\": \"DE1\", \"class\": \"DeviceAvailability\"}"
+        },
+        "calibration": {
+            "flow_multiplier": {
+                "multiplier": 1.1
+            },
+            "line_frequency": {
+                "hz": 60
+            }
+        },
+        "connectivity": {
+            "mode": "ready"
+        },
+        "control": {
+            "espresso": {
+                "disable_auto_tare": false,
+                "first_drops_threshold": 0.0,
+                "last_drops_minimum_time": 3.0,
+                "move_on_weight": [],
+                "profile_can_override_stop_limits": false,
+                "profile_can_override_tank_temperature": true,
+                "stop_at_time": null,
+                "stop_at_volume": null,
+                "stop_at_weight": null
+            },
+            "hot_water": {
+                "disable_auto_tare": false,
+                "stop_at_time": 0,
+                "stop_at_volume": 0,
+                "stop_at_weight": null,
+                "temperature": 0
+            },
+            "hot_water_rinse": {
+                "disable_auto_tare": false,
+                "flow": 6.0,
+                "stop_at_time": 3.0,
+                "temperature": 92.0
+            },
+            "steam": {
+                "disable_auto_tare": false,
+                "stop_at_time": 200
+            },
+            "tank_water_threshold": {
+                "temperature": 0
+            }
+        },
+        "id": {
+            "id": "D9:B2:48:AA:BB:CC",
+            "name": "DE1"
+        },
+        "read_once": {
+            "cpu_board_model": 1.3,
+            "firmware_build_number": 1333,
+            "firmware_model": "UNSET",
+            "ghc_info": "GHC_ACTIVE|TOUCH_CONTROLLER_PRESENT|LED_CONTROLLER_PRESENT",
+            "heater_voltage": 120,
+            "hw_config_hexstr": "ffffffff",
+            "model_hexstr": "ffffffff",
+            "serial_number_hexstr": "00000000",
+            "version_ble": {
+                "api": 4,
+                "blesha_hexstr": 3319390896,
+                "changes": 124,
+                "commits": 559,
+                "release": 1.5
+            },
+            "version_lv": {
+                "api": 0,
+                "blesha_hexstr": 0,
+                "changes": 0,
+                "commits": 0,
+                "release": 0.0
+            }
+        },
+        "setting": {
+            "auto_off_time": {
+                "time": 30.0
+            },
+            "before_flow": {
+                "heater_idle_temperature": 85.0,
+                "heater_phase1_flow": 2.0,
+                "heater_phase2_flow": 4.0,
+                "heater_phase2_timeout": 5.0
+            },
+            "fan_threshold": {
+                "temperature": 40
+            },
+            "refill_kit": {
+                "present": false
+            },
+            "start_fill_level": {
+                "start_fill_level": 1.0
+            },
+            "steam": {
+                "flow": 0.7,
+                "high_flow_time": 2.0,
+                "purge_deferred": true,
+                "temperature": 160
+            },
+            "target_group_temp": {
+                "temperature": 0.0
+            },
+            "time": {
+                "timestamp": 0
+            },
+            "usb_outlet": {
+                "enabled": true
+            }
+        },
+        "state": {
+            "mqtt": "{\"arrival_time\": 1675615805.8662703, \"create_time\": 1675615805.8665967, \"state\": \"Sleep\", \"substate\": \"NoState\", \"previous_state\": \"NoRequest\", \"previous_substate\": \"NoState\", \"is_error_state\": false, \"version\": \"1.0.0\", \"event_time\": 1675615805.866659, \"sender\": \"DE1\", \"class\": \"StateUpdate\"}",
+            "state": {
+                "last_updated": 1675615805.874492,
+                "state": "Sleep",
+                "substate": "NoState"
+            }
+        }
+    }
+
+.. code-block::
+
+    $ curl http://localhost:1234/scale
+    {
+        "availability": {
+            "mode": "ready",
+            "mqtt": "{\"arrival_time\": 1675615815.4239364, \"create_time\": 1675615815.4240103, \"state\": \"ready\", \"role\": \"scale\", \"id\": \"FF:06:AF:AA:BB:CC\", \"name\": \"AtomaxSkaleII: Skale\", \"version\": \"1.1.0\", \"event_time\": 1675615815.4284487, \"sender\": \"AtomaxSkaleII\", \"class\": \"DeviceAvailability\"}"
+        },
+        "connectivity": {
+            "mode": "ready"
+        },
+        "id": {
+            "id": "FF:06:AF:AA:BB:CC",
+            "name": "AtomaxSkaleII: Skale"
+        }
+    }
+
+.. code-block::
+
+    $ curl http://localhost:1234/thermometer
+    {
+        "availability": {
+            "mode": "ready",
+            "mqtt": "{\"arrival_time\": 1675615824.7947285, \"create_time\": 1675615824.7948647, \"state\": \"ready\", \"role\": \"thermometer\", \"id\": \"00:A0:50:AA:BB:CC\", \"name\": \"BlueDOT\", \"version\": \"1.1.0\", \"event_time\": 1675615824.8039956, \"sender\": \"BlueDOT\", \"class\": \"DeviceAvailability\"}"
+        },
+        "id": {
+            "id": "00:A0:50:AA:BB:CC",
+            "name": "BlueDOT"
+        }
+    }

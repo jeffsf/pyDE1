@@ -37,7 +37,7 @@ Although the DE1 and a Atomax Skale II mounted under the drip tray are
 "dedicated" devices, many other scales and Bluetooth peripherals are not.
 You might, for example, want to use your scale for pourover with a different
 app. Your scale might need to be disconnected from Bluetooth to allow its
-sleep timer to conserver battery. pyDE1 makes this easy by automatically
+sleep timer to conserve battery. pyDE1 makes this easy by automatically
 *releasing* devices when the DE1 sleeps, then automatically *capturing*
 them when the DE1 wakes up. You can use your scale or thermometer
 with other apps or just let them go to sleep without having to
@@ -182,9 +182,9 @@ can be seen in
 Enhancements in Client Synchronization
 --------------------------------------
 
-With previous versions, there was nothing preventing multiple clients
-from accessing the pyDE1 APIs. It worked quite well to, for example,
-turn on the DE1 from one device and control it from another. However,
+There is nothing preventing multiple clients from accessing the pyDE1 APIs.
+It works quite well to, for example, turn on the DE1 from one device
+and control it from another. However, in previous versions,
 changes made on one device weren't automatically reflected on the other.
 
 When changes are made to the pyDE1 controller or a DE1 connects,
@@ -193,9 +193,6 @@ is now sent over MQTT to its subscribers.
 
 At this time the areas include the following topics:
 
-- ``update/version``
-- ``update/de1/read_once_values``
-- ``update/de1/feature_flags``
 - ``update/de1/control``
 - ``update/de1/setting``
 - ``update/de1/calibration``
@@ -203,6 +200,9 @@ At this time the areas include the following topics:
 
 Timestamps are available in the MQTT packets as well as in the HTTP response
 header ``x-pyde1-timestamp`` to assist in disambiguation of the two sources.
+
+Additionally, availability and DE1 state have been added to the HTTP responses
+in a format compatible with clients retaining state as "mqtt".
 
 
 ----------------------------
@@ -383,7 +383,7 @@ venv. This simplifies service scripts, as well as making utilities such as
   shot over MQTT
 
 New versions of the ``.service`` files are packaged. The new versions no longer
-require determining the "deep" path of the file::
+require determining the "deep" path of the file (shown here as of v2.0)::
 
   [Unit]
   Description=Main controller processes for pyDE1

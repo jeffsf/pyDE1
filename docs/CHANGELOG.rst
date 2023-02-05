@@ -13,7 +13,7 @@ Changelog
 2.0.0 — Pending
 ------------------
 
-See :doc:`whats_new_version_2`
+.. seealso:: :doc:`whats_new_version_2`
 
 ------------------
 1.5.2 - 2022-11-11
