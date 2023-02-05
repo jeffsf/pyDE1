@@ -28,7 +28,7 @@ from pyDE1.exceptions import (
     DE1RuntimeError, DE1NotConnectedError,
     DE1UnsupportedDeviceError,
 )
-from pyDE1.scale.events import ScaleWeightUpdate, ScaleTareSeen
+from pyDE1.scale.events import ScaleWeightUpdate, ScaleTareSeen, ScaleChange
 from pyDE1.scanner import RegisteredPrefixes
 
 logger = pyDE1.getLogger('Scale')
@@ -172,7 +172,7 @@ class GenericScale (ClassChanger, ManagedBleakDevice):
         self.logger = pyDE1.getLogger(f'Scale.{class_name}')
         self._bleak_client.logger = self.logger.getChild('Client')
         sc = ScaleChange(arrival_time=time.time(),
-                         state=self.connectivity_state,
+                         state=self.availability_state,
                          id=self.address,
                          name=self.name)
         asyncio.create_task(self._event_scale_changed.publish(sc))
@@ -428,16 +428,6 @@ class GenericScale (ClassChanger, ManagedBleakDevice):
             else:
                 retval = ConnectivityEnum.CONNECTED
         return retval
-
-
-class ScaleChange(ConnectivityChange):
-    """
-    Gets sent when the address of the scale changes "behind the scenes"
-    such as with a call to scale.take_over_from()
-
-    Not sent on initialization at this time
-    """
-    pass
 
 
 # Used by Scale instances

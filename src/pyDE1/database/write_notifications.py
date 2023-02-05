@@ -91,7 +91,7 @@ ROLLING_BUFFER_SIZE = {
     'ScaleButtonPress': 3,
     'ConnectivityChange': 8,            # 2 * 4 from disconnected to ready
     'DeviceAvailability': 12,           # 3 * 4 from disconnected to ready
-    'ScaleChange': 12,                  # in case something is wonky TODO: trim
+    'ScaleChange': 2,
     'BlueDOTUpdate': 10,                # At least 10 seconds
 }
 # Total, 59 potential (93 now, as of 2.0.0 development)
