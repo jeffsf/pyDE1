@@ -88,6 +88,7 @@ class _Visualizer (ConfigLoadable):
         self.USERNAME = 'you@example.com'
         self.PASSWORD = 'your password or upload token here'
         self.MIN_FLOW_TIME = 10  # seconds, or not uploaded
+        self.RETRY_HOLD_OFF = 10 # seconds on connection fail
 
 
 class _Logging (ConfigLogging):
@@ -390,20 +391,24 @@ async def loop_on_queue(client: mqtt.Client,
             }
 
             logger.info("About to upload")
-            r = await asyncio.get_running_loop().run_in_executor(
-                None,
-                functools.partial(
-                    requests.post,
-                    url='https://visualizer.coffee/api/shots/upload',
-                    files=fd,
-                    auth=HTTPBasicAuth(username=config.visualizer.USERNAME,
-                                       password=config.visualizer.PASSWORD),
-                    timeout=5.0,
-                ))
             try:
-                r: requests.Response
-            except requests.exceptions.Timeout:
-                logger.warning(f"Timeout on upload {got}, requeueing")
+                r = await asyncio.get_running_loop().run_in_executor(
+                    None,
+                    functools.partial(
+                        requests.post,
+                        url='https://visualizer.coffee/api/shots/upload',
+                        files=fd,
+                        auth=HTTPBasicAuth(username=config.visualizer.USERNAME,
+                                           password=config.visualizer.PASSWORD),
+                        timeout=5.0,
+                    ))
+            except (requests.exceptions.Timeout,
+                    requests.exceptions.ConnectionError,
+                    requests.exceptions.ConnectTimeout) as e:
+                logger.warning(
+                    f"Exception on upload {got}, {e}, "
+                    f"requeueing in {config.visualizer.RETRY_HOLD_OFF} sec")
+                await asyncio.sleep(config.visualizer.RETRY_HOLD_OFF)
                 shot_complete_queue.put_nowait(got)
                 continue
 
