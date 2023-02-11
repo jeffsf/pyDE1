@@ -261,7 +261,7 @@ async def mq_queue_get(mp_queue: multiprocessing.Queue,
         except queue.Empty as e:
             qexc = e
             done = False
-    if qexc:
+    if qexc and not abandon_on_event.is_set():
         raise qexc
     else:
         return data
