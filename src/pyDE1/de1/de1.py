@@ -1636,7 +1636,7 @@ class CalData:
     def record_flow(self, de1_value: float, measured: float):
         # "record_" to be very clear it doesn't change the DE1
         if de1_value != 1:
-            self._logger.error(
+            DE1().logger.error(
                 f"Setting cal flow ratio expected 1, got {de1_value}")
         self._flow = measured / de1_value
 
@@ -1646,7 +1646,7 @@ class CalData:
 
     def record_pressure(self, de1_value: float, measured: float):
         if de1_value != 1:
-            self._logger.error(
+            DE1().logger.error(
                 f"Setting cal press ratio expected 1, got {de1_value}")
         self._pressure = measured / de1_value
 
@@ -1656,7 +1656,7 @@ class CalData:
 
     def record_temperature(self, de1_value: float, measured: float):
         if de1_value != 0:
-            self._logger.error(
+            DE1().logger.error(
                 f"Setting cal temp offset expected 0, got {de1_value}")
         self._temperature = measured - de1_value
 
@@ -1737,7 +1737,7 @@ class FeatureFlag:
 
         if self.fw_version < 1250:
             # CAL_FLOW_EST was probably in 1246, but be conservative
-            self._logger.warning(
+            DE1().logger.warning(
                 f"Firmware {self.fw_version} is 'ancient', update suggested.")
             retval = MMR0x80LowAddr.HEATER_UP2_TIMEOUT
 
