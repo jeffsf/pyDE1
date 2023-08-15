@@ -4,7 +4,7 @@
 -- GNU General Public License v3.0 only
 -- SPDX-License-Identifier: GPL-3.0-only
 
--- Schema version 2
+-- Schema version 3
 -- TODO: How to detect current schema, run upgrade triggers,
 --       and then set PRAGMA user_version
 
@@ -29,7 +29,7 @@ PRAGMA journal_mode=WAL;
 
 BEGIN TRANSACTION;
 
-PRAGMA user_version = 2;
+PRAGMA user_version = 3;
 
 CREATE TABLE profile (
     id              TEXT NOT NULL PRIMARY KEY,

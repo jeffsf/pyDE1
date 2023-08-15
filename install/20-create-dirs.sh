@@ -1,4 +1,6 @@
-#!/usr/bin/sh -e
+#!/usr/bin/env sh
+
+set -e
 
 # Copyright © 2021, 2022 Jeff Kletsky. All Rights Reserved.
 #
