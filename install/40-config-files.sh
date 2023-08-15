@@ -30,7 +30,7 @@ for f in /usr/local/etc/pyde1/*.service ; do
   sed -i'.bak'  \
     -e "s|^User=.*|User=${PYDE1_USER}|" \
     -e "s|^Group=.*|Group=${PYDE1_GROUP}|" \
-    -e "s|/home/pyde1/venv/pyde1|${VENV_PATH}"
+    -e "s|/home/pyde1/venv/pyde1|${VENV_PATH}|" \
     $f
 done
 
